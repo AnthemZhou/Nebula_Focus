@@ -1,0 +1,47 @@
+name: Release
+on:
+  push:
+    branches: [main]
+    paths: ['manifest.json']
+    tags: ['[0-9]*']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - run: node scripts/demo.mjs
+      - run: npm run package
+      - name: Read version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" != "$VERSION" ]]; then
+            echo "Tag must equal manifest version"; exit 1
+          fi
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "Release exists; leaving its assets unchanged."; exit 0
+          fi
+          FLAGS=()
+          if [[ "$VERSION" == 0.* ]]; then FLAGS+=(--prerelease); fi
+          gh release create "$VERSION" main.js manifest.json styles.css dist/*.zip dist/SHA256SUMS.txt docs/mobile-preview.html \
+            --target "$GITHUB_SHA" --title "Nebula Focus $VERSION" \
+            --notes-file docs/RELEASE_NOTES.md "${FLAGS[@]}"

@@ -1,0 +1,151 @@
+/* Nebula Focus — Copyright (c) 2026 Shengyu Zhou. GPL-3.0-only license. */
+/* Native controls are hidden ONLY after a replacement toolbar is mounted. */
+.nf-managed > .view-header { display: none; }
+body.is-mobile.nf-quiet.nf-reading .mobile-navbar { display: none; }
+body.is-mobile.nf-quiet.nf-reading .mobile-toolbar { display: none; }
+
+.nf-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  flex: 0 0 auto; min-height: 48px; gap: 12px; padding: 2px 12px;
+  background: var(--background-primary); color: var(--text-muted);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.nf-bar-left, .nf-bar-right, .nf-nav-actions { display: flex; align-items: center; gap: 4px; }
+button.nf-button {
+  appearance: none; display: inline-flex; align-items: center; justify-content: center;
+  gap: 7px; min-width: 44px; min-height: 44px; height: auto; padding: 8px 10px;
+  border: 0; border-radius: 8px; box-shadow: none; background: transparent;
+  color: var(--text-muted); font-size: var(--font-ui-medium); line-height: 1.2;
+  cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.nf-button:hover { background: var(--background-modifier-hover); color: var(--text-normal); box-shadow: none; }
+.nf-button:focus-visible, .nf-file-row:focus-visible, .nf-resume:focus-visible {
+  outline: 2px solid var(--interactive-accent); outline-offset: 2px;
+}
+.nf-icon, .nf-file-icon { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; }
+.nf-icon svg, .nf-file-icon svg { width: 19px; height: 19px; stroke-width: 1.7; }
+.nf-bar-right > .nf-button:first-child { color: var(--text-normal); }
+
+.nf-managed.nf-typography .markdown-preview-view { --line-height-normal: 1.75; --p-spacing: 1.15rem; }
+.nf-managed.nf-typography .markdown-preview-sizer { padding-bottom: 50px; }
+.nf-managed.nf-typography .markdown-preview-view img { max-width: 100%; height: auto; border-radius: 6px; }
+.nf-managed.nf-typography .markdown-preview-view :is(pre, .table-wrapper) { overflow-x: auto; }
+body.is-mobile .nf-managed.nf-typography .markdown-preview-view { padding-inline: 22px; }
+body.is-mobile .nf-managed.nf-reading-view { padding-bottom: env(safe-area-inset-bottom, 12px); }
+
+.nf-navigator { width: min(560px, 94vw); }
+.nf-navigator .modal-content { display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
+.nf-nav-actions { justify-content: flex-end; margin-top: -6px; }
+.nf-nav-actions .nf-button:first-child { margin-right: auto; }
+.nf-search { width: 100%; min-height: 44px; flex-shrink: 0; font-size: 16px; border-radius: 10px; }
+.nf-breadcrumb { display: flex; align-items: center; gap: 6px; min-height: 32px; color: var(--text-muted); font-size: var(--font-ui-small); overflow-wrap: anywhere; }
+.nf-breadcrumb .nf-button { font-size: var(--font-ui-small); padding-inline: 4px; }
+.nf-file-list { min-height: 100px; overflow-y: auto; overscroll-behavior: contain; padding: 3px; max-height: 58vh; }
+button.nf-file-row {
+  appearance: none; display: flex; align-items: center; gap: 13px;
+  width: 100%; height: auto; min-height: 54px; padding: 12px 8px;
+  background: transparent; border: 0; border-radius: 8px; box-shadow: none;
+  color: var(--text-normal); text-align: left; font-size: 16px; cursor: pointer;
+  touch-action: manipulation;
+}
+.nf-file-row:hover { background: var(--background-modifier-hover); box-shadow: none; }
+.nf-file-icon { color: var(--text-faint); }
+.nf-file-copy { display: flex; flex-direction: column; min-width: 0; gap: 5px; }
+.nf-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; line-height: 1.35; }
+.nf-file-path { color: var(--text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nf-empty { padding: 30px 10px; color: var(--text-muted); line-height: 1.7; }
+.nf-help { color: var(--text-muted); font-size: 13px; line-height: 1.7; }
+.nf-name-form { display: flex; flex-direction: column; gap: 12px; }
+.nf-name-form input { width: 100%; min-height: 44px; font-size: 16px; }
+.nf-error { color: var(--text-error); font-size: 13px; }
+button.nf-resume {
+  position: fixed; z-index: 1000; right: 12px;
+  bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+  border: 1px solid var(--background-modifier-border); background: var(--background-primary);
+  color: var(--text-normal); border-radius: 12px; box-shadow: var(--shadow-s);
+}
+.nf-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+@media (max-width: 600px) {
+  .nf-navigator { width: 100%; max-width: 100%; max-height: 90vh; }
+  .nf-navigator .modal-content { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .nf-file-list { max-height: 60vh; }
+  .nf-preferences .setting-item { flex-wrap: wrap; gap: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nf-button, button.nf-file-row { transition: none; }
+}
+
+/* 0.6 portable pages: native editor remains available through Source. */
+.nf-managed { container: nebula-page / inline-size; }
+.nf-managed.nf-page-mounted.nf-reading-view > .markdown-reading-view,
+.nf-managed.nf-page-mounted.nf-reading-view > .view-content > .markdown-reading-view { display:none !important; }
+.nf-page[hidden] { display:none; }
+.nf-page { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding-bottom:calc(70px + env(safe-area-inset-bottom)); color:var(--text-normal); }
+.nf-cover { position:relative; height:240px; overflow:hidden; background:var(--background-secondary); }
+.nf-cover > img { display:block; width:100%; height:100%; object-fit:cover; }
+.nf-cover > button { position:absolute; bottom:12px; right:16px; opacity:0; background:var(--background-primary); }
+.nf-cover:hover > button,.nf-cover:focus-within > button { opacity:1; }
+.nf-cover-missing { padding:80px 24px; text-align:center; color:var(--text-muted); }
+.nf-page-heading,.nf-section-grid,.nf-page-tail { width:min(100%,1000px); margin-inline:auto; padding-inline:36px; box-sizing:border-box; }
+.nf-page-heading { padding-top:34px; padding-bottom:14px; }
+.nf-page-heading h1 { font-size:clamp(28px,4vw,40px); line-height:1.25; margin:12px 0 24px; letter-spacing:-.5px; cursor:text; overflow-wrap:anywhere; }
+.nf-page-icon { font-size:44px !important; padding:0 !important; background:transparent !important; box-shadow:none !important; }
+button.nf-page-action { background:transparent; color:var(--text-muted); border:0; box-shadow:none; min-height:36px; height:auto; padding:6px 10px; border-radius:8px; font:inherit; cursor:pointer; }
+.nf-page-action:hover { background:var(--background-modifier-hover); }
+.nf-title-input { font-size:28px; width:100%; min-height:52px; }
+.nf-section-grid { display:grid; gap:18px 26px; align-items:start; grid-template-columns:1fr; }
+.nf-section-grid[data-columns='2'] { grid-template-columns:minmax(0,var(--nf-ratio)) minmax(0,var(--nf-other)); }
+.nf-section { position:relative; min-width:0; border-radius:8px; outline:none; }
+.nf-section:focus-visible { outline:2px solid var(--interactive-accent); outline-offset:5px; }
+.nf-section-tools { position:absolute; left:-30px; top:0; opacity:0; z-index:2; }
+.nf-section:hover > .nf-section-tools,.nf-section:focus-within > .nf-section-tools { opacity:1; }
+button.nf-drag-handle { touch-action:none; cursor:grab; font-size:24px; padding:0; width:28px; min-height:44px; }
+.nf-section-body { line-height:1.75; overflow-wrap:anywhere; cursor:text; }
+.nf-section-body h2 { font-size:23px; line-height:1.4; margin:0 0 14px; }
+.nf-section-body p { margin:0 0 16px; }
+.nf-section-body img { max-width:100%; height:auto; border-radius:8px; cursor:zoom-in; }
+.nf-section-body pre,.nf-section-body .table-wrapper { overflow-x:auto; }
+.nf-section-body table { display:block; overflow-x:auto; }
+.nf-section-body blockquote { margin-inline:0; padding-left:16px; border-left:3px solid var(--interactive-accent); color:var(--text-muted); }
+.nf-inline-editor { width:100%; min-height:160px; box-sizing:border-box; resize:vertical; font:16px/1.75 var(--font-text,system-ui); color:var(--text-normal); background:var(--background-primary); border:1px solid var(--background-modifier-border); border-radius:8px; padding:12px; }
+.nf-inline-actions { display:flex; gap:4px; align-items:center; flex-wrap:wrap; }
+.nf-inline-actions span { color:var(--text-muted); font-size:12px; flex:1; }
+.nf-editing { grid-column:1/-1; }
+.nf-dragging { opacity:.45; }
+.nf-drop-target { box-shadow:0 -3px 0 var(--interactive-accent); }
+.nf-page-tail { margin-top:26px; opacity:.55; }
+.nf-page-tail:hover,.nf-page-tail:focus-within { opacity:1; }
+.nf-cover-presets { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-bottom:24px; }
+.nf-cover-presets button { display:flex; flex-direction:column; align-items:stretch; justify-content:flex-start; gap:8px; height:auto; padding:10px 0 0; overflow:hidden; white-space:normal; }
+.nf-cover-presets img { display:block; flex:none; width:100%; height:80px; object-fit:cover; }
+.nf-cover-dialog label { display:block; margin-block:16px; }
+.nf-cover-dialog input { display:block; width:100%; box-sizing:border-box; margin-top:8px; }
+.nf-cover-dialog p { font-size:13px; color:var(--text-muted); }
+.nf-image-modal img { max-width:100%; max-height:80vh; object-fit:contain; }
+@media(max-width:650px) {
+ .nf-cover { height:190px; }
+ .nf-page-heading,.nf-section-grid,.nf-page-tail { padding-inline:26px; }
+ .nf-page-heading { padding-top:25px; }
+ .nf-section-grid[data-columns='2'] { grid-template-columns:1fr; }
+ .nf-bar { padding-inline:6px; gap:0; }
+ .nf-bar .nf-button { padding-inline:7px; }
+ .nf-section-tools { left:-25px; }
+}
+/* Desktop split panes can be narrow even while the app window is wide. */
+@container nebula-page (max-width:650px) {
+ .nf-cover { height:190px; }
+ .nf-page-heading,.nf-section-grid,.nf-page-tail { padding-inline:26px; }
+ .nf-page-heading { padding-top:25px; }
+ .nf-section-grid[data-columns='2'] { grid-template-columns:1fr; }
+ .nf-bar { padding-inline:6px; gap:0; }
+ .nf-bar .nf-button { padding-inline:7px; }
+ .nf-section-tools { left:-25px; }
+}
+.nf-button[hidden] { display:none; }
+.nf-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),1fr)); gap:14px; }
+button.nf-card { display:flex; flex-direction:column; align-items:stretch; overflow:hidden; text-align:left; padding:0 0 16px; gap:14px; min-height:84px; height:auto; white-space:normal; font-weight:600; color:var(--text-normal); background:var(--background-secondary); border:1px solid var(--background-modifier-border); }
+.nf-card img { display:block; flex:none; width:100%; height:150px; object-fit:cover; border-radius:0; }
+.nf-card-label { display:block; padding-inline:14px; overflow-wrap:anywhere; }
+.nf-inline-format { display:flex; gap:4px; margin-block:6px; }
+.nf-managed.nf-page-mounted.nf-reading-view > .view-content { display:none !important; }
+.nf-intro { grid-column:1/-1; }

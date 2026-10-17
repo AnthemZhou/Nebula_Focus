@@ -1,0 +1,20 @@
+// Create an isolated vault; never install into or modify an existing user vault.
+import {access,cp,mkdir,mkdtemp,readFile,writeFile} from 'node:fs/promises';
+import {join,resolve,dirname} from 'node:path';
+import {tmpdir} from 'node:os';
+import {fileURLToPath} from 'node:url';
+const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+const manifest=JSON.parse(await readFile(join(root,'manifest.json'),'utf8'));
+for(const name of ['main.js','manifest.json','styles.css'])await access(join(root,name));
+const vault=await mkdtemp(join(tmpdir(),`Nebula-Focus-${manifest.version}-`));
+await writeFile(join(vault,'.nebula-focus-test-vault'),JSON.stringify({plugin:manifest.id,version:manifest.version}));
+await cp(join(root,'examples/vault'),vault,{recursive:true});
+const config=join(vault,'.obsidian'),plugin=join(config,'plugins',manifest.id);
+await mkdir(plugin,{recursive:true});
+for(const name of ['main.js','manifest.json','styles.css','LICENSE'])await cp(join(root,name),join(plugin,name));
+await writeFile(join(plugin,'data.json'),JSON.stringify({mobileOnly:false,language:'zh',homePath:'Home.md'},null,2));
+await writeFile(join(config,'community-plugins.json'),JSON.stringify([manifest.id]));
+await writeFile(join(config,'app.json'),JSON.stringify({defaultViewMode:'preview'},null,2));
+console.log(`Test vault created: ${vault}`);
+console.log('Open this folder as an Obsidian vault. Enable community plugins if prompted, then open Home.md.');
+console.log(`Host OS: ${process.platform}. Creating a vault does not constitute a real Obsidian test.`);
