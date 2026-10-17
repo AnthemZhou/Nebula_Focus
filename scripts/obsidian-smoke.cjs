@@ -11,9 +11,20 @@ const executable = process.env.OBSIDIAN_CLI || '/Applications/Obsidian.app/Conte
 const outputDir = resolve('test-results');
 mkdirSync(outputDir, {recursive:true});
 const results = [];
+const transportWarnings = [];
 const filter = process.argv.find(arg=>arg.startsWith('--only='))?.slice(7);
 function cli(...args) {
-  return execFileSync(executable, [`vault=${basename(vault)}`, ...args], {encoding:'utf8', timeout:30000, killSignal:'SIGKILL'}).trim();
+  try{return execFileSync(executable, [`vault=${basename(vault)}`, ...args], {encoding:'utf8', timeout:15000, killSignal:'SIGKILL'}).trim();}
+  catch(error){
+    // Some CLI children print the complete app response but fail to exit on macOS.
+    // Accept only a complete structured evaluation/CDP response or a screenshot path; never retry a write.
+    const out=String(error.stdout || '').trim();
+    let cdpResponse=false;try{cdpResponse=args[0]==='dev:cdp' && typeof JSON.parse(out)==='object';}catch{}
+    if(error.code==='ETIMEDOUT' && (cdpResponse || (args[0]==='eval' && out.split('\n').some(line=>line.startsWith('=> '))) || (args[0]==='dev:screenshot' && out===args[1]?.slice(5)))){
+      transportWarnings.push({command:args[0],reason:'CLI child timed out after returning its response'});return out;
+    }
+    throw error;
+  }
 }
 function evaluate(code) {
   // Obsidian expands literal \\n in CLI arguments, including JavaScript strings.
@@ -46,8 +57,8 @@ evaluate(String.raw`
   window.__nfQA={root,p,seq:0,
     assert(value,message){if(!value)throw Error(message);},
     async wait(fn){for(let n=0;n<100;n++){if(fn())return;await new Promise(r=>setTimeout(r,30));}throw Error('Timed out: '+fn);},
-    input(el,value){el.value=value;el.dispatchEvent(new Event('input',{bubbles:true}));},
-    button(text,parent=document){const el=[...parent.querySelectorAll('button')].find(b=>b.textContent===text);if(!el)throw Error('Missing button '+text);el.click();},
+    input(el,value){if(el.hasAttribute('contenteditable'))el.textContent=value;else el.value=value;el.dispatchEvent(new Event('input',{bubbles:true}));},
+    button(text,parent=document){const el=[...parent.querySelectorAll('button')].find(b=>b.textContent===text || b.getAttribute('aria-label')===text);if(!el)throw Error('Missing button '+text);el.click();},
     async note(text){
       const q=window.__nfQA;for(const bar of q.p.bars.values())for(const modal of bar.page.modals)modal.close();q.p.setPaused(false);
       const file=await app.vault.create(q.root+'/Case-'+(++q.seq)+'.md',text);
@@ -57,8 +68,8 @@ evaluate(String.raw`
     view(){return app.workspace.getMostRecentLeaf()?.view;},
     page(){return this.view()?.containerEl.querySelector('.nf-page');},
     controller(){return this.p.bars.get(this.view()).page;},
-    async done(){this.button('完成',this.page());await this.wait(()=>this.page().querySelector('.nf-page-tail')&&!this.page().querySelector('.nf-inline-editor,.nf-title-input'));},
-    async cancel(){this.button('取消',this.page());await this.wait(()=>this.page().querySelector('.nf-page-tail')&&!this.page().querySelector('.nf-inline-editor,.nf-title-input'));},
+    async done(){this.button('完成',this.view().containerEl);await this.wait(()=>this.page().querySelector('.nf-page-tail')&&!this.page().querySelector('.nf-block-editor'));},
+    async cancel(){this.button('取消',this.view().containerEl);await this.wait(()=>this.page().querySelector('.nf-page-tail')&&!this.page().querySelector('.nf-block-editor'));},
     closeDialogs(){for(const modal of this.controller().modals)modal.close();}
   };return {root};
 `);
@@ -70,18 +81,18 @@ check('reading preserves source and mounts replacement', String.raw`
 `);
 check('Chinese title, Enter, no-op save and reopen', String.raw`
  const q=window.__nfQA,file=await q.note('## 正文\n\n保留正文\n');
- q.page().querySelector('h1').click();q.input(q.page().querySelector('input'),'中文标题 · Mac');await q.done();
+ q.page().querySelector('h1').click();q.input(q.page().querySelector('.nf-page-heading [contenteditable]'),'中文标题 · Mac');await q.done();
  const saved=await app.vault.read(file);q.assert(saved.includes('nf-title: "中文标题 · Mac"'),'Missing persisted title');
  q.page().querySelector('h1').click();await q.done();q.assert(await app.vault.read(file)===saved,'No-op changed bytes');
  await q.note('Other');await q.p.openFile(file);await q.wait(()=>q.page()?.querySelector('h1')?.textContent==='中文标题 · Mac');return {source:saved};
 `);
 check('section Done, blur and Cancel recovery', String.raw`
  const q=window.__nfQA,file=await q.note('## 一\n\n原文\n\n## 二\n\n保留\n');
- q.page().querySelector('.nf-section-body p').click();q.input(q.page().querySelector('textarea'),'## 一\n\n完成保存');await q.done();
+ q.page().querySelector('.nf-section-body p').click();q.input(q.page().querySelector('[contenteditable]'),'完成保存');await q.done();
  q.assert((await app.vault.read(file)).includes('完成保存\n\n## 二\n\n保留'),'Changed wrong section');
- q.page().querySelector('.nf-section-body p').click();q.input(q.page().querySelector('textarea'),'## 一\n\n失焦保存');q.page().querySelector('textarea').focus();q.assert(document.activeElement===q.page().querySelector('textarea'),'Textarea did not acquire focus');q.page().querySelector('h1').focus();
- await q.wait(()=>!q.page().querySelector('textarea'));q.assert((await app.vault.read(file)).includes('失焦保存'),'Blur did not save');
- q.page().querySelector('.nf-section-body p').click();q.input(q.page().querySelector('textarea'),'取消后的恢复草稿');await q.cancel();
+ q.page().querySelector('.nf-section-body p').click();q.input(q.page().querySelector('[contenteditable]'),'失焦保存');q.page().querySelector('[contenteditable]').focus();q.assert(document.activeElement===q.page().querySelector('[contenteditable]'),'Textarea did not acquire focus');q.page().querySelector('h1').focus();
+ await q.wait(()=>!q.page().querySelector('[contenteditable]'));q.assert((await app.vault.read(file)).includes('失焦保存'),'Blur did not save');
+ q.page().querySelector('.nf-section-body p').click();q.input(q.page().querySelector('[contenteditable]'),'取消后的恢复草稿');await q.cancel();
  q.assert(!(await app.vault.read(file)).includes('取消后的恢复草稿'),'Cancel saved');q.button('恢复未保存草稿',q.page());
  q.assert(document.querySelector('[aria-label="草稿内容"]').value==='取消后的恢复草稿','Recovery differs');q.closeDialogs();
 `);
@@ -129,7 +140,7 @@ check('vertical and horizontal pointer drag update source order', String.raw`
 `);
 check('native source, pause and unload preserve drafts and restore controls', String.raw`
  const q=window.__nfQA,file=await q.note('## 草稿\n\n原文\n'),key='nebula-focus-draft:'+file.path;
- const edit=value=>{q.page().querySelector('.nf-section-body p').click();q.input(q.page().querySelector('textarea'),value);};
+ const edit=value=>{q.page().querySelector('.nf-section-body p').click();q.input(q.page().querySelector('[contenteditable]'),value);};
  edit('切换原文草稿');await q.p.setMode(q.view(),'source');q.assert(app.loadLocalStorage(key)?.value==='切换原文草稿','Source switch lost draft');
  q.assert(getComputedStyle(q.view().contentEl).display!=='none','Native source hidden');await q.p.setMode(q.view(),'preview');await q.wait(()=>q.page()?.querySelector('.nf-page-tail'));
  edit('暂停草稿');q.p.setPaused(true);q.assert(!document.querySelector('.nf-managed'),'Pause did not restore view');q.assert(app.loadLocalStorage(key)?.value==='暂停草稿','Pause lost draft');
@@ -139,7 +150,7 @@ check('native source, pause and unload preserve drafts and restore controls', St
  await app.plugins.enablePlugin('nebula-focus');q.p=app.plugins.plugins['nebula-focus'];await q.wait(()=>q.page()?.querySelector('.nf-page-tail'));
 `);
 check('switching notes preserves pending input', String.raw`
- const q=window.__nfQA,file=await q.note('## 原文\n\n保留\n');q.page().querySelector('.nf-section-body p').click();q.input(q.page().querySelector('textarea'),'切页时的草稿');
+ const q=window.__nfQA,file=await q.note('## 原文\n\n保留\n');q.page().querySelector('.nf-section-body p').click();q.input(q.page().querySelector('[contenteditable]'),'切页时的草稿');
  await q.note('## 另一页\n\n不覆盖\n');q.assert(app.loadLocalStorage('nebula-focus-draft:'+file.path)?.value==='切页时的草稿','Navigation lost draft');
  q.assert(await app.vault.read(file)==='## 原文\n\n保留\n','Navigation wrote pending input');
 `);
@@ -153,11 +164,11 @@ check('native Markdown features and internal navigation', String.raw`
 // Write from the filesystem rather than the Obsidian API, exercising its real watcher.
 let conflictFile;
 try {
-  conflictFile=evaluate(String.raw`const q=window.__nfQA,file=await q.note('## 冲突\n\n原文\n');q.page().querySelector('.nf-section-body p').click();q.input(q.page().querySelector('textarea'),'本机未保存草稿');return file.path;`);
+  conflictFile=evaluate(String.raw`const q=window.__nfQA,file=await q.note('## 冲突\n\n原文\n');q.page().querySelector('.nf-section-body p').click();q.input(q.page().querySelector('[contenteditable]'),'本机未保存草稿');return file.path;`);
   writeFileSync(join(vault,conflictFile),'## 冲突\n\n外部磁盘修改\n');
   check('external filesystem conflict refuses overwrite and retains draft', String.raw`
-    const q=window.__nfQA,file=q.view().file;await q.wait(()=>q.page().querySelector('.nf-inline-actions')?.textContent.includes('其他位置更新'));
-    q.button('完成',q.page());await new Promise(r=>setTimeout(r,150));
+    const q=window.__nfQA,file=q.view().file;await q.wait(()=>q.view().containerEl.querySelector('.nf-edit-controls')?.textContent.includes('其他位置更新'));
+    q.button('完成',q.view().containerEl);await new Promise(r=>setTimeout(r,150));
     q.assert(await app.vault.read(file)==='## 冲突\n\n外部磁盘修改\n','Overwrote external change');
     q.assert(app.loadLocalStorage('nebula-focus-draft:'+file.path)?.value==='本机未保存草稿','Conflict draft missing');await q.cancel();
   `);
@@ -198,10 +209,10 @@ check('navigator search and non-Markdown fallback', String.raw`
 `);
 // CDP drives Chromium's actual IME composition, rather than synthetic DOM events.
 if(!filter)try {
- evaluate(String.raw`const q=window.__nfQA;await q.note('IME fixture');q.page().querySelector('h1').click();const el=q.page().querySelector('input');el.select();window.__nfIme=[];for(const type of ['compositionstart','compositionend','keydown'])el.addEventListener(type,e=>window.__nfIme.push({type:e.type,key:e.key,isComposing:e.isComposing}));`);
+ evaluate(String.raw`const q=window.__nfQA;await q.note('IME fixture');q.page().querySelector('h1').click();const el=q.page().querySelector('.nf-page-heading [contenteditable]');const range=document.createRange();range.selectNodeContents(el);getSelection().removeAllRanges();getSelection().addRange(range);window.__nfIme=[];for(const type of ['compositionstart','compositionend','keydown'])el.addEventListener(type,e=>window.__nfIme.push({type:e.type,key:e.key,isComposing:e.isComposing}));`);
  cli('dev:cdp','method=Input.imeSetComposition','params={"text":"中文输入法","selectionStart":5,"selectionEnd":5}');
  cli('dev:cdp','method=Input.dispatchKeyEvent','params={"type":"keyDown","key":"Enter","code":"Enter","windowsVirtualKeyCode":13}');
- check('real Chromium IME Enter keeps composition open',String.raw`const q=window.__nfQA;q.assert(q.page().querySelector('.nf-title-input')?.value==='中文输入法','Composition saved early');q.assert(window.__nfIme.some(e=>e.key==='Enter'&&e.isComposing),'No real composition key event');return window.__nfIme;`);
+ check('real Chromium IME Enter keeps composition open',String.raw`const q=window.__nfQA;q.assert(q.page().querySelector('.nf-page-heading .nf-block-editor')?.textContent==='中文输入法','Composition saved early');q.assert(window.__nfIme.some(e=>e.key==='Enter'&&e.isComposing),'No real composition key event');return window.__nfIme;`);
  cli('dev:cdp','method=Input.insertText','params={"text":"中文输入法"}');
  cli('dev:cdp','method=Input.dispatchKeyEvent','params={"type":"keyDown","key":"Enter","code":"Enter","windowsVirtualKeyCode":13}');
  check('committed IME title saves on subsequent Enter',String.raw`const q=window.__nfQA;await q.wait(()=>q.page().querySelector('h1')?.textContent==='中文输入法');q.assert((await app.vault.read(q.view().file)).includes('nf-title: "中文输入法"'),'Committed title missing');return window.__nfIme;`);
@@ -232,7 +243,7 @@ try {
 evaluate(String.raw`const q=window.__nfQA;await q.p.openHome();return true;`);
 cli('dev:screenshot', `path=${join(outputDir,'obsidian-desktop.png')}`);
 check('final runtime error buffer', String.raw`const errors=${JSON.stringify(cli('dev:errors'))};window.__nfQA.assert(errors==='No errors captured.',errors);return {errors};`);
-const report={environment,results};
+const report={environment,transportWarnings,results};
 writeFileSync(join(outputDir,filter?'obsidian-smoke-focused.json':'obsidian-smoke.json'),JSON.stringify(report,null,2)+'\n');
 console.log(`${results.filter(r=>r.passed).length}/${results.length} real Obsidian checks passed`);
 if(results.some(r=>!r.passed))process.exitCode=1;

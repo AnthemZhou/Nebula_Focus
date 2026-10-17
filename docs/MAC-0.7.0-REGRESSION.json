@@ -1,0 +1,208 @@
+{
+  "environment": {
+    "platform": "darwin",
+    "version": "1.14.4 (installer 1.13.7)",
+    "vault": "Nebula-Focus-0.6.0-KNPWMI"
+  },
+  "transportWarnings": [],
+  "results": [
+    {
+      "name": "reading preserves source and mounts replacement",
+      "passed": true,
+      "details": {
+        "height": 706
+      }
+    },
+    {
+      "name": "Chinese title, Enter, no-op save and reopen",
+      "passed": true,
+      "details": {
+        "source": "---\nnf-title: \"中文标题 · Mac\"\n---\n## 正文\n\n保留正文\n"
+      }
+    },
+    {
+      "name": "section Done, blur and Cancel recovery",
+      "passed": true
+    },
+    {
+      "name": "card captions fit actual Obsidian button styles",
+      "passed": true,
+      "details": [
+        {
+          "height": 214,
+          "label": "典籍里的中国 · 第三季项目"
+        },
+        {
+          "height": 214,
+          "label": "原神 · 程序化动画项目"
+        }
+      ]
+    },
+    {
+      "name": "preset cover, crop and icon persist",
+      "passed": true,
+      "details": {
+        "source": "---\nnf-cover: \"[[Nebula Assets/1792235078284-p9x065-暮色山峦.svg]]\"\nnf-cover-y: 83\nnf-icon: \"🌌\"\n---\n## 封面\n\n正文\n"
+      }
+    },
+    {
+      "name": "uploaded cover and body image create vault attachments",
+      "passed": true,
+      "details": {
+        "attachments": 20
+      }
+    },
+    {
+      "name": "vertical and horizontal pointer drag update source order",
+      "passed": true,
+      "details": {
+        "source": "---\nnf-columns: 2\nnf-ratio: 50\n---\n## A\n\n一\n\n## B\n\n二\n\n## C\n\n三\n"
+      }
+    },
+    {
+      "name": "native source, pause and unload preserve drafts and restore controls",
+      "passed": true
+    },
+    {
+      "name": "switching notes preserves pending input",
+      "passed": true
+    },
+    {
+      "name": "native Markdown features and internal navigation",
+      "passed": true,
+      "details": {
+        "target": "QA-1792235077796/Case-11.md"
+      }
+    },
+    {
+      "name": "external filesystem conflict refuses overwrite and retains draft",
+      "passed": true
+    },
+    {
+      "name": "card navigation, metadata refresh and native search",
+      "passed": true
+    },
+    {
+      "name": "runtime error buffer",
+      "passed": true,
+      "details": {
+        "errors": "No errors captured."
+      }
+    },
+    {
+      "name": "narrow native split panes use one column",
+      "passed": true,
+      "details": {
+        "width": 490,
+        "columns": "442px"
+      }
+    },
+    {
+      "name": "navigator search and non-Markdown fallback",
+      "passed": true
+    },
+    {
+      "name": "real Chromium IME Enter keeps composition open",
+      "passed": true,
+      "details": [
+        {
+          "type": "compositionstart"
+        },
+        {
+          "type": "keydown",
+          "key": "Enter",
+          "isComposing": true
+        }
+      ]
+    },
+    {
+      "name": "committed IME title saves on subsequent Enter",
+      "passed": true,
+      "details": [
+        {
+          "type": "compositionstart"
+        },
+        {
+          "type": "keydown",
+          "key": "Enter",
+          "isComposing": true
+        },
+        {
+          "type": "compositionend"
+        },
+        {
+          "type": "keydown",
+          "key": "Enter",
+          "isComposing": false
+        }
+      ]
+    },
+    {
+      "name": "320px light actual renderer layout",
+      "passed": true,
+      "details": {
+        "viewport": 320,
+        "pane": 276,
+        "columns": 1,
+        "background": "rgb(255, 255, 255)"
+      }
+    },
+    {
+      "name": "320px dark actual renderer layout",
+      "passed": true,
+      "details": {
+        "viewport": 320,
+        "pane": 276,
+        "columns": 1,
+        "background": "rgb(28, 28, 28)"
+      }
+    },
+    {
+      "name": "393px light actual renderer layout",
+      "passed": true,
+      "details": {
+        "viewport": 393,
+        "pane": 349,
+        "columns": 1,
+        "background": "rgb(255, 255, 255)"
+      }
+    },
+    {
+      "name": "393px dark actual renderer layout",
+      "passed": true,
+      "details": {
+        "viewport": 393,
+        "pane": 349,
+        "columns": 1,
+        "background": "rgb(28, 28, 28)"
+      }
+    },
+    {
+      "name": "1024px light actual renderer layout",
+      "passed": true,
+      "details": {
+        "viewport": 1024,
+        "pane": 980,
+        "columns": 2,
+        "background": "rgb(255, 255, 255)"
+      }
+    },
+    {
+      "name": "1024px dark actual renderer layout",
+      "passed": true,
+      "details": {
+        "viewport": 1024,
+        "pane": 980,
+        "columns": 2,
+        "background": "rgb(28, 28, 28)"
+      }
+    },
+    {
+      "name": "final runtime error buffer",
+      "passed": true,
+      "details": {
+        "errors": "No errors captured."
+      }
+    }
+  ]
+}

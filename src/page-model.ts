@@ -74,9 +74,9 @@ export function cardContent(text:string): {enabled:boolean; ordinary:string; lin
   const lines=bodyLines(text),marker=lines.find(line=>line.structural && line.text.trim()===CARD_MARKER);
   const links:string[]=[];
   const ordinary=marker?lines.map(line=>{
-    if(line===marker)return '';
+    if(line===marker)return line.text.replace(/[^\r\n]/g,' ');
     const link=line.structural?/^[-*] \[\[([^\]\r\n]+)\]\][ \t]*(?:\r?\n)?$/.exec(line.text):null;
-    if(link){links.push(link[1]);return '';}
+    if(link){links.push(link[1]);return line.text.replace(/[^\r\n]/g,' ');}
     return line.text;
   }).join(''):text;
   return {enabled:!!marker,ordinary,links,markerStart:marker?.start ?? -1};

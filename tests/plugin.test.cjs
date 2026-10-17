@@ -10,7 +10,7 @@ const model = {exports:{}}; new Function('module','exports',modelCode)(model,mod
 const delay = ms => new Promise(resolve => setTimeout(resolve,ms));
 async function boot(seed) {
   const dom = new JSDOM('<!doctype html><body class="is-mobile"><div class="workspace"></div><div class="mobile-navbar">Native</div></body>',{url:'https://fixture.invalid/',pretendToBeVisual:true});
-  const host = createHost(dom.window,seed); const module={exports:{}};
+  const host = createHost(dom.window,{renderMarkdown:text=>new (require('markdown-it'))({html:true}).render(text),...seed}); const module={exports:{}};
   const context=vm.createContext({window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,MutationObserver:dom.window.MutationObserver,console,module,exports:module.exports,require:name=>{assert.equal(name,'obsidian');return host.api;}});
   new vm.Script(readFileSync('main.js','utf8')).runInContext(context);
   const plugin=new module.exports.default(); await plugin.onload(); await delay(90);
@@ -70,17 +70,17 @@ test('portable page reads without writes; direct section edit saves on Done',asy
  const h=await boot({files:{'Home.md':'---\nnf-title: "我的项目"\nnf-columns: 2\nnf-ratio: 35\n---\n## 项目\n\nOld\n\n## 灵感\n\nKeep\n'}});
  try {
   assert.equal(h.doc.querySelector('.nf-page-heading h1').textContent,'我的项目');assert.equal(h.doc.querySelector('.nf-section-grid').dataset.columns,'2');assert.equal(h.vault.writes.length,0);
-  h.doc.querySelector('.nf-section-body p').click();const editor=h.doc.querySelector('.nf-inline-editor');assert(editor);editor.value='## 项目\n\nNew';editor.dispatchEvent(new h.doc.defaultView.Event('input'));
-  [...h.doc.querySelectorAll('.nf-inline-actions button')].find(b=>b.textContent==='完成').click();await delay(40);
-  assert(h.leaf.view.file.text.includes('New'));assert(h.leaf.view.file.text.endsWith('## 灵感\n\nKeep\n'));assert(h.leaf.view.file.text.includes('nf-ratio: 35'));assert.equal(h.doc.querySelectorAll('.nf-inline-editor').length,0);
+  h.doc.querySelector('.nf-section-body p').click();const editor=h.doc.querySelector('.nf-block-editor');assert(editor);editor.textContent='New';editor.dispatchEvent(new h.doc.defaultView.Event('input'));
+  [...h.doc.querySelectorAll('.nf-edit-controls button')].find(b=>b.getAttribute('aria-label')==='完成').click();await delay(40);
+  assert(h.leaf.view.file.text.includes('New'));assert(h.leaf.view.file.text.endsWith('## 灵感\n\nKeep\n'));assert(h.leaf.view.file.text.includes('nf-ratio: 35'));assert.equal(h.doc.querySelectorAll('.nf-block-editor').length,0);
  }finally{h.close();}
 });
 test('external edits are not overwritten and a recovery draft is retained',async()=>{
  const h=await boot({files:{'Home.md':'## A\n\nOriginal\n'}});try{
-  h.doc.querySelector('.nf-section-body p').click();const editor=h.doc.querySelector('.nf-inline-editor');editor.value='## A\n\nMy draft';editor.dispatchEvent(new h.doc.defaultView.Event('input'));
+  h.doc.querySelector('.nf-section-body p').click();const editor=h.doc.querySelector('.nf-block-editor');editor.textContent='My draft';editor.dispatchEvent(new h.doc.defaultView.Event('input'));
   h.leaf.view.file.text='## A\n\nExternal edit\n';h.vault.trigger('modify',h.leaf.view.file);await delay(10);
-  [...h.doc.querySelectorAll('.nf-inline-actions button')].find(b=>b.textContent==='完成').click();await delay(30);
-  assert.equal(h.leaf.view.file.text,'## A\n\nExternal edit\n');assert(h.doc.querySelector('.nf-inline-editor'));assert(h.doc.defaultView.localStorage.getItem('test-vault:nebula-focus-draft:Home.md').includes('My draft'));assert.equal(h.vault.writes.length,0);
+  [...h.doc.querySelectorAll('.nf-edit-controls button')].find(b=>b.getAttribute('aria-label')==='完成').click();await delay(30);
+  assert.equal(h.leaf.view.file.text,'## A\n\nExternal edit\n');assert(h.doc.querySelector('.nf-block-editor'));assert(h.doc.defaultView.localStorage.getItem('test-vault:nebula-focus-draft:Home.md').includes('My draft'));assert.equal(h.vault.writes.length,0);
  }finally{h.close();}
 });
 test('preset cover is an actual vault attachment and metadata restores after reopening',async()=>{
@@ -94,7 +94,7 @@ test('preset cover is an actual vault attachment and metadata restores after reo
 test('section menu reorders content and card links open target without editing',async()=>{
  const h=await boot({files:{'Home.md':'## A\n\nHello\n\n## B\n\n<!-- nf:view=cards -->\n\n- [[Target]]\n','Target.md':'## Target\n\nContent\n'}});try{
   h.doc.querySelector('.nf-drag-handle').click();[...h.doc.querySelectorAll('.menu-item')].find(b=>b.textContent==='下移').click();await delay(40);
-  assert(h.leaf.view.file.text.startsWith('## B'));assert.equal(h.doc.querySelectorAll('.nf-card').length,1);h.doc.querySelector('.nf-card').click();await delay(90);assert.equal(h.leaf.view.file.path,'Target.md');assert.equal(h.doc.querySelectorAll('.nf-inline-editor').length,0);
+  assert(h.leaf.view.file.text.startsWith('## B'));assert.equal(h.doc.querySelectorAll('.nf-card').length,1);h.doc.querySelector('.nf-card').click();await delay(90);assert.equal(h.leaf.view.file.path,'Target.md');assert.equal(h.doc.querySelectorAll('.nf-block-editor').length,0);
  }finally{h.close();}
 });
 test('pointer drag moves a section and preserves the Markdown content',async()=>{
@@ -106,22 +106,22 @@ test('pointer drag moves a section and preserves the Markdown content',async()=>
 });
 test('title input survives a background refresh and refuses conflicting save',async()=>{
  const h=await boot({files:{'Home.md':'## A\n\nOriginal\n'}});try{
-  h.doc.querySelector('.nf-page-heading h1').click();const input=h.doc.querySelector('.nf-title-input');input.value='Unfinished title';input.dispatchEvent(new h.doc.defaultView.Event('input'));
+  h.doc.querySelector('.nf-page-heading h1').click();const input=h.doc.querySelector('.nf-page-heading .nf-block-editor');input.textContent='Unfinished title';input.dispatchEvent(new h.doc.defaultView.Event('input'));
   h.leaf.view.file.text='## A\n\nExternal\n';h.vault.trigger('modify',h.leaf.view.file);await delay(30);
-  assert.equal(h.doc.querySelector('.nf-title-input'),input);assert.equal(input.value,'Unfinished title');
+  assert.equal(h.doc.querySelector('.nf-page-heading .nf-block-editor'),input);assert.equal(input.textContent,'Unfinished title');
   input.dispatchEvent(new h.doc.defaultView.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await delay(30);
-  assert.equal(h.leaf.view.file.text,'## A\n\nExternal\n');assert(h.doc.querySelector('.nf-title-input'));assert.equal(h.vault.writes.length,0);
+  assert.equal(h.leaf.view.file.text,'## A\n\nExternal\n');assert(h.doc.querySelector('.nf-page-heading .nf-block-editor'));assert.equal(h.vault.writes.length,0);
  }finally{h.close();}
 });
 test('a delayed save cannot clear another page draft or editor state',async()=>{
  const h=await boot({files:{'Home.md':'## A\n\nOriginal\n','Other.md':'## B\n\nOther\n'}});try{
-  h.doc.querySelector('.nf-section-body p').click();let input=h.doc.querySelector('.nf-inline-editor');input.value='## A\n\nSaved A';input.dispatchEvent(new h.doc.defaultView.Event('input'));
+  h.doc.querySelector('.nf-section-body p').click();let input=h.doc.querySelector('.nf-block-editor');input.textContent='Saved A';input.dispatchEvent(new h.doc.defaultView.Event('input'));
   const process=h.vault.process.bind(h.vault);let release;h.vault.process=async(file,fn)=>{await new Promise(r=>release=r);return process(file,fn);};
-  [...h.doc.querySelectorAll('.nf-inline-actions button')].find(b=>b.textContent==='完成').click();await delay(10);
+  [...h.doc.querySelectorAll('.nf-edit-controls button')].find(b=>b.getAttribute('aria-label')==='完成').click();await delay(10);
   await h.plugin.openFile(h.vault.getAbstractFileByPath('Other.md'));await delay(70);
   release();await delay(40);
   assert.equal(h.leaf.view.file.path,'Other.md');assert.equal(h.leaf.view.file.text,'## B\n\nOther\n');assert.equal(h.doc.querySelector('.nf-page-heading h1').textContent,'Other');
-  assert.equal(h.vault.getAbstractFileByPath('Home.md').text,'## A\n\nSaved A');
+  assert.equal(h.vault.getAbstractFileByPath('Home.md').text,'## A\n\nSaved A\n');
  }finally{h.close();}
 });
 test('code examples do not turn into cards or activate a gallery',async()=>{
@@ -131,22 +131,22 @@ test('code examples do not turn into cards or activate a gallery',async()=>{
 });
 test('opening and leaving an unchanged section does not write the note',async()=>{
  const h=await boot({files:{'Home.md':'## A\n\nOriginal\n\n## B\n\nKeep\n'}});try{
-  h.doc.querySelector('.nf-section-body p').click();[...h.doc.querySelectorAll('.nf-inline-actions button')].find(b=>b.textContent==='完成').click();await delay(30);assert.equal(h.vault.writes.length,0);
+  h.doc.querySelector('.nf-section-body p').click();[...h.doc.querySelectorAll('.nf-edit-controls button')].find(b=>b.getAttribute('aria-label')==='完成').click();await delay(30);assert.equal(h.vault.writes.length,0);
  }finally{h.close();}
 });
 test('a draft-cache cleanup failure does not turn a successful note save into failure',async()=>{
  const h=await boot({files:{'Home.md':'## A\n\nOriginal\n'}});try{
-  h.doc.querySelector('.nf-section-body p').click();const input=h.doc.querySelector('.nf-inline-editor');input.value='## A\n\nSaved';input.dispatchEvent(new h.doc.defaultView.Event('input'));
+  h.doc.querySelector('.nf-section-body p').click();const input=h.doc.querySelector('.nf-block-editor');input.textContent='Saved';input.dispatchEvent(new h.doc.defaultView.Event('input'));
   const save=h.app.saveLocalStorage;h.app.saveLocalStorage=(key,data)=>{if(data===null)throw Error('Storage blocked');save(key,data);};
-  [...h.doc.querySelectorAll('.nf-inline-actions button')].find(b=>b.textContent==='完成').click();await delay(30);
-  assert.equal(h.leaf.view.file.text,'## A\n\nSaved');assert.equal(h.doc.querySelector('.nf-inline-editor'),null);assert.equal(h.vault.writes.length,1);
+  [...h.doc.querySelectorAll('.nf-edit-controls button')].find(b=>b.getAttribute('aria-label')==='完成').click();await delay(30);
+  assert.equal(h.leaf.view.file.text,'## A\n\nSaved\n');assert.equal(h.doc.querySelector('.nf-block-editor'),null);assert.equal(h.vault.writes.length,1);
  }finally{h.close();}
 });
 test('IME confirmation Enter does not submit a title prematurely',async()=>{
  const h=await boot();try{
-  h.doc.querySelector('.nf-page-heading h1').click();const input=h.doc.querySelector('.nf-title-input');input.value='中文标题';input.dispatchEvent(new h.doc.defaultView.Event('input'));
+  h.doc.querySelector('.nf-page-heading h1').click();const input=h.doc.querySelector('.nf-page-heading .nf-block-editor');input.textContent='中文标题';input.dispatchEvent(new h.doc.defaultView.Event('input'));
   input.dispatchEvent(new h.doc.defaultView.KeyboardEvent('keydown',{key:'Enter',isComposing:true,bubbles:true}));await delay(20);
-  assert.equal(h.vault.writes.length,0);assert.equal(h.doc.querySelector('.nf-title-input'),input);
+  assert.equal(h.vault.writes.length,0);assert.equal(h.doc.querySelector('.nf-page-heading .nf-block-editor'),input);
   input.dispatchEvent(new h.doc.defaultView.KeyboardEvent('keydown',{key:'Enter',isComposing:false,bubbles:true}));await delay(30);assert(h.leaf.view.file.text.includes('nf-title: "中文标题"'));
  }finally{h.close();}
 });
@@ -160,9 +160,9 @@ test('an appearance dialog opened on one file cannot write to a different file',
 });
 test('an empty note ending at YAML delimiter remains valid after its first inline edit',async()=>{
  const h=await boot({files:{'Home.md':'---\nnf-title: "Empty"\n---'}});try{
-  [...h.doc.querySelectorAll('.nf-page-action')].find(b=>b.textContent==='点击开始书写').click();const input=h.doc.querySelector('.nf-inline-editor');input.value='## First\n\nContent';input.dispatchEvent(new h.doc.defaultView.Event('input'));
-  [...h.doc.querySelectorAll('.nf-inline-actions button')].find(b=>b.textContent==='完成').click();await delay(30);
-  assert.equal(h.leaf.view.file.text,'---\nnf-title: "Empty"\n---\n## First\n\nContent');
+  h.doc.querySelector('.nf-empty-block').click();const input=h.doc.querySelector('.nf-block-editor');input.textContent='Content';input.dispatchEvent(new h.doc.defaultView.Event('input'));
+  [...h.doc.querySelectorAll('.nf-edit-controls button')].find(b=>b.getAttribute('aria-label')==='完成').click();await delay(30);
+  assert.equal(h.leaf.view.file.text,'---\nnf-title: "Empty"\n---\nContent');
  }finally{h.close();}
 });
 test('horizontal drag can reorder side-by-side sections',async()=>{
@@ -174,9 +174,65 @@ test('horizontal drag can reorder side-by-side sections',async()=>{
 });
 test('switching to native mode preserves a recoverable unsaved section draft',async()=>{
  const h=await boot();try{
-  h.doc.querySelector('.nf-section-body p').click();const input=h.doc.querySelector('.nf-inline-editor');input.value='Unsaved local text';input.dispatchEvent(new h.doc.defaultView.Event('input'));
+  h.doc.querySelector('.nf-section-body p').click();const input=h.doc.querySelector('.nf-block-editor');input.textContent='Unsaved local text';input.dispatchEvent(new h.doc.defaultView.Event('input'));
   await h.plugin.setMode(h.leaf.view,'source');await h.plugin.setMode(h.leaf.view,'preview');await delay(30);
-  assert.equal(h.doc.querySelector('.nf-inline-editor'),null);assert.equal(h.vault.writes.length,0);assert.equal(h.app.loadLocalStorage('nebula-focus-draft:Home.md').value,'Unsaved local text');
+  assert.equal(h.doc.querySelector('.nf-block-editor'),null);assert.equal(h.vault.writes.length,0);assert.equal(h.app.loadLocalStorage('nebula-focus-draft:Home.md').value,'Unsaved local text');
   assert([...h.doc.querySelectorAll('.nf-page-action')].some(b=>b.textContent==='恢复未保存草稿'));
+ }finally{h.close();}
+});
+
+test('headings and paragraphs edit in their original DOM and preserve neighbouring bytes',async()=>{
+ const original='## Heading\n\nA **bold** paragraph with [link](https://example.com).\n\nSecond paragraph\n';
+ const h=await boot({files:{'Home.md':original}});try{
+  const heading=h.doc.querySelector('.nf-section-body h2'),paragraph=h.doc.querySelector('.nf-section-body p');
+  heading.click();assert.equal(h.doc.querySelector('.nf-block-editor'),heading);assert.equal(heading.textContent,'Heading');
+  heading.textContent='Changed';heading.dispatchEvent(new h.doc.defaultView.Event('input'));
+  paragraph.focus();paragraph.click();await delay(30);
+  assert.equal(h.doc.querySelector('.nf-block-editor'),paragraph);assert(paragraph.querySelector('strong'));assert(paragraph.querySelector('a'));
+  paragraph.append(' Added');paragraph.dispatchEvent(new h.doc.defaultView.Event('input'));
+  h.doc.querySelector('.nf-edit-controls [aria-label="完成"]').click();await delay(30);
+  assert.equal(h.doc.querySelector('.nf-section-body p'),paragraph);
+  assert.equal(h.leaf.view.file.text,'## Changed\n\nA **bold** paragraph with [link](<https://example.com>)\\. Added\n\nSecond paragraph\n');
+ }finally{h.close();}
+});
+test('clicking another paragraph while blur save is pending opens exactly that paragraph',async()=>{
+ const h=await boot({files:{'Home.md':'## Title\n\nOne\n\nTwo\n'}});try{
+  const [first,second]=h.doc.querySelectorAll('.nf-section-body p');first.click();first.textContent='Edited';
+  const process=h.vault.process.bind(h.vault);let release;h.vault.process=async(f,fn)=>{await new Promise(r=>release=r);return process(f,fn);};
+  second.focus();second.click();await delay(5);assert(release);release();await delay(30);
+  assert.equal(h.doc.querySelectorAll('[contenteditable=true]').length,1);assert.equal(h.doc.querySelector('.nf-block-editor'),second);
+  assert.equal(h.leaf.view.file.text,'## Title\n\nEdited\n\nTwo\n');
+ }finally{h.close();}
+});
+test('Enter splits a heading into an independent paragraph without revealing its marker',async()=>{
+ const h=await boot({files:{'Home.md':'### Head tail\n\nKeep\n'}});try{
+  const w=h.doc.defaultView,heading=h.doc.querySelector('.nf-section-body h3');heading.click();
+  const range=h.doc.createRange();range.setStart(heading.firstChild,4);range.collapse(true);w.getSelection().removeAllRanges();w.getSelection().addRange(range);
+  heading.dispatchEvent(new w.InputEvent('beforeinput',{inputType:'insertParagraph',bubbles:true,cancelable:true}));await delay(30);
+  assert.equal(h.leaf.view.file.text,'### Head\n\n tail\n\nKeep\n');
+  assert.equal(h.doc.querySelector('.nf-block-editor').tagName,'P');assert.equal(h.doc.querySelector('.nf-block-editor').textContent,' tail');
+  assert.equal(heading.textContent,'Head');assert.equal(h.doc.querySelectorAll('[contenteditable=true]').length,1);
+ }finally{h.close();}
+});
+test('empty paragraph can be edited again after saving, including a YAML-only note',async()=>{
+ const h=await boot({files:{'Home.md':'---\nnf-title: Empty\n---'}});try{
+  let el=h.doc.querySelector('.nf-empty-block');el.click();el.textContent='First';h.doc.querySelector('[aria-label="完成"]').click();await delay(20);
+  el.click();el.textContent='Second';h.doc.querySelector('[aria-label="完成"]').click();await delay(20);
+  assert.equal(h.leaf.view.file.text,'---\nnf-title: Empty\n---\nSecond');
+ }finally{h.close();}
+});
+test('clearing a section heading keeps following duplicate paragraphs mapped to their own source',async()=>{
+ const h=await boot({files:{'Home.md':'## First\n\nSame\n\n## Second\n\nSame\n'}});try{
+  const heading=h.doc.querySelector('.nf-section-body h2');heading.click();heading.textContent='';h.doc.querySelector('[aria-label="完成"]').click();await delay(30);
+  const second=h.doc.querySelectorAll('.nf-section-body p')[1];second.click();second.textContent='Edited second';h.doc.querySelector('[aria-label="完成"]').click();await delay(30);
+  assert.equal(h.leaf.view.file.text,'## \n\nSame\n\n## Second\n\nEdited second\n');
+ }finally{h.close();}
+});
+test('clearing a middle section heading rebuilds layout groups before subsequent reordering',async()=>{
+ const h=await boot({files:{'Home.md':'## First\n\nOne\n\n## Second\n\nTwo\n\n## Third\n\nThree\n'}});try{
+  const heading=h.doc.querySelectorAll('.nf-section-body h2')[1];heading.click();heading.textContent='';h.doc.querySelector('[aria-label="完成"]').click();await delay(30);
+  assert.equal(h.doc.querySelectorAll('.nf-section').length,2);
+  h.doc.querySelector('.nf-drag-handle').click();[...h.doc.querySelectorAll('.menu-item')].find(b=>b.textContent==='下移').click();await delay(30);
+  assert(h.leaf.view.file.text.startsWith('## Third\n'));assert(h.leaf.view.file.text.includes('One\n\n## \n\nTwo'));
  }finally{h.close();}
 });

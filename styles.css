@@ -108,7 +108,7 @@ button.nf-drag-handle { touch-action: none; cursor: grab; font-size: 21px; paddi
 .nf-section-body pre { border: 1px solid var(--nf-border); border-radius: var(--nf-radius); }
 .nf-section-body table { display: block; overflow-x: auto; font-size: .9em; }
 .nf-section-body blockquote { margin-inline: 0; padding: 4px 18px; border-left: 2px solid var(--nf-border); color: var(--nf-muted); }
-.nf-intro, .nf-editing { grid-column: 1 / -1; }
+.nf-intro { grid-column: 1 / -1; }
 .nf-dragging { opacity: .45; }
 .nf-drop-target { box-shadow: 0 -3px 0 var(--interactive-accent); }
 
@@ -130,18 +130,25 @@ button.nf-card:hover { background: var(--nf-surface); border-color: var(--nf-rin
 .nf-page-tail { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 32px; }
 .nf-page-tail > button { border-color: var(--nf-border); background: var(--nf-surface); }
 
-/* Inline editing keeps the same spacing and primary/secondary action hierarchy. */
-.nf-inline-editor, input.nf-title-input {
-  width: 100%; box-sizing: border-box; color: var(--nf-foreground); background: var(--nf-surface);
-  border: 1px solid var(--nf-border); border-radius: 8px; box-shadow: 0 1px 2px #00000005;
+/* Editing uses the existing rendered leaf; nothing is inserted into page flow. */
+.nf-block { cursor: text; }
+.nf-block:focus-visible:not(.nf-block-editor) { outline: 1px solid var(--nf-ring); outline-offset: 4px; }
+.nf-managed .nf-block-editor { outline: none; box-shadow: none; border: 0; background: transparent; caret-color: var(--text-normal); }
+.nf-block-editor a { cursor: text; }
+.nf-empty-block:empty::before { content: attr(data-placeholder); color: var(--nf-muted); pointer-events: none; }
+.nf-empty-block:empty { min-height: 1.8em; }
+.nf-list-text { display: inline; }
+.nf-edit-controls {
+  position: absolute; right: 20px; bottom: calc(40px + env(safe-area-inset-bottom, 0px)); z-index: 5;
+  display: flex; align-items: center; gap: 2px; max-width: calc(100% - 40px); padding: 3px;
+  border: 1px solid var(--nf-border); border-radius: 9px; background: var(--nf-surface);
+  box-shadow: 0 2px 8px #0000000a;
 }
-.nf-inline-editor { display: block; min-height: 160px; resize: vertical; font: 16px/1.8 var(--font-text, system-ui); padding: 14px 16px; }
-input.nf-title-input { font-size: 26px; font-weight: 600; min-height: 48px; padding: 7px 12px; }
-.nf-inline-editor:focus, input.nf-title-input:focus { border-color: var(--nf-ring); box-shadow: 0 0 0 3px color-mix(in srgb, var(--nf-ring) 25%, transparent); }
-.nf-inline-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding-top: 10px; }
-.nf-inline-actions > span { color: var(--nf-muted); font-size: 12px; flex: 1; min-width: 100px; }
-.nf-inline-format { display: flex; gap: 4px; padding: 6px 0; border-bottom: 1px solid var(--nf-border); }
-.nf-inline-format > button { font-size: 12px; min-height: 30px; }
+.nf-edit-controls button { min-width: 34px; min-height: 34px; padding: 7px; }
+.nf-edit-controls svg { width: 16px; height: 16px; stroke-width: 1.7; }
+.nf-edit-status:empty { display: none; }
+.nf-edit-status { padding: 4px 8px; font-size: 12px; line-height: 1.5; color: var(--text-error); }
+.nf-draft-text { width: 100%; min-height: 160px; resize: vertical; padding: 12px; font: 16px/1.8 var(--font-text, system-ui); }
 
 /* Dialogs and the command-style note picker. */
 .modal.nf-dialog { border: 1px solid var(--nf-border); border-radius: 14px; background: var(--nf-surface); padding: 24px; }

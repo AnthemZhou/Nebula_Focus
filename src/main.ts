@@ -45,7 +45,7 @@ export default class NebulaFocus extends Plugin {
       },
     });
     this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.refresh()));
-    this.registerEvent(this.app.vault.on('modify', () => this.refresh(true)));
+    this.registerEvent(this.app.vault.on('modify', file => this.refresh(true,file.path)));
     this.registerEvent(this.app.workspace.on('layout-change', () => this.refresh()));
     this.registerEvent(this.app.workspace.on('file-open', file => this.onFileOpened(file)));
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
@@ -96,7 +96,7 @@ export default class NebulaFocus extends Plugin {
     await this.setMode(view, view.getMode() === 'preview' ? 'source' : 'preview');
   }
 
-  refresh(force = false): void {
+  refresh(force = false, modifiedPath?: string): void {
     if (this.disposed) return;
     const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
     const alive = new Set<MarkdownView>();
@@ -120,7 +120,7 @@ export default class NebulaFocus extends Plugin {
       bar.location.title = view.file?.path || '';
       bar.page.element.hidden = editing;
       bar.edit.hidden = !editing;
-      if (!editing) void bar.page.update(force).catch(error => this.report(error));
+      if (!editing) void bar.page.update(force && modifiedPath!==view.file?.path).catch(error => this.report(error));
       const label = editing ? this.text('返回页面', 'Page') : this.text('原文', 'Source');
       if (bar.edit.textContent !== label) bar.edit.textContent = label;
       bar.edit.setAttribute('aria-label', label);
@@ -296,7 +296,7 @@ export default class NebulaFocus extends Plugin {
       }));
     new Setting(container).setName(t('原界面', 'Original interface')).setDesc(t('临时恢复全部工具；禁用插件也会恢复原界面。', 'Temporarily restore all controls. Disabling the plugin also restores them.'))
       .addButton(v => v.setButtonText(t('显示原界面', 'Restore')).onClick(() => this.setPaused(true)));
-    container.createEl('p', { cls: 'nf-help', text: t('v0.6.1 · 点击文字直接修改；封面和分栏设置随 Markdown 保存。', 'v0.6.1 · Direct section editing and portable page layouts.') });
+    container.createEl('p', { cls: 'nf-help', text: t('v0.7.0 · 标题、段落分别原位编辑；封面和分栏设置随 Markdown 保存。', 'v0.7.0 · In-place heading and paragraph editing with portable layouts.') });
   }
 
   report(error: unknown): void {

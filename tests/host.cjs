@@ -119,6 +119,20 @@ function createHost(win, seed = {}) {
   const app = { vault, workspace, loadLocalStorage(key){try{return JSON.parse(win.localStorage.getItem((seed.vaultId || 'test-vault')+':'+key));}catch{return null;}}, saveLocalStorage(key,data){key=(seed.vaultId || 'test-vault')+':'+key;if(data===null)win.localStorage.removeItem(key);else win.localStorage.setItem(key,JSON.stringify(data));}, metadataCache:{getFirstLinkpathDest(path){return vault.getAbstractFileByPath(path)||vault.getAbstractFileByPath(path+'.md');}} };
   class Component { load(){} unload(){} }
   class MarkdownRenderer { static async render(app,text,element) {
+    if(seed.renderMarkdown){
+      element.innerHTML=seed.renderMarkdown(text);
+      const walker=doc.createTreeWalker(element,win.NodeFilter.SHOW_TEXT),nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);
+      for(const node of nodes){
+        if(node.parentElement.closest('code,pre'))continue;
+        const parts=node.textContent.split(/(!?\[\[[^\]\n]+\]\])/g);if(parts.length===1)continue;
+        const fragment=doc.createDocumentFragment();
+        for(const part of parts){const match=/^(!?)\[\[(.*?)\]\]$/.exec(part);if(!match){fragment.append(doc.createTextNode(part));continue;}
+          const [path,label]=match[2].split('|'),el=doc.createElement(match[1]?'img':'a');
+          if(match[1]){const file=app.metadataCache.getFirstLinkpathDest(path);if(file)el.src=app.vault.getResourcePath(file);el.alt=label||path;}
+          else{el.className='internal-link';el.setAttribute('href',path);el.dataset.href=path;el.textContent=label||path;}fragment.append(el);
+        }node.replaceWith(fragment);
+      }return;
+    }
     for(const line of text.split('\n')) {
       if(!line.trim())continue;
       const img=/^!\[\[(.*?)\]\]$/.exec(line);

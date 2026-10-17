@@ -1,3 +1,42 @@
+# Validation — 0.7.0 atomic in-place editing
+
+## Real Obsidian validation — 2026-10-17
+
+Host confirmed again as **Darwin arm64, macOS 26.5.2**; actual Obsidian **1.14.4**, installer 1.13.7. All edits were tested in the marked temporary vault. The owner's personal vault was not modified.
+
+- **40/40** model and simulated-host tests pass.
+- **24/24** real Obsidian regression checks pass in one complete final run: [raw report](MAC-0.7.0-REGRESSION.json).
+- **16/16** additional real-app block-editing checks pass in one complete final run: [raw report](MAC-0.7.0-BLOCKS.json).
+- Both final runs have an empty captured runtime-error buffer and no CLI response-timeout warnings.
+
+The new driver verifies that headings and paragraphs edit as separate DOM leaves, preserve bold/link formatting after saving and reopening, and change only their own Markdown span. It also covers nested list items and task checkboxes, quoted paragraphs, setext/empty headings, multiline plain-text paste, and leaving complex Markdown with its renderer. Chromium input commands exercise real Enter/new-paragraph typing and Chinese composition in paragraphs; the general regression also checks title composition.
+
+At **320, 393 and 1024 CSS pixels**, in both default light and dark themes, the driver measures every tested heading, paragraph and list item's rectangle, font size/weight, line height, margins, padding, borders and background before, during and after editing. All measurements remain identical. The test uses desktop Electron viewport emulation, not a physical phone.
+
+Actual screenshots were inspected: [reading](ui-0.7.0-reading-light.png), [editing a heading](ui-0.7.0-editing-light.png), [narrow dark editing](ui-0.7.0-editing-dark.png). This caught the floating controls overlapping the desktop status bar; their bottom offset was corrected. No textbox frame is added to the content.
+
+### Failures reproduced and fixed
+
+The real vault's asynchronous modify event forced a whole-page render immediately after a save, replacing DOM references and interrupting the newly inserted paragraph. The refresh now checks the current file's revision and retains the existing DOM for its own completed writes; changes to other files can still refresh gallery metadata. Block bindings are recalculated over the complete body, so clearing a section heading cannot shift the source mapping of neighbouring duplicate paragraphs. Desktop Enter is handled directly, while beforeinput remains available for software keyboards.
+
+An intermediate test run also encountered the existing macOS CLI issue where a child printed its completed response but did not exit. The runner accepts only complete structured evaluation/CDP responses or returned screenshot paths in that case and records a transport warning; it never retries a write. One completed plugin-reload CLI child required termination before the final tests could start. The Obsidian app stayed running.
+
+### Reproduce
+
+```sh
+npm ci
+npm run build
+npm test
+npm run prepare:test-vault
+# Open the printed, marked vault in real Obsidian and enable Nebula Focus.
+node scripts/obsidian-smoke.cjs /absolute/path/to/the/test-vault
+node scripts/obsidian-block-smoke.cjs /absolute/path/to/the/test-vault
+```
+
+The HTML demo uses a simulated host and is not evidence of real Obsidian behavior. Design references came from Effie's official documentation; this does not claim a hands-on Effie app test. Physical iOS/Android keyboards, touch/long-press, system IME candidate windows, third-party themes and renderers remain unverified. Code, tables, formulas, embeds and other complex constructs use the native editor. Dragging still operates on layout sections, independently of atomic text editing.
+
+---
+
 # Validation — 0.6.1 visual refresh
 
 ## Real Obsidian validation — 2026-10-17

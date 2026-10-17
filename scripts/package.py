@@ -11,7 +11,7 @@ for filename in assets:
     if not (root / filename).is_file():
         raise SystemExit(f'Missing release asset: {filename}')
 with zipfile.ZipFile(dist / f'{plugin_id}-{version}.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
-    for filename in assets + ['LICENSE', 'README.md']:
+    for filename in assets + ['LICENSE', 'THIRD-PARTY-NOTICES.md', 'README.md']:
         archive.write(root / filename, f'{plugin_id}/{filename}')
 with zipfile.ZipFile(dist / f'{plugin_id}-{version}-source.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
     for path in sorted(root.rglob('*')):

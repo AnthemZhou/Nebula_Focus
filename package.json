@@ -1,6 +1,6 @@
 {
   "name": "nebula-focus",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "A quiet, reading-first workspace for Obsidian on mobile.",
   "main": "main.js",
   "license": "GPL-3.0-only",
@@ -13,10 +13,14 @@
     "prepare:test-vault": "node scripts/prepare-test-vault.mjs"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.2.0",
     "@types/node": "^24.0.0",
     "esbuild": "^0.25.0",
+    "jsdom": "^26.0.0",
     "obsidian": "1.14.4",
-    "typescript": "^5.9.0",
-    "jsdom": "^26.0.0"
+    "typescript": "^5.9.0"
+  },
+  "dependencies": {
+    "markdown-it": "^15.0.3"
   }
 }

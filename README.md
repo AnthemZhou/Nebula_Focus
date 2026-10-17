@@ -1,16 +1,17 @@
-# Nebula Focus 0.6.1
+# Nebula Focus 0.7.0
 
 Quiet, portable pages for Obsidian. GPL-3.0-only. **Experimental prerelease: tested in real macOS Obsidian 1.14.4; physical iOS/Android testing is still pending.**
 
 ## 这版可以做什么
 
-0.6.1 参考 [shadcn/ui](https://ui.shadcn.com/) 的视觉设计，统一了紧凑导航、封面与标题比例、细边框卡片、输入框和弹窗。颜色跟随 Obsidian 当前主题，手机保留较大的点击区域。
+0.7.0 将编辑单位细化到单个标题、段落和列表项。参考 [Effie 的即时呈现与简洁编辑交互](https://blog.effie.co/effie-tutorial-mac/)，点击后直接在原来的文字位置书写，标题不会展开成 `###`，也不会出现大文本框。整体视觉继续沿用参考 [shadcn/ui](https://ui.shadcn.com/) 调整的间距、边框和主题配色。
 
-![0.6.1 — actual Obsidian on macOS](docs/ui-0.6.1-light.png)
+![0.7.0 — editing a heading in actual Obsidian](docs/ui-0.7.0-editing-light.png)
 
 - 选择三张原创矢量封面，或上传 PNG/JPEG/WebP/GIF/AVIF（20 MB 以内）；选用后图片保存在笔记库的 `Nebula Assets/`。
 - 封面裁切、页面标题、图标、单/双栏及栏宽比例保存在当前 Markdown 顶部。正文顺序就是显示顺序。
-- 点击普通文字即可在页面中修改当前分区，无需先进入统一编辑模式。当前分区使用 Markdown 文本输入，含粗体、引用和列表快捷操作；完成或点击分区外部保存。
+- 标题、每个段落和列表项分别编辑；保留原来的字体、间距、粗体与链接。点击其他文字、点击角落的完成按钮，或 Cmd/Ctrl+Enter 保存；Esc 取消并保留恢复草稿。页面标题用 Enter 保存。
+- 正文中 Enter 新建下一段，列表中 Enter 新建同级项目；Shift+Enter 在当前段落内换行。Cmd/Ctrl+B、I 切换粗体、斜体。多行纯文本粘贴分成独立段落。
 - 每个 `## 二级标题` 及其下方内容作为一个分区。使用手柄拖动，或菜单上移/下移。开头没有二级标题的说明保留在顶部。桌面手柄悬停出现；手机可长按分区打开菜单，或操作其左侧手柄。支持手柄上 Alt+上下键。
 - 页面外观菜单提供单栏或双栏（35/65、50/50、65/35）。笔记面板宽度 650px 以下自动单栏（包括桌面分栏），按文件顺序阅读；布局值保留。
 - 普通项目链接列表可切换为封面卡片；卡片打开原笔记，不复制项目资料。
@@ -25,9 +26,9 @@ Quiet, portable pages for Obsidian. GPL-3.0-only. **Experimental prerelease: tes
 4. 用 `##` 划分可移动的内容分区；点击内容输入，在分区操作菜单中切换卡片显示。
 5. 示例库位于源码包的 `examples/vault/`，也提供独立 examples ZIP。请复制到空白测试库，包含 `Nebula Assets` 与项目文件，不要覆盖自己的 Home.md。
 
-安装文件、完整源码和示例库请从 [0.6.1 预发布页面](https://github.com/AnthemZhou/Nebula_Focus/releases/tag/0.6.1) 下载。尚未进入 Obsidian 社区插件目录。请先在测试库中试用。
+安装文件、完整源码和示例库请从 [0.7.0 预发布页面](https://github.com/AnthemZhou/Nebula_Focus/releases/tag/0.7.0) 下载。尚未进入 Obsidian 社区插件目录。请先在测试库中试用。
 
-`docs/mobile-preview-0.6.1.html` 是可离线打开的模拟宿主演示，使用真实插件代码、简化的 Markdown 渲染器和示例资料。演示修改只存在当前页面内存，刷新后还原；草稿使用浏览器本地缓存。它不是实际 Obsidian，也不访问你的笔记库。
+`docs/mobile-preview-0.7.0.html` 是可离线打开的模拟宿主演示，使用真实插件代码、简化的 Markdown 渲染器和示例资料。演示修改只存在当前页面内存，刷新后还原；草稿使用浏览器本地缓存。它不是实际 Obsidian，也不访问你的笔记库。
 
 ## 数据格式和备份
 
@@ -60,10 +61,10 @@ nf-ratio: 35
 
 ## 范围和限制
 
-- 本版是按二级标题分区的直接编辑和拖动，不是逐段所见即所得的 Notion 编辑器；输入时会看到该分区的 Markdown 语法。
+- 直接编辑支持可安全定位的标题、普通段落、引用段落与列表项。表格、代码、数学公式、嵌入和复杂第三方渲染使用“更多 → 原生 Markdown 编辑器”修改；不会把它们转成普通文字。
 - 双栏按从左到右、从上到下排列分区，不支持任意嵌套或自由坐标。
 - 卡片来自显式 `- [[笔记]]` 列表，不是数据库查询或状态看板；卡片内容取目标标题、封面和所在文件夹。
-- MarkdownRenderer 展示不是原生编辑器的完整替代。复杂嵌入、任务交互、第三方渲染、脚注与跨分区引用等必须实机核对，必要时切换原生编辑器。
+- MarkdownRenderer 展示不是原生编辑器的完整替代。复杂嵌入、第三方渲染、脚注与跨分区引用等必须实机核对，必要时切换原生编辑器。
 - “页内查找”会自动切到原生 Markdown 编辑器，再打开查找。
 - 不含 Excel/账本、AI 接入、AI 清理导出、同步、页面打包备份功能；没有网络请求或遥测。
 - 中文页面功能已实现；0.6 页面新增菜单暂为中文，旧导航支持中英文。
@@ -79,10 +80,10 @@ node scripts/demo.mjs
 npm run package
 ```
 
-For a fresh isolated vault with desktop mode enabled, run `npm run prepare:test-vault`. Open the printed folder in Obsidian and enable the plugin, then run `node scripts/obsidian-smoke.cjs /absolute/path/to/the/test-vault`. This uses the actual Obsidian CLI and refuses vaults without the test marker. Reports and screenshots go to `test-results/`. See [validation details](docs/TESTING.md). The separate HTML preview check additionally needs Playwright and Chromium.
+For a fresh isolated vault with desktop mode enabled, run `npm run prepare:test-vault`. Open the printed folder in Obsidian and enable the plugin, then run `node scripts/obsidian-smoke.cjs /absolute/path/to/the/test-vault` and `node scripts/obsidian-block-smoke.cjs /absolute/path/to/the/test-vault`. This uses the actual Obsidian CLI and refuses vaults without the test marker. Reports and screenshots go to `test-results/`. See [validation details](docs/TESTING.md). The separate HTML preview check additionally needs Playwright and Chromium.
 
 Main runtime uses public Obsidian APIs, no Node/Electron imports. Minimum Obsidian 1.8.7.
 
 ## License
 
-Copyright © 2026 Shengyu Zhou. GPL-3.0-only. The three vector covers in `src/covers.ts` are original code-generated illustrations under the same license. Hider, Minimal and [shadcn/ui](https://github.com/shadcn-ui/ui) were design references; no component implementation was copied. The UI uses original scoped CSS and native Obsidian APIs; no React or Tailwind runtime is added. Runtime dependency: Obsidian API supplied by the host.
+Copyright © 2026 Shengyu Zhou. GPL-3.0-only. The three vector covers in `src/covers.ts` are original code-generated illustrations under the same license. Hider, Minimal and [shadcn/ui](https://github.com/shadcn-ui/ui) were design references; no component implementation was copied. The UI uses original scoped CSS and native Obsidian APIs; no React or Tailwind runtime is added. The host supplies the Obsidian API; markdown-it locates editable Markdown spans. Bundled dependency licenses are preserved in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) and main.js. Effie was a design reference based on its official documentation, not copied code.
