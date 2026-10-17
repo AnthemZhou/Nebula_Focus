@@ -6,7 +6,7 @@
 - License: GPL-3.0-only
 - Description: Reduce interface clutter with reading-first notes, a compact navigator, and on-demand actions on mobile.
 - Platforms: mobile, desktop (opt-in)
-- Version: 0.6.0
+- Version: 0.6.1
 - Repository: https://github.com/AnthemZhou/Nebula_Focus
 
 Official path verified 2026-10-12: https://docs.obsidian.md/Plugins/Releasing/Submit%20your%20plugin

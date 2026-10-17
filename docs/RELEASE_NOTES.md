@@ -1,15 +1,15 @@
-# Nebula Focus 0.6.0 — experimental prerelease
+# Nebula Focus 0.6.1 — visual refresh · experimental prerelease
 
-Portable Obsidian pages with vault-backed covers, title/icon/crop settings, direct section editing, recoverable drafts, draggable sections, responsive columns and linked-note cards. Layout is stored in ordinary Markdown frontmatter; images stay in the vault. GPL-3.0-only.
+参考 [shadcn/ui](https://ui.shadcn.com/) 的视觉设计，重新整理了 Nebula Focus 的页面、卡片、导航和弹窗。
 
-Mac validation on 2026-10-17 used macOS 26.5.2 (Apple Silicon) and the real Obsidian 1.14.4 app. The build, 30 simulated-host/model tests and 24 real-app checks pass. This includes external filesystem conflicts, draft recovery, native fallback, attachments, Chromium IME composition, real split panes and 320/393/1024px light/dark layouts.
+- 封面缩短并与正文对齐；页面图标、标题、分区标题采用更紧凑的比例。
+- 卡片使用细边框、内嵌封面和清晰的标题，补充所在文件夹及打开提示。
+- 统一按钮、输入框、搜索结果、封面选择与编辑操作；保存按钮有明确的主操作样式。
+- 颜色跟随 Obsidian 主题，支持深浅色、窄分栏和移动端较大的点击区域。
+- 修复实际 Obsidian 中搜索结果被默认按钮样式居中、导航按钮边框裁切的问题。
 
-Fixed during real Mac testing:
+实现采用原生 Obsidian API 和独立 CSS，没有新增运行时依赖。Markdown 格式和保存行为沿用 0.6.0。
 
-- Card captions and cover-preset names were clipped by Obsidian's native button styles.
-- Narrow desktop split panes stayed in two columns; responsive layout now follows the note pane width.
-- Card accessible labels now follow the displayed target-note title.
+在 macOS 26.5.2 / Obsidian 1.14.4 中验证：30 项自动化测试通过，24 项真实应用检查通过（含 CLI 超时项复测），检查了深浅色页面、内联编辑、搜索和封面弹窗的实际截图。详细方法和原始结果见 docs/TESTING.md 与 docs/MAC-UI-TEST-RESULTS.json。
 
-Download the install ZIP, complete source ZIP, examples ZIP, or individual main.js/manifest.json/styles.css files. ZIP checksums are included. Desktop support is opt-in: disable “Mobile and tablet only” in the plugin settings.
-
-Physical iOS/Android touch and keyboards, hardware macOS IME candidate windows, third-party themes/plugins and complex cross-section Markdown remain unverified. The small-screen checks use desktop Electron viewport emulation. This is a GitHub prerelease, not an Obsidian community-directory approval. See docs/TESTING.md for methods and limits.
+提供安装包、完整源码、示例库及 ZIP 校验文件。桌面端请关闭“仅在手机和平板启用”。本版本仍为预发布，iPhone/Android 实机、系统输入法候选窗及第三方主题尚待验证；未提交 Obsidian 社区目录。GPL-3.0-only。

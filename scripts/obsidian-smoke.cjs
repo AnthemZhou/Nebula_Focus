@@ -34,6 +34,10 @@ function check(name, code) {
 }
 const environment = {platform:process.platform, version:cli('version'), vault:basename(vault)};
 cli('dev:debug', 'on');
+// The CLI can run while Codex owns OS focus. Chromium otherwise suppresses blur events.
+// Emulate renderer focus during automation; always restore it and detach the debugger.
+try {
+cli('dev:cdp', 'method=Emulation.setFocusEmulationEnabled', 'params={"enabled":true}');
 cli('dev:errors', 'clear');
 evaluate(String.raw`
   if(app.vault.getName()!==${JSON.stringify(basename(vault))})throw Error('Wrong vault');
@@ -161,8 +165,8 @@ try {
 check('card navigation, metadata refresh and native search', String.raw`
  const q=window.__nfQA,target=await q.note('---\nnf-title: "原始卡片"\n---\n## 项目\n\n正文\n');
  const source=await q.note('## 卡片\n\n<!-- nf:view=cards -->\n\n- [['+target.path+']]\n');
- await q.wait(()=>q.page().querySelector('.nf-card')?.textContent==='原始卡片');
- await app.vault.modify(target,'---\nnf-title: "更新的卡片"\n---\n## 项目\n\n正文\n');await q.wait(()=>q.page().querySelector('.nf-card')?.textContent==='更新的卡片');
+ await q.wait(()=>q.page().querySelector('.nf-card-label')?.textContent==='原始卡片');
+ await app.vault.modify(target,'---\nnf-title: "更新的卡片"\n---\n## 项目\n\n正文\n');await q.wait(()=>q.page().querySelector('.nf-card-label')?.textContent==='更新的卡片');
  q.page().querySelector('.nf-card').click();await q.wait(()=>q.view().file===target);
  await q.p.setMode(q.view(),'source');q.view().showSearch();
  await q.wait(()=>q.view().getMode()==='source');q.assert(q.view().containerEl.querySelector('.document-search-container'),'Native search missing');
@@ -203,10 +207,10 @@ if(!filter)try {
  check('committed IME title saves on subsequent Enter',String.raw`const q=window.__nfQA;await q.wait(()=>q.page().querySelector('h1')?.textContent==='中文输入法');q.assert((await app.vault.read(q.view().file)).includes('nf-title: "中文输入法"'),'Committed title missing');return window.__nfIme;`);
 }catch(error){results.push({name:'real IME setup',passed:false,error:error.message});}
 // Viewport emulation is still desktop Electron, not an iPhone certification.
-if(!filter){
+if(!filter || filter.includes('px')){
 evaluate(String.raw`const q=window.__nfQA;await q.p.openHome();await q.wait(()=>q.page()?.querySelector('.nf-card'));await q.controller().meta('nf-columns',2);app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse();window.__nfOriginalTheme=app.vault.getConfig('theme');`);
 try {
- for(const width of [320,393,1024]) {
+ for(const width of [320,393,1024].filter(w=>!filter || filter.includes(String(w)))) {
   cli('dev:cdp','method=Emulation.setDeviceMetricsOverride',`params=${JSON.stringify({width,height:852,deviceScaleFactor:1,mobile:false})}`);
   for(const theme of ['light','dark']) {
    check(`${width}px ${theme} actual renderer layout`,String.raw`
@@ -232,3 +236,8 @@ const report={environment,results};
 writeFileSync(join(outputDir,filter?'obsidian-smoke-focused.json':'obsidian-smoke.json'),JSON.stringify(report,null,2)+'\n');
 console.log(`${results.filter(r=>r.passed).length}/${results.length} real Obsidian checks passed`);
 if(results.some(r=>!r.passed))process.exitCode=1;
+
+} finally {
+ try { cli('dev:cdp', 'method=Emulation.setFocusEmulationEnabled', 'params={"enabled":false}'); }
+ finally { cli('dev:debug', 'off'); }
+}

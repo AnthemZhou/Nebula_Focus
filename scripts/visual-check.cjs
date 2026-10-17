@@ -3,7 +3,7 @@ const {chromium}=require('playwright');const {resolve}=require('node:path');cons
  mkdirSync('test-results',{recursive:true});const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_EXECUTABLE?{executablePath:process.env.CHROMIUM_EXECUTABLE,args:['--no-sandbox','--no-zygote','--disable-gpu','--single-process']}: {})});const errors=[];
  for(const width of [320,393,1024]){
   const page=await browser.newPage({viewport:{width,height:852},colorScheme:width===1024?'light':'dark',hasTouch:width<600,isMobile:width<600});page.on('pageerror',e=>errors.push(e.message));
-  await page.goto('file://'+resolve('docs/mobile-preview-0.6.0.html'));await page.waitForSelector('.nf-card');
+  await page.goto('file://'+resolve('docs/mobile-preview.html'));await page.waitForSelector('.nf-card');
   assert.equal(await page.locator('.mobile-navbar').isVisible(),false);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   assert.equal(await page.locator('.nf-page-heading h1').textContent(),'我的创作空间');assert.equal(await page.locator('.nf-card').count(),2);
   if(width===393)await page.screenshot({path:'test-results/page-060.png'});

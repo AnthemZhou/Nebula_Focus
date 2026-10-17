@@ -1,4 +1,18 @@
-# Validation — 0.6.0
+# Validation — 0.6.1 visual refresh
+
+## Real Obsidian validation — 2026-10-17
+
+The refreshed UI was built and tested in the same isolated Mac vault on Obsidian 1.14.4. All **30 model/simulated-host tests** pass. **24 distinct real-app checks pass**: the full run passed 23/24, with a CLI timeout in the 1024px dark-layout request; a focused wide-layout rerun passed both light and dark checks. See [raw UI results](MAC-UI-TEST-RESULTS.json).
+
+The driver now uses Chromium focus emulation while automating the renderer, because an inactive macOS window may change `activeElement` without dispatching blur. The original blur failure was reproduced with `document.hasFocus() === false` and no blur event. The focus emulation is removed and the debugger detached in `finally`. This validates renderer save behavior, not macOS focus management or a physical phone keyboard.
+
+Actual app screenshots were inspected for the page, inline editor, cover picker and note navigator. This caught and fixed native-button centering of search results and a negative-margin clipping the navigation buttons. The light/dark page, card captions, 320/393px widths and narrow native split remain usable without horizontal overflow. The mobile CSS configuration produces 44px-high navigation targets. Screenshots: [light](ui-0.6.1-light.png), [dark](ui-0.6.1-dark.png).
+
+No content schema or persistence changes are included. Physical iPhone/Android and third-party themes/plugins remain unverified. The earlier 0.6.0 evidence and limitations are retained below.
+
+---
+
+# Historical validation — 0.6.0
 
 ## Real Mac / Obsidian run — 2026-10-17
 

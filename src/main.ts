@@ -5,7 +5,7 @@ import {
 import { FocusPage } from './page';
 import { childPath, DEFAULT_SETTINGS, FocusSettings, matchesQuery, parentPath, readSettings } from './model';
 
-type Bar = { element: HTMLElement; edit: HTMLButtonElement; observer: MutationObserver; page: FocusPage };
+type Bar = { element: HTMLElement; edit: HTMLButtonElement; location: HTMLElement; observer: MutationObserver; page: FocusPage };
 
 export default class NebulaFocus extends Plugin {
   settings: FocusSettings = { ...DEFAULT_SETTINGS };
@@ -116,6 +116,8 @@ export default class NebulaFocus extends Plugin {
         this.bars.set(view, bar);
       }
       const editing = view.getMode() === 'source';
+      bar.location.textContent = view.file?.path.replace(/\.md$/i, '') || '';
+      bar.location.title = view.file?.path || '';
       bar.page.element.hidden = editing;
       bar.edit.hidden = !editing;
       if (!editing) void bar.page.update(force).catch(error => this.report(error));
@@ -141,6 +143,7 @@ export default class NebulaFocus extends Plugin {
     const left = element.createDiv('nf-bar-left');
     this.button(left, 'panel-left', this.text('笔记', 'Notes'), () => this.openNavigator(), true);
     if (this.settings.homePath) this.button(left, 'house', this.text('首页', 'Home'), () => { void this.openHome(); });
+    const location = left.createSpan('nf-location');
     const right = element.createDiv('nf-bar-right');
     const edit = this.button(right, null, this.text('返回页面', 'Page'), () => { void this.toggleEditing(view); }, true);
     this.button(right, 'ellipsis', this.text('更多', 'More'), event => this.noteMenu(view, event));
@@ -155,7 +158,7 @@ export default class NebulaFocus extends Plugin {
       }
     });
     observer.observe(view.containerEl, { subtree: true, attributes: true, attributeFilter: ['style', 'data-mode'] });
-    return { element, edit, observer, page };
+    return { element, edit, location, observer, page };
   }
 
   private removeBar(view: MarkdownView, bar: Bar): void {
@@ -293,7 +296,7 @@ export default class NebulaFocus extends Plugin {
       }));
     new Setting(container).setName(t('原界面', 'Original interface')).setDesc(t('临时恢复全部工具；禁用插件也会恢复原界面。', 'Temporarily restore all controls. Disabling the plugin also restores them.'))
       .addButton(v => v.setButtonText(t('显示原界面', 'Restore')).onClick(() => this.setPaused(true)));
-    container.createEl('p', { cls: 'nf-help', text: t('v0.6.0 · 点击文字直接修改；封面和分栏设置随 Markdown 保存。', 'v0.6.0 · Direct section editing and portable page layouts.') });
+    container.createEl('p', { cls: 'nf-help', text: t('v0.6.1 · 点击文字直接修改；封面和分栏设置随 Markdown 保存。', 'v0.6.1 · Direct section editing and portable page layouts.') });
   }
 
   report(error: unknown): void {
@@ -323,7 +326,7 @@ class PreferencesModal extends Modal {
   constructor(private plugin: NebulaFocus) { super(plugin.app); }
   onOpen(): void {
     this.titleEl.setText(this.plugin.text('界面偏好', 'Preferences'));
-    this.modalEl.classList.add('nf-preferences');
+    this.modalEl.classList.add('nf-dialog', 'nf-preferences');
     this.plugin.renderPreferences(this.contentEl);
   }
   onClose(): void { this.contentEl.empty(); this.plugin.untrack(this); }
@@ -351,6 +354,7 @@ class NameModal extends Modal {
   constructor(private plugin: NebulaFocus, private heading: string, private submit: (name: string) => Promise<void>) { super(plugin.app); }
   onOpen(): void {
     this.titleEl.setText(this.heading);
+    this.modalEl.classList.add('nf-dialog');
     const form = this.contentEl.createEl('form', { cls: 'nf-name-form' });
     const input = form.createEl('input', { type: 'text', attr: { 'aria-label': this.heading, placeholder: this.heading, autocomplete: 'off' } });
     input.required = true;
@@ -380,12 +384,15 @@ class NavigatorModal extends Modal {
   onOpen(): void {
     const t = (zh: string, en: string) => this.plugin.text(zh, en);
     this.titleEl.setText(t('笔记', 'Notes'));
-    this.modalEl.classList.add('nf-navigator');
+    this.modalEl.classList.add('nf-dialog', 'nf-navigator');
     const header = this.contentEl.createDiv('nf-nav-actions');
     if (this.plugin.settings.homePath) this.plugin.button(header, 'house', t('首页', 'Home'), () => { this.close(); void this.plugin.openHome(); }, true);
     this.plugin.button(header, 'plus', t('新建', 'New'), event => this.createMenu(event), true);
     this.plugin.button(header, 'ellipsis', t('更多', 'More'), event => this.moreMenu(event));
-    const input = this.contentEl.createEl('input', { cls: 'nf-search', type: 'search', attr: {
+    const search = this.contentEl.createDiv('nf-search-field');
+    const searchIcon = search.createSpan({ cls: 'nf-icon', attr: { 'aria-hidden': 'true' } });
+    setIcon(searchIcon, 'search');
+    const input = search.createEl('input', { cls: 'nf-search', type: 'search', attr: {
       placeholder: t('搜索笔记和文件夹', 'Search notes and folders'), 'aria-label': t('搜索笔记和文件夹', 'Search notes and folders'),
       autocapitalize: 'off', autocomplete: 'off',
     } });

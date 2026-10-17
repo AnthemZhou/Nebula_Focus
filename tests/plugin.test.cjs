@@ -126,7 +126,7 @@ test('a delayed save cannot clear another page draft or editor state',async()=>{
 });
 test('code examples do not turn into cards or activate a gallery',async()=>{
  const h=await boot({files:{'Home.md':'## A\n\n<!-- nf:view=cards -->\n\n```md\n- [[Example]]\n```\n\n- [[Real]]\n\n## B\n\n```md\n<!-- nf:view=cards -->\n- [[Example]]\n```\n','Real.md':'## Real\n'}});try{
-  assert.equal(h.doc.querySelectorAll('.nf-card').length,1);assert.equal(h.doc.querySelector('.nf-card').textContent,'Real');
+  assert.equal(h.doc.querySelectorAll('.nf-card').length,1);assert.equal(h.doc.querySelector('.nf-card-label').textContent,'Real');
  }finally{h.close();}
 });
 test('opening and leaving an unchanged section does not write the note',async()=>{

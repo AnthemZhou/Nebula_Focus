@@ -1,4 +1,4 @@
-import { App, Component, MarkdownRenderer, MarkdownView, Menu, Modal, Notice, TFile, normalizePath } from 'obsidian';
+import { App, Component, MarkdownRenderer, MarkdownView, Menu, Modal, Notice, TFile, normalizePath, setIcon } from 'obsidian';
 import { CARD_MARKER, cardContent, clamp, metadata, MetaKey, moveSection, replaceSection, sections, setMeta } from './page-model';
 import { COVERS } from './covers';
 
@@ -52,6 +52,7 @@ export class FocusPage {
   }
   private modal(): Modal {
     const modal=new Modal(this.app),close=modal.onClose.bind(modal);
+    modal.modalEl.classList.add('nf-dialog');
     modal.onClose=()=>{this.modals.delete(modal);close();};this.modals.add(modal);return modal;
   }
   private button(parent: HTMLElement, label: string, action: (event: MouseEvent)=>void): HTMLButtonElement {
@@ -106,8 +107,12 @@ export class FocusPage {
       this.button(panel,'更换封面',()=>this.coverDialog());
     }
     const heading=this.element.createDiv('nf-page-heading');
-    if (meta['nf-icon']) this.button(heading,meta['nf-icon'],()=>this.iconDialog()).classList.add('nf-page-icon');
-    const title=heading.createEl('h1',{text:meta['nf-title'] || this.file.basename,attr:{tabindex:'0','aria-label':'修改页面标题'}});
+    if (meta['nf-icon']) {
+      const icon=this.button(heading,meta['nf-icon'],()=>this.iconDialog());
+      icon.classList.add('nf-page-icon');icon.setAttribute('aria-label','修改页面图标');icon.title='修改页面图标';
+    }
+    const titleWrap=heading.createDiv('nf-heading-title');
+    const title=titleWrap.createEl('h1',{text:meta['nf-title'] || this.file.basename,attr:{tabindex:'0','aria-label':'修改页面标题'}});
     title.addEventListener('click',()=>this.titleEdit(title));
     title.addEventListener('keydown',e=>{if(e.key==='Enter')this.titleEdit(title);});
     const grid=this.element.createDiv('nf-section-grid');
@@ -151,7 +156,8 @@ export class FocusPage {
     }
     if(!list.length) this.button(grid,'点击开始书写',()=>this.editSection(0,grid,grid.createDiv('nf-section-body')));
     const tail=this.element.createDiv('nf-page-tail');
-    this.button(tail,'＋ 添加分区',()=>void this.change(text=>text+(text.endsWith('\n')?'\n':'\n\n')+'## 新分区\n\n点击这里书写。\n'));
+    const add=this.button(tail,'添加分区',()=>void this.change(text=>text+(text.endsWith('\n')?'\n':'\n\n')+'## 新分区\n\n点击这里书写。\n'));
+    const plus=add.createSpan({cls:'nf-icon',attr:{'aria-hidden':'true'}});setIcon(plus,'plus');add.prepend(plus);
     this.view.containerEl.classList.add('nf-page-mounted');
     const key=this.storageKey();
     if (this.readDraft(key)) this.button(tail,'恢复未保存草稿',()=>this.restoreDraft(key));
@@ -169,7 +175,11 @@ export class FocusPage {
       const card=this.button(grid,label || path,()=>void this.app.workspace.openLinkText(path,file.path));
       card.classList.add('nf-card');
       card.empty();
-      const caption=card.createSpan({cls:'nf-card-label',text:label || path});
+      const content=card.createSpan('nf-card-content');
+      const caption=content.createSpan({cls:'nf-card-label',text:label || path});
+      const footer=content.createSpan({cls:'nf-card-footer',attr:{'aria-hidden':'true'}});
+      footer.createSpan({cls:'nf-card-location',text:target?.parent?.path.replace(/^\/$/, '') || '笔记'});
+      const arrow=footer.createSpan('nf-icon');setIcon(arrow,'arrow-up-right');
       if(target instanceof TFile && target.extension==='md') {
         let data:Record<string,string>;
         try {data=metadata(await this.app.vault.read(target));}
@@ -196,7 +206,7 @@ export class FocusPage {
     const actions=input.parentElement!.createDiv('nf-inline-actions');
     const status=actions.createSpan({text:'页面标题 · 不重命名文件'});
     const session=this.beginEdit('title',-1,input,status);
-    this.button(actions,'完成',()=>void this.saveEdit(session));
+    this.button(actions,'完成',()=>void this.saveEdit(session)).classList.add('nf-primary');
     this.button(actions,'取消',()=>this.cancelEdit(session));
     input.addEventListener('input',()=>this.stashDraft());
     input.addEventListener('blur',event=>{if(!(event.relatedTarget instanceof HTMLElement) || !actions.contains(event.relatedTarget))void this.saveEdit(session);});
@@ -276,7 +286,7 @@ export class FocusPage {
       editor.setRangeText(before+editor.value.slice(start,end)+after,start,end,'select');this.stashDraft();editor.focus();
     };
     this.button(format,'粗体',()=>wrap('**','**'));this.button(format,'引用',()=>wrap('> '));this.button(format,'列表',()=>wrap('- '));
-    this.button(actions,'完成',()=>void this.saveEdit(session));
+    this.button(actions,'完成',()=>void this.saveEdit(session)).classList.add('nf-primary');
     this.button(actions,'取消',()=>this.cancelEdit(session));
     editor.addEventListener('input',()=>{editor.style.height='auto';editor.style.height=`${Math.max(160,editor.scrollHeight)}px`;this.stashDraft();});
     editor.addEventListener('keydown',event=>{if(!event.isComposing && (event.ctrlKey || event.metaKey)&&event.key==='Enter'){event.preventDefault();void this.saveEdit(session);}});
@@ -319,7 +329,8 @@ export class FocusPage {
   private showImage(img:HTMLImageElement):void {const modal=this.modal();modal.modalEl.classList.add('nf-image-modal');modal.contentEl.createEl('img',{attr:{src:img.src,alt:img.alt}});modal.open();}
   private iconDialog():void {
     const origin=this.file,modal=this.modal();modal.titleEl.setText('页面图标');const input=modal.contentEl.createEl('input',{attr:{placeholder:'例如 📁','aria-label':'页面图标'}});input.value=metadata(this.source)['nf-icon'] || '';
-    this.button(modal.contentEl,'保存',()=>{void this.meta('nf-icon',Array.from(input.value).slice(0,8).join(''),origin).then(ok=>{if(ok)modal.close();});});modal.open();
+    modal.modalEl.classList.add('nf-icon-dialog');
+    this.button(modal.contentEl,'保存',()=>{void this.meta('nf-icon',Array.from(input.value).slice(0,8).join(''),origin).then(ok=>{if(ok)modal.close();});}).classList.add('nf-primary');modal.open();
   }
   pageMenu(event:MouseEvent):void {
     const menu=new Menu();
@@ -375,8 +386,9 @@ export class FocusPage {
     });
     const cropLabel=modal.contentEl.createEl('label',{text:'垂直裁切位置'});
     const crop=cropLabel.createEl('input',{type:'range',attr:{min:'0',max:'100','aria-label':'封面裁切位置'}});crop.value=metadata(this.source)['nf-cover-y'] || '50';
-    this.button(modal.contentEl,'保存裁切位置',()=>{void this.meta('nf-cover-y',Number(crop.value),origin).then(ok=>{if(ok)modal.close();});});
-    this.button(modal.contentEl,'移除封面',()=>{void this.meta('nf-cover','',origin).then(ok=>{if(ok)modal.close();});});
+    const actions=modal.contentEl.createDiv('nf-dialog-actions');
+    this.button(actions,'移除封面',()=>{void this.meta('nf-cover','',origin).then(ok=>{if(ok)modal.close();});});
+    this.button(actions,'保存裁切位置',()=>{void this.meta('nf-cover-y',Number(crop.value),origin).then(ok=>{if(ok)modal.close();});}).classList.add('nf-primary');
     modal.contentEl.createEl('p',{text:'图片会保存在笔记库的 Nebula Assets 中。备份时请同时保留附件。'});modal.open();
   }
   destroy():void {this.suspend();this.disposed=true;++this.serial;++this.renderSerial;this.cleanupDrag?.();this.component.unload();for(const modal of this.modals)modal.close();this.modals.clear();this.element.remove();this.view.containerEl.classList.remove('nf-page-mounted');}
