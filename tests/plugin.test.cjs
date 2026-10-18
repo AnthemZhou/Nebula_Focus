@@ -11,7 +11,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve,ms));
 async function boot(seed) {
   const dom = new JSDOM('<!doctype html><body class="is-mobile"><div class="workspace"></div><div class="mobile-navbar">Native</div></body>',{url:'https://fixture.invalid/',pretendToBeVisual:true});
   const host = createHost(dom.window,{renderMarkdown:text=>new (require('markdown-it'))({html:true}).render(text),...seed}); const module={exports:{}};
-  const context=vm.createContext({window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,MutationObserver:dom.window.MutationObserver,console,module,exports:module.exports,require:name=>{assert.equal(name,'obsidian');return host.api;}});
+  const context=vm.createContext({window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,MutationObserver:dom.window.MutationObserver,console,TextEncoder,module,exports:module.exports,require:name=>{assert.equal(name,'obsidian');return host.api;}});
   new vm.Script(readFileSync('main.js','utf8')).runInContext(context);
   const plugin=new module.exports.default(); await plugin.onload(); await delay(90);
   return {...host,plugin,doc:dom.window.document,close(){plugin.cleanup();dom.window.close();}};
@@ -176,7 +176,7 @@ test('switching to native mode preserves a recoverable unsaved section draft',as
  const h=await boot();try{
   h.doc.querySelector('.nf-section-body p').click();const input=h.doc.querySelector('.nf-block-editor');input.textContent='Unsaved local text';input.dispatchEvent(new h.doc.defaultView.Event('input'));
   await h.plugin.setMode(h.leaf.view,'source');await h.plugin.setMode(h.leaf.view,'preview');await delay(30);
-  assert.equal(h.doc.querySelector('.nf-block-editor'),null);assert.equal(h.vault.writes.length,0);assert.equal(h.app.loadLocalStorage('nebula-focus-draft:Home.md').value,'Unsaved local text');
+  assert.equal(h.doc.querySelector('.nf-block-editor'),null);assert.equal(h.vault.writes.length,0);assert(h.app.loadLocalStorage('nebula-focus-draft:Home.md').drafts.some(draft=>draft.value==='Unsaved local text'));
   assert([...h.doc.querySelectorAll('.nf-page-action')].some(b=>b.textContent==='恢复未保存草稿'));
  }finally{h.close();}
 });
@@ -209,9 +209,9 @@ test('Enter splits a heading into an independent paragraph without revealing its
   const w=h.doc.defaultView,heading=h.doc.querySelector('.nf-section-body h3');heading.click();
   const range=h.doc.createRange();range.setStart(heading.firstChild,4);range.collapse(true);w.getSelection().removeAllRanges();w.getSelection().addRange(range);
   heading.dispatchEvent(new w.InputEvent('beforeinput',{inputType:'insertParagraph',bubbles:true,cancelable:true}));await delay(30);
-  assert.equal(h.leaf.view.file.text,'### Head\n\n tail\n\nKeep\n');
+  assert.equal(h.leaf.view.file.text,'### Head\n\n&#32;tail\n\nKeep\n');
   assert.equal(h.doc.querySelector('.nf-block-editor').tagName,'P');assert.equal(h.doc.querySelector('.nf-block-editor').textContent,' tail');
-  assert.equal(heading.textContent,'Head');assert.equal(h.doc.querySelectorAll('[contenteditable=true]').length,1);
+  assert.equal(h.doc.querySelector('.nf-section-body h3').textContent,'Head');assert.equal(h.doc.querySelectorAll('[contenteditable=true]').length,1);
  }finally{h.close();}
 });
 test('empty paragraph can be edited again after saving, including a YAML-only note',async()=>{

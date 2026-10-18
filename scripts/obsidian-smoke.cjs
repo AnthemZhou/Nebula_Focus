@@ -141,17 +141,17 @@ check('vertical and horizontal pointer drag update source order', String.raw`
 check('native source, pause and unload preserve drafts and restore controls', String.raw`
  const q=window.__nfQA,file=await q.note('## 草稿\n\n原文\n'),key='nebula-focus-draft:'+file.path;
  const edit=value=>{q.page().querySelector('.nf-section-body p').click();q.input(q.page().querySelector('[contenteditable]'),value);};
- edit('切换原文草稿');await q.p.setMode(q.view(),'source');q.assert(app.loadLocalStorage(key)?.value==='切换原文草稿','Source switch lost draft');
+ edit('切换原文草稿');await q.p.setMode(q.view(),'source');q.assert(app.loadLocalStorage(key)?.drafts.some(d=>d.value==='切换原文草稿'),'Source switch lost draft');
  q.assert(getComputedStyle(q.view().contentEl).display!=='none','Native source hidden');await q.p.setMode(q.view(),'preview');await q.wait(()=>q.page()?.querySelector('.nf-page-tail'));
- edit('暂停草稿');q.p.setPaused(true);q.assert(!document.querySelector('.nf-managed'),'Pause did not restore view');q.assert(app.loadLocalStorage(key)?.value==='暂停草稿','Pause lost draft');
+ edit('暂停草稿');q.p.setPaused(true);q.assert(!document.querySelector('.nf-managed'),'Pause did not restore view');q.assert(app.loadLocalStorage(key)?.drafts.some(d=>d.value==='暂停草稿'),'Pause lost draft');
  q.p.setPaused(false);await q.wait(()=>q.page()?.querySelector('.nf-page-tail'));edit('卸载草稿');await app.plugins.disablePlugin('nebula-focus');
- q.assert(!document.querySelector('.nf-page,.nf-bar,.nf-resume,.nf-managed'),'Unload left plugin UI');q.assert(app.loadLocalStorage(key)?.value==='卸载草稿','Unload lost draft');
+ q.assert(!document.querySelector('.nf-page,.nf-bar,.nf-resume,.nf-managed'),'Unload left plugin UI');q.assert(app.loadLocalStorage(key)?.drafts.some(d=>d.value==='卸载草稿'),'Unload lost draft');
  q.assert(getComputedStyle(q.view().containerEl.querySelector('.view-header')).display!=='none','Header not restored');
  await app.plugins.enablePlugin('nebula-focus');q.p=app.plugins.plugins['nebula-focus'];await q.wait(()=>q.page()?.querySelector('.nf-page-tail'));
 `);
 check('switching notes preserves pending input', String.raw`
  const q=window.__nfQA,file=await q.note('## 原文\n\n保留\n');q.page().querySelector('.nf-section-body p').click();q.input(q.page().querySelector('[contenteditable]'),'切页时的草稿');
- await q.note('## 另一页\n\n不覆盖\n');q.assert(app.loadLocalStorage('nebula-focus-draft:'+file.path)?.value==='切页时的草稿','Navigation lost draft');
+ await q.note('## 另一页\n\n不覆盖\n');q.assert(q.controller().drafts.list('nebula-focus-draft:'+file.path).some(d=>d.value==='切页时的草稿'),'Navigation lost draft');
  q.assert(await app.vault.read(file)==='## 原文\n\n保留\n','Navigation wrote pending input');
 `);
 check('native Markdown features and internal navigation', String.raw`
@@ -170,7 +170,7 @@ try {
     const q=window.__nfQA,file=q.view().file;await q.wait(()=>q.view().containerEl.querySelector('.nf-edit-controls')?.textContent.includes('其他位置更新'));
     q.button('完成',q.view().containerEl);await new Promise(r=>setTimeout(r,150));
     q.assert(await app.vault.read(file)==='## 冲突\n\n外部磁盘修改\n','Overwrote external change');
-    q.assert(app.loadLocalStorage('nebula-focus-draft:'+file.path)?.value==='本机未保存草稿','Conflict draft missing');await q.cancel();
+    q.assert(q.controller().drafts.list('nebula-focus-draft:'+file.path).some(d=>d.value==='本机未保存草稿'),'Conflict draft missing');await q.cancel();
   `);
 } catch(error) {results.push({name:'external filesystem conflict setup',passed:false,error:error.message});}
 check('card navigation, metadata refresh and native search', String.raw`

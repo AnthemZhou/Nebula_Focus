@@ -1,17 +1,20 @@
-# Nebula Focus 0.7.0
+# Nebula Focus 0.8.0
 
 Quiet, portable pages for Obsidian. GPL-3.0-only. **Experimental prerelease: tested in real macOS Obsidian 1.14.4; physical iOS/Android testing is still pending.**
 
 ## 这版可以做什么
 
-0.7.0 将编辑单位细化到单个标题、段落和列表项。参考 [Effie 的即时呈现与简洁编辑交互](https://blog.effie.co/effie-tutorial-mac/)，点击后直接在原来的文字位置书写，标题不会展开成 `###`，也不会出现大文本框。整体视觉继续沿用参考 [shadcn/ui](https://ui.shadcn.com/) 调整的间距、边框和主题配色。
+0.8.0 补齐逐段编辑的日常操作：撤销重做、拆分合并、文字样式和多份草稿恢复。标题、段落和列表项分别编辑。参考 [Effie 的即时呈现与简洁编辑交互](https://blog.effie.co/effie-tutorial-mac/)，点击后直接在原来的文字位置书写，标题不会展开成 `###`，也不会出现大文本框。整体视觉继续沿用参考 [shadcn/ui](https://ui.shadcn.com/) 调整的间距、边框和主题配色。
 
-![0.7.0 — editing a heading in actual Obsidian](docs/ui-0.7.0-editing-light.png)
+![0.8.0 — in-place editing in actual Obsidian](docs/ui-0.8.0-editing-light.png)
 
 - 选择三张原创矢量封面，或上传 PNG/JPEG/WebP/GIF/AVIF（20 MB 以内）；选用后图片保存在笔记库的 `Nebula Assets/`。
 - 封面裁切、页面标题、图标、单/双栏及栏宽比例保存在当前 Markdown 顶部。正文顺序就是显示顺序。
 - 标题、每个段落和列表项分别编辑；保留原来的字体、间距、粗体与链接。点击其他文字、点击角落的完成按钮，或 Cmd/Ctrl+Enter 保存；Esc 取消并保留恢复草稿。页面标题用 Enter 保存。
 - 正文中 Enter 新建下一段，列表中 Enter 新建同级项目；Shift+Enter 在当前段落内换行。Cmd/Ctrl+B、I 切换粗体、斜体。多行纯文本粘贴分成独立段落。
+- 在段首 Backspace 或段尾 Delete 合并相邻同类段落或简单列表项；方向键在文字边界切换编辑块。空列表项、空引用中 Enter 返回普通正文。
+- 角落的“文字样式”菜单可转换正文、一级至三级标题、列表、待办和引用，也提供粗体、斜体、撤销与重做。嵌套结构的类型转换请使用原生编辑器。
+- Cmd/Ctrl+Z 撤销输入与已保存操作，Cmd/Ctrl+Shift+Z 或 Ctrl+Y 重做；撤销回车拆分会保留拆分前刚输入的文字。发生外部冲突时拒绝覆盖。
 - 每个 `## 二级标题` 及其下方内容作为一个分区。使用手柄拖动，或菜单上移/下移。开头没有二级标题的说明保留在顶部。桌面手柄悬停出现；手机可长按分区打开菜单，或操作其左侧手柄。支持手柄上 Alt+上下键。
 - 页面外观菜单提供单栏或双栏（35/65、50/50、65/35）。笔记面板宽度 650px 以下自动单栏（包括桌面分栏），按文件顺序阅读；布局值保留。
 - 普通项目链接列表可切换为封面卡片；卡片打开原笔记，不复制项目资料。
@@ -26,9 +29,9 @@ Quiet, portable pages for Obsidian. GPL-3.0-only. **Experimental prerelease: tes
 4. 用 `##` 划分可移动的内容分区；点击内容输入，在分区操作菜单中切换卡片显示。
 5. 示例库位于源码包的 `examples/vault/`，也提供独立 examples ZIP。请复制到空白测试库，包含 `Nebula Assets` 与项目文件，不要覆盖自己的 Home.md。
 
-安装文件、完整源码和示例库请从 [0.7.0 预发布页面](https://github.com/AnthemZhou/Nebula_Focus/releases/tag/0.7.0) 下载。尚未进入 Obsidian 社区插件目录。请先在测试库中试用。
+安装文件、完整源码和示例库请从 [0.8.0 预发布页面](https://github.com/AnthemZhou/Nebula_Focus/releases/tag/0.8.0) 下载。尚未进入 Obsidian 社区插件目录。请先在测试库中试用。
 
-`docs/mobile-preview-0.7.0.html` 是可离线打开的模拟宿主演示，使用真实插件代码、简化的 Markdown 渲染器和示例资料。演示修改只存在当前页面内存，刷新后还原；草稿使用浏览器本地缓存。它不是实际 Obsidian，也不访问你的笔记库。
+`docs/mobile-preview-0.8.0.html` 是可离线打开的模拟宿主演示，使用真实插件代码、简化的 Markdown 渲染器和示例资料。演示修改只存在当前页面内存，刷新后还原；草稿使用浏览器本地缓存。它不是实际 Obsidian，也不访问你的笔记库。
 
 ## 数据格式和备份
 
@@ -55,20 +58,21 @@ nf-ratio: 35
 正文仍是普通 Markdown。
 ```
 
-只在用户修改外观或内容时写入。阅读不会自动转换文件。每次写入使用 Vault.process 检查原文版本；外部变化会拒绝覆盖。输入时缓存一份本机恢复草稿，失败/取消后可通过页面底部“恢复未保存草稿”复制，成功保存后清除。缓存是应急措施，不能替代笔记库备份；敏感内容的未保存草稿也会留在本机应用存储中。
+只在用户修改外观或内容时写入。阅读不会自动转换文件。每次写入使用 Vault.process 检查原文版本；外部变化会拒绝覆盖。输入时分别缓存各次编辑的本机恢复草稿，失败/取消后可通过页面底部“恢复未保存草稿”复制或逐份删除；成功保存仅清除对应草稿。多行粘贴等结构操作会先保留完整结果，写入失败后可点击完成重试。每篇最多保留 20 份，达到上限会提示，不自动覆盖旧草稿。缓存是应急措施，不能替代笔记库备份；敏感内容的未保存草稿也会留在本机应用存储中。
 
 **恢复完整页面需要 Markdown 和引用的附件。**仅复制 Markdown 可以保留布局字段，但不能携带图片。关闭插件后正文、标题、链接和图片引用仍保留；封面和双栏需要插件解释。标题别名不会重命名实际文件。参见 `docs/PAGE-FORMAT.md`。
 
 ## 范围和限制
 
 - 直接编辑支持可安全定位的标题、普通段落、引用段落与列表项。表格、代码、数学公式、嵌入和复杂第三方渲染使用“更多 → 原生 Markdown 编辑器”修改；不会把它们转成普通文字。
+- 撤销历史保留在当前页面实例内存中，每篇最多 60 次已保存操作，总大小最多 4 MiB；重启、关闭页面或卸载后不保留。它与磁盘文件备份、持久恢复草稿分别管理。
 - 双栏按从左到右、从上到下排列分区，不支持任意嵌套或自由坐标。
 - 卡片来自显式 `- [[笔记]]` 列表，不是数据库查询或状态看板；卡片内容取目标标题、封面和所在文件夹。
 - MarkdownRenderer 展示不是原生编辑器的完整替代。复杂嵌入、第三方渲染、脚注与跨分区引用等必须实机核对，必要时切换原生编辑器。
 - “页内查找”会自动切到原生 Markdown 编辑器，再打开查找。
 - 不含 Excel/账本、AI 接入、AI 清理导出、同步、页面打包备份功能；没有网络请求或遥测。
 - 中文页面功能已实现；0.6 页面新增菜单暂为中文，旧导航支持中英文。
-- 已于 2026-10-17 在 Mac 的真实 Obsidian 1.14.4 中验证编辑、草稿、外部冲突、附件、拖动、原生回退及默认深浅主题；中文组合输入通过实际 Chromium IME 通道测试。iPhone/Android 的键盘、触摸、长按和第三方主题仍需实机验证。
+- 已于 2026-10-18 在 Mac 的真实 Obsidian 1.14.4 中验证编辑、草稿、外部冲突、附件、拖动、原生回退及默认深浅主题；中文组合输入通过实际 Chromium IME 通道测试。iPhone/Android 的键盘、触摸、长按和第三方主题仍需实机验证。
 
 ## Development
 
@@ -80,7 +84,7 @@ node scripts/demo.mjs
 npm run package
 ```
 
-For a fresh isolated vault with desktop mode enabled, run `npm run prepare:test-vault`. Open the printed folder in Obsidian and enable the plugin, then run `node scripts/obsidian-smoke.cjs /absolute/path/to/the/test-vault` and `node scripts/obsidian-block-smoke.cjs /absolute/path/to/the/test-vault`. This uses the actual Obsidian CLI and refuses vaults without the test marker. Reports and screenshots go to `test-results/`. See [validation details](docs/TESTING.md). The separate HTML preview check additionally needs Playwright and Chromium.
+For a fresh isolated vault with desktop mode enabled, run `npm run prepare:test-vault`. Open the printed folder in Obsidian and enable the plugin, then run `node scripts/obsidian-smoke.cjs /absolute/path/to/the/test-vault` and `node scripts/obsidian-block-smoke.cjs /absolute/path/to/the/test-vault`, followed by `node scripts/obsidian-editor-smoke.cjs /absolute/path/to/the/test-vault`. This uses the actual Obsidian CLI and refuses vaults without the test marker. Reports and screenshots go to `test-results/`. See [validation details](docs/TESTING.md). The separate HTML preview check additionally needs Playwright and Chromium.
 
 Main runtime uses public Obsidian APIs, no Node/Electron imports. Minimum Obsidian 1.8.7.
 

@@ -1,5 +1,7 @@
 # Mac continuation — Nebula Focus 0.6.0
 
+**2026-10-18 follow-up:** 0.8.0 adds editing history, block formatting, merge/navigation and independent recovery drafts. See TESTING.md for the current real-app evidence.
+
 **2026-10-17 follow-up:** 0.7.0 adds atomic, in-place text editing based on the user’s Effie reference. Current behavior and real-app evidence are in README.md and TESTING.md. The historical handoff below describes the earlier section editor.
 
 **2026-10-17 update:** The source bundle has been continued on macOS 26.5.2 (Apple Silicon), with the real Obsidian 1.14.4 app. Three host-layout failures were reproduced and repaired: clipped card captions, clipped preset-cover names, and two-column layout in narrow desktop panes. Current results and remaining physical-device checks are recorded in [TESTING.md](TESTING.md). The original cloud handoff below is retained as history.

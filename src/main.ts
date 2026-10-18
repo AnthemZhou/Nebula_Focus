@@ -296,7 +296,7 @@ export default class NebulaFocus extends Plugin {
       }));
     new Setting(container).setName(t('原界面', 'Original interface')).setDesc(t('临时恢复全部工具；禁用插件也会恢复原界面。', 'Temporarily restore all controls. Disabling the plugin also restores them.'))
       .addButton(v => v.setButtonText(t('显示原界面', 'Restore')).onClick(() => this.setPaused(true)));
-    container.createEl('p', { cls: 'nf-help', text: t('v0.7.0 · 标题、段落分别原位编辑；封面和分栏设置随 Markdown 保存。', 'v0.7.0 · In-place heading and paragraph editing with portable layouts.') });
+    container.createEl('p', { cls: 'nf-help', text: t('v0.8.0 · 原位编辑、撤销重做与草稿恢复；布局随 Markdown 保存。', 'v0.8.0 · In-place editing, undo, recovery drafts and portable layouts.') });
   }
 
   report(error: unknown): void {

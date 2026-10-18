@@ -1,6 +1,6 @@
 {
   "name": "nebula-focus",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "A quiet, reading-first workspace for Obsidian on mobile.",
   "main": "main.js",
   "license": "GPL-3.0-only",

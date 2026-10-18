@@ -140,14 +140,16 @@ button.nf-card:hover { background: var(--nf-surface); border-color: var(--nf-rin
 .nf-list-text { display: inline; }
 .nf-edit-controls {
   position: absolute; right: 20px; bottom: calc(40px + env(safe-area-inset-bottom, 0px)); z-index: 5;
-  display: flex; align-items: center; gap: 2px; max-width: calc(100% - 40px); padding: 3px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 2px; max-width: calc(100% - 40px); padding: 3px;
   border: 1px solid var(--nf-border); border-radius: 9px; background: var(--nf-surface);
   box-shadow: 0 2px 8px #0000000a;
 }
 .nf-edit-controls button { min-width: 34px; min-height: 34px; padding: 7px; }
 .nf-edit-controls svg { width: 16px; height: 16px; stroke-width: 1.7; }
 .nf-edit-status:empty { display: none; }
-.nf-edit-status { padding: 4px 8px; font-size: 12px; line-height: 1.5; color: var(--text-error); }
+.nf-edit-status { flex: 1 0 100%; min-width: 0; max-width: 380px; padding: 4px 8px; overflow-wrap: anywhere; font-size: 12px; line-height: 1.5; color: var(--text-error); }
+button.nf-page-action.nf-text-style { gap: 6px; padding-inline: 10px; color: var(--nf-foreground); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.nf-text-style .nf-icon svg { width: 12px; height: 12px; color: var(--nf-muted); }
 .nf-draft-text { width: 100%; min-height: 160px; resize: vertical; padding: 12px; font: 16px/1.8 var(--font-text, system-ui); }
 
 /* Dialogs and the command-style note picker. */
@@ -158,6 +160,14 @@ button.nf-card:hover { background: var(--nf-surface); border-color: var(--nf-rin
 .nf-dialog :is(input[type=text], input:not([type]), input[type=search]) { min-height: 40px; border: 1px solid var(--nf-border); border-radius: 7px; background: var(--nf-surface); box-shadow: 0 1px 2px #00000005; font-size: 14px; }
 .nf-dialog input:focus { border-color: var(--nf-ring); }
 .nf-dialog p { color: var(--nf-muted); font-size: 12px; line-height: 1.7; }
+.nf-drafts-dialog { width: min(560px, 94vw); }
+.nf-drafts-dialog .modal-content { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.nf-draft-list { display: flex; flex-direction: column; gap: 14px; max-height: min(58vh, 480px); padding: 2px; overflow-y: auto; overscroll-behavior: contain; }
+.nf-draft-item { flex: none; min-width: 0; padding: 14px; border: 1px solid var(--nf-border); border-radius: 9px; background: var(--nf-subtle); }
+.nf-draft-item > p { margin: 0 0 10px; overflow-wrap: anywhere; }
+.nf-dialog .nf-draft-item .nf-draft-text { display: block; min-height: 96px; height: 112px; max-height: 320px; margin-bottom: 8px; padding: 10px 12px; border: 1px solid var(--nf-border); border-radius: 6px; background: var(--nf-surface); color: var(--nf-foreground); font: 13px/1.7 var(--font-text, system-ui); }
+.nf-draft-item > button { margin-left: auto; display: flex; }
+.nf-draft-item > button:hover { color: var(--text-error); }
 .nf-dialog-actions { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-top: 18px; border-top: 1px solid var(--nf-border); }
 .nf-navigator { width: min(560px, 94vw); }
 .nf-navigator .modal-content { display: flex; flex-direction: column; gap: 12px; overflow: hidden; }

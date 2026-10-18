@@ -1,3 +1,47 @@
+# Validation — 0.8.0 continuous editing and recovery
+
+## Real Obsidian validation — 2026-10-18
+
+Host confirmed as **Darwin arm64, macOS 26.5.2**, running actual **Obsidian 1.14.4** (installer 1.13.7). Changes and injected write failures were confined to the marked temporary test vault. The personal vault was not modified.
+
+- **90/90** model and simulated-host tests pass, including delayed-write and delayed-render navigation races.
+- **24/24** real-app general regression checks: [report](MAC-0.8.0-REGRESSION.json).
+- **16/16** real-app atomic block checks: [report](MAC-0.8.0-BLOCKS.json).
+- **16/16** new real-app editor workflow checks: [report](MAC-0.8.0-EDITOR.json).
+- All three final real-app runs completed consecutively against the final candidate build with empty captured error buffers. The block run recorded one CLI child timeout after returning a complete CDP response; the driver accepted that completed response without retrying the operation. The other two runs have no transport warnings.
+
+New checks cover local and saved undo/redo, exact CRLF source restoration, split/merge and caret continuity, boundary navigation, eight block styles, safe refusal of nested structure conversion, empty-list exit, separate recovery drafts, individual cache deletion, complete multiline-paste recovery and retry after an injected Vault.process failure, external edit protection, cleared Setext titles, hard breaks and literal entity labels. The native Mac style menu was additionally opened and used through accessibility control; native Cmd+Z restored a format conversion. Automated workflow events and controller calls use the real Obsidian implementation; they do not certify every physical-keyboard or mobile interaction.
+
+At **320, 393 and 1024 CSS pixels**, in default light and dark themes, tested title, paragraph and list-item rectangles, fonts, line heights, margins, padding, borders and backgrounds remain identical before, during and after editing. The new style controls and two-row draft recovery dialog also fit at 320px. Screenshots were visually inspected: [reading](ui-0.8.0-reading-light.png), [editing](ui-0.8.0-editing-light.png), [dark editing](ui-0.8.0-editing-dark.png), [recovery drafts](ui-0.8.0-drafts-light.png).
+
+The generated offline preview also passes a real headless Chromium check at 320/393/1024px: native-content hiding, unchanged editing geometry, style-menu conversion, menu undo and keyboard redo/undo, covers, responsive columns, restoration and card navigation, with no browser page errors. The simulated host now matches Obsidian’s view-content wrapper; the demo no longer exposes its hidden native Markdown stub above the page.
+
+### Issues found and repaired
+
+- A single recovery slot allowed saving another block to erase an earlier cancelled draft. Drafts now have independent identities; successful writes clear only their own cache. The recovery action refreshes immediately when an edit closes, including rapid cancellation.
+- A failed multiline paste omitted pasted text from recovery because it was still in detached nodes. Structural operations now persist the intended complete source before writing and retain a retryable pending operation.
+- A retry could wait on its own pending save when restoring the editor. Internal caret resumption avoids that wait.
+- Pending undo/redo or structure rendering could leave a newly opened note blank, reuse an old source offset in it, or target its history. Operations retain file identity, recheck render generation and validate blank insertion positions; writes lock input until completion.
+- Setext deletion, literal heading hashes, reference links, hard breaks, code spaces, adjacent emphasis and Markdown-looking plaintext needed safer mapping/serialization.
+- Earlier real-app runs exposed outdated single-draft assertions and a screenshot CLI timeout. The final complete runs above supersede those intermediate results.
+
+### Reproduce
+
+```sh
+npm ci
+npm run build
+npm test
+npm run prepare:test-vault
+# Open the printed marked vault in actual Obsidian and enable the plugin.
+node scripts/obsidian-smoke.cjs /absolute/path/to/the/test-vault
+node scripts/obsidian-block-smoke.cjs /absolute/path/to/the/test-vault
+node scripts/obsidian-editor-smoke.cjs /absolute/path/to/the/test-vault
+```
+
+Desktop viewport emulation is not a physical iPhone/Android test. Mobile keyboards, touch/long-press, system IME candidate windows and third-party themes/renderers remain unverified. Complex content and nested structure conversion use the native editor. Undo is held in memory (60 saved transactions per file, 4 MiB total per page instance); persistent recovery caches are separately bounded at 20 drafts per file. The HTML preview is a simulated host. Effie remains a reference based on its official documentation, not a claim of a hands-on Effie test.
+
+---
+
 # Validation — 0.7.0 atomic in-place editing
 
 ## Real Obsidian validation — 2026-10-17

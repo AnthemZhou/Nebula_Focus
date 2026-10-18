@@ -67,8 +67,9 @@ function createHost(win, seed = {}) {
       this.leaf = leaf; this.mode = 'source'; this.containerEl = workspaceRoot.createDiv('workspace-leaf-content');
       this.containerEl.dataset.type = 'markdown';
       this.header = this.containerEl.createDiv({ cls: 'view-header', text: '原生标题与操作' });
-      this.preview = this.containerEl.createDiv('markdown-reading-view markdown-preview-view');
-      this.source = this.containerEl.createEl('textarea', { cls: 'markdown-source-view', attr: {'aria-label': '编辑正文'} });
+      this.contentEl = this.containerEl.createDiv('view-content');
+      this.preview = this.contentEl.createDiv('markdown-reading-view markdown-preview-view');
+      this.source = this.contentEl.createEl('textarea', { cls: 'markdown-source-view', attr: {'aria-label': '编辑正文'} });
       this.source.addEventListener('input', () => { if (this.file) this.file.text = this.source.value; });
       this.editor = { hasFocus: () => doc.activeElement === this.source, focus: () => this.source.focus() };
     }
@@ -179,18 +180,32 @@ function createHost(win, seed = {}) {
     }
   }
   class Notice { constructor(text) { const el = doc.body.createDiv({cls:'notice', text}); win.setTimeout(() => el.remove(), 2000); } }
+  const openMenus = new Set();
   class Menu {
-    constructor() { this.el = doc.createElement('div'); this.el.className = 'menu'; }
+    constructor() { this.el = doc.createElement('div'); this.el.className = 'menu'; this.hideCallbacks = []; this.visible = false; }
     addItem(fn) {
       const b = this.el.createEl('button', {cls:'menu-item'});
+      const menu = this;
       const api = { setTitle(t) { b.textContent = t; return api; }, setIcon() {return api;}, setChecked(v) { if(v) b.dataset.checked = 'true'; return api; },
-        onClick(cb) { b.addEventListener('click', () => { this.el?.remove(); }); b.addEventListener('click', () => { cb(); b.parentElement?.remove(); }); return api; } };
+        onClick(cb) { b.addEventListener('click', () => { cb(); menu.hide(); }); return api; } };
       fn(api); return this;
     }
     addSeparator() { this.el.createEl('hr'); return this; }
+    onHide(callback) { this.hideCallbacks.push(callback); return this; }
+    hide() {
+      if (!this.visible) return;
+      this.visible = false; openMenus.delete(this); this.el.remove();
+      if (this.dismiss) doc.removeEventListener('click', this.dismiss);
+      for (const callback of this.hideCallbacks) callback();
+    }
     showAtMouseEvent() {
-      doc.querySelectorAll('.menu').forEach(x => x.remove()); doc.body.append(this.el);
-      win.setTimeout(() => { const dismiss = e => { if (!this.el.contains(e.target)) { this.el.remove(); doc.removeEventListener('click', dismiss); } }; doc.addEventListener('click', dismiss); }, 0);
+      for (const menu of openMenus) menu.hide();
+      doc.body.append(this.el); this.visible = true; openMenus.add(this);
+      win.setTimeout(() => {
+        if (!this.visible) return;
+        this.dismiss = e => { if (!this.el.contains(e.target)) this.hide(); };
+        doc.addEventListener('click', this.dismiss);
+      }, 0);
     }
   }
   class Setting {
