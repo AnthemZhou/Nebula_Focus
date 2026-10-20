@@ -1,5 +1,7 @@
 # Mac continuation — Nebula Focus 0.6.0
 
+**2026-10-20 follow-up:** 0.9.0 makes continuous native writing the default and adds independent optional Bases libraries with on-demand note properties. 102 automated and 80 real-app checks pass on this Mac. Native delayed-save synchronization, deferred file-open mode resets and property-panel CSS precedence were repaired. See README.md, PAGE-FORMAT.md and TESTING.md for current behavior and evidence. Legacy layouts remain opt-in.
+
 **2026-10-18 follow-up:** 0.8.0 adds editing history, block formatting, merge/navigation and independent recovery drafts. See TESTING.md for the current real-app evidence.
 
 **2026-10-17 follow-up:** 0.7.0 adds atomic, in-place text editing based on the user’s Effie reference. Current behavior and real-app evidence are in README.md and TESTING.md. The historical handoff below describes the earlier section editor.

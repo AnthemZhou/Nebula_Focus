@@ -1,11 +1,12 @@
 import {
-  App, FuzzySuggestModal, MarkdownView, Menu, Modal, Notice, Platform, Plugin,
+  App, FileView, FuzzySuggestModal, MarkdownView, Menu, Modal, Notice, Platform, Plugin,
   PluginSettingTab, Setting, TFile, TFolder, WorkspaceLeaf, getLanguage, setIcon,
 } from 'obsidian';
 import { FocusPage } from './page';
 import { childPath, DEFAULT_SETTINGS, FocusSettings, matchesQuery, parentPath, readSettings } from './model';
+import { Libraries } from './library';
 
-type Bar = { element: HTMLElement; edit: HTMLButtonElement; location: HTMLElement; observer: MutationObserver; page: FocusPage };
+type Bar = { element: HTMLElement; edit: HTMLButtonElement; location: HTMLElement; observer: MutationObserver; page?: FocusPage };
 
 export default class NebulaFocus extends Plugin {
   settings: FocusSettings = { ...DEFAULT_SETTINGS };
@@ -18,6 +19,10 @@ export default class NebulaFocus extends Plugin {
   private fileToken = 0;
   private navigator?: NavigatorModal;
   private dialogs = new Set<Modal>();
+  libraries!: Libraries;
+  private libraryBars = new Map<FileView, { element: HTMLElement; file: TFile }>();
+  private rawViews = new WeakSet<MarkdownView>();
+  private openedPaths = new WeakMap<MarkdownView, string>();
 
   text(zh: string, en: string): string {
     const language = this.settings.language === 'auto' ? getLanguage() : this.settings.language;
@@ -29,9 +34,11 @@ export default class NebulaFocus extends Plugin {
 
   async onload(): Promise<void> {
     this.settings = readSettings(await this.loadData());
+    this.libraries = new Libraries(this);
     this.addSettingTab(new FocusSettingTab(this.app, this));
     this.addRibbonIcon('panel-left', 'Nebula Focus', () => this.openNavigator());
     this.addCommand({ id: 'open-navigator', name: 'Open compact navigator', callback: () => this.openNavigator() });
+    this.addCommand({ id: 'open-libraries', name: 'Open libraries', callback: () => this.libraries.open() });
     this.addCommand({ id: 'toggle-focus', name: 'Toggle focused interface', callback: () => this.togglePause() });
     this.addCommand({ id: 'restore-native', name: 'Restore original interface', callback: () => this.setPaused(true) });
     this.addCommand({ id: 'open-home', name: 'Open home note', callback: () => { void this.openHome(); } });
@@ -49,6 +56,7 @@ export default class NebulaFocus extends Plugin {
     this.registerEvent(this.app.workspace.on('layout-change', () => this.refresh()));
     this.registerEvent(this.app.workspace.on('file-open', file => this.onFileOpened(file)));
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
+      void this.libraries.renamed(oldPath, file.path).catch(error => this.report(error));
       if (this.settings.homePath === oldPath) {
         this.settings.homePath = file.path;
         void this.saveSettings();
@@ -73,7 +81,16 @@ export default class NebulaFocus extends Plugin {
   private onFileOpened(file: TFile | null): void {
     const token = ++this.fileToken;
     this.refresh();
-    if (!file || !this.active() || !this.settings.readingFirst) return;
+    if (!file || !this.active()) return;
+    if (!this.settings.legacyPages) {
+      this.later(() => {
+        if (token !== this.fileToken || !this.active()) return;
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (view?.file === file && !this.rawViews.has(view)) void this.setWritingMode(view);
+      });
+      return;
+    }
+    if (!this.settings.readingFirst) return;
     this.later(() => {
       if (token !== this.fileToken || !this.active() || this.editIntent.has(file.path)) return;
       const view = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -85,7 +102,7 @@ export default class NebulaFocus extends Plugin {
 
   async setMode(view: MarkdownView, mode: 'source' | 'preview'): Promise<void> {
     try {
-      if(mode==='source')this.bars.get(view)?.page.suspend();
+      if(mode==='source')this.bars.get(view)?.page?.suspend();
       await view.leaf.setViewState({ type: 'markdown', state: { ...view.getState(), mode } });
       this.refresh();
       if (mode === 'source') view.editor?.focus();
@@ -93,7 +110,23 @@ export default class NebulaFocus extends Plugin {
   }
 
   async toggleEditing(view: MarkdownView): Promise<void> {
+    if (!this.settings.legacyPages) {
+      await this.setWritingMode(view, !(this.rawViews.has(view) || view.getState().source === true), true);
+      return;
+    }
     await this.setMode(view, view.getMode() === 'preview' ? 'source' : 'preview');
+  }
+
+  async setWritingMode(view: MarkdownView, raw = false, focus = false): Promise<void> {
+    try {
+      if (raw) this.rawViews.add(view); else this.rawViews.delete(view);
+      const state = view.getState();
+      if (view.getMode() !== 'source' || state.source !== raw) {
+        await view.leaf.setViewState({ type: 'markdown', state: { ...state, mode: 'source', source: raw } });
+      }
+      this.refresh();
+      if (focus) view.editor?.focus();
+    } catch (error) { this.report(error); }
   }
 
   refresh(force = false, modifiedPath?: string): void {
@@ -105,6 +138,13 @@ export default class NebulaFocus extends Plugin {
       const view = leaf.view;
       // Keep pop-out windows native. All changes stay in this app document.
       if (view.containerEl.ownerDocument !== document) return;
+      // The file-open event can arrive after openFile has resolved and after a
+      // user changes mode. Observe identity here, before displaying controls.
+      if (view.file && this.openedPaths.get(view) !== view.file.path) {
+        this.openedPaths.set(view, view.file.path);
+        this.rawViews.delete(view);
+        view.containerEl.classList.remove('nf-show-properties');
+      }
       alive.add(view);
       let bar = this.bars.get(view);
       if (bar && !view.containerEl.contains(bar.element)) {
@@ -118,16 +158,22 @@ export default class NebulaFocus extends Plugin {
       const editing = view.getMode() === 'source';
       bar.location.textContent = view.file?.path.replace(/\.md$/i, '') || '';
       bar.location.title = view.file?.path || '';
-      bar.page.element.hidden = editing;
-      bar.edit.hidden = !editing;
-      if (!editing) void bar.page.update(force && modifiedPath!==view.file?.path).catch(error => this.report(error));
-      const label = editing ? this.text('返回页面', 'Page') : this.text('原文', 'Source');
+      if (bar.page) {
+        bar.page.element.hidden = editing;
+        if (!editing) void bar.page.update(force && modifiedPath!==view.file?.path).catch(error => this.report(error));
+      }
+      bar.edit.hidden = this.settings.legacyPages ? !editing : !(this.rawViews.has(view) || view.getState().source === true);
+      const label = this.settings.legacyPages
+        ? (editing ? this.text('返回页面', 'Page') : this.text('原文', 'Source'))
+        : this.text('返回写作', 'Back to writing');
       if (bar.edit.textContent !== label) bar.edit.textContent = label;
       bar.edit.setAttribute('aria-label', label);
       view.containerEl.classList.toggle('nf-reading-view', !editing);
       view.containerEl.classList.toggle('nf-typography', this.settings.calmTypography);
+      view.containerEl.classList.toggle('nf-writing', !this.settings.legacyPages && !this.rawViews.has(view) && view.getState().source !== true);
     });
     for (const [view, bar] of this.bars) if (!alive.has(view)) this.removeBar(view, bar);
+    this.refreshLibraries();
     const hasReplacement = !!activeView && this.bars.has(activeView);
     document.body.classList.toggle('nf-active', this.active() && hasReplacement);
     document.body.classList.toggle('nf-quiet', this.active() && hasReplacement && this.settings.quietNavigation);
@@ -142,13 +188,14 @@ export default class NebulaFocus extends Plugin {
     element.setAttribute('aria-label', 'Nebula Focus');
     const left = element.createDiv('nf-bar-left');
     this.button(left, 'panel-left', this.text('笔记', 'Notes'), () => this.openNavigator(), true);
+    if (!this.settings.legacyPages) this.button(left, 'library', this.text('资料库', 'Libraries'), () => this.libraries.open());
     if (this.settings.homePath) this.button(left, 'house', this.text('首页', 'Home'), () => { void this.openHome(); });
     const location = left.createSpan('nf-location');
     const right = element.createDiv('nf-bar-right');
     const edit = this.button(right, null, this.text('返回页面', 'Page'), () => { void this.toggleEditing(view); }, true);
     this.button(right, 'ellipsis', this.text('更多', 'More'), event => this.noteMenu(view, event));
-    const page = new FocusPage(this.app, view);
-    this.button(right, 'sliders-horizontal', this.text('页面外观', 'Page appearance'), event => page.pageMenu(event));
+    const page = this.settings.legacyPages ? new FocusPage(this.app, view) : undefined;
+    if (page) this.button(right, 'sliders-horizontal', this.text('页面外观', 'Page appearance'), event => page.pageMenu(event));
     view.containerEl.prepend(element);
     view.containerEl.classList.add('nf-managed');
     const observer = new MutationObserver(mutations => {
@@ -162,10 +209,10 @@ export default class NebulaFocus extends Plugin {
   }
 
   private removeBar(view: MarkdownView, bar: Bar): void {
-    bar.page.destroy();
+    bar.page?.destroy();
     bar.observer.disconnect();
     bar.element.remove();
-    view.containerEl.classList.remove('nf-managed', 'nf-reading-view', 'nf-typography');
+    view.containerEl.classList.remove('nf-managed', 'nf-reading-view', 'nf-typography', 'nf-writing', 'nf-show-properties');
     this.bars.delete(view);
   }
 
@@ -183,10 +230,23 @@ export default class NebulaFocus extends Plugin {
   }
 
   private noteMenu(view: MarkdownView, event: MouseEvent): void {
-    const menu = new Menu();
-    menu.addItem(i => i.setTitle(this.text('原生 Markdown 编辑器', 'Native Markdown editor')).setIcon('code').onClick(() => { void this.setMode(view, 'source'); }));
+    const menu = new Menu().setUseNativeMenu(false);
+    if (!this.settings.legacyPages) {
+      if (view.file) menu.addItem(i => i.setTitle(this.text('收录到资料库', 'Add to library')).setIcon('library').onClick(() => this.libraries.open(view.file!)));
+      menu.addItem(i => i.setTitle(this.text('显示笔记属性', 'Show note properties')).setIcon('list')
+        .setChecked(view.containerEl.classList.contains('nf-show-properties'))
+        .onClick(() => view.containerEl.classList.toggle('nf-show-properties')));
+      menu.addSeparator();
+    }
+    menu.addItem(i => i.setTitle(this.text('查看 Markdown 源码', 'View Markdown source')).setIcon('code').onClick(() => {
+      void (this.settings.legacyPages ? this.setMode(view, 'source') : this.setWritingMode(view, true, true));
+    }));
     menu.addItem(i => i.setTitle(this.text('搜索笔记', 'Search notes')).setIcon('search').onClick(() => this.openNavigator(true)));
-    menu.addItem(i => i.setTitle(this.text('页内查找', 'Find in note')).setIcon('text-search').onClick(async () => {await this.setMode(view,'source');view.showSearch();}));
+    menu.addItem(i => i.setTitle(this.text('页内查找', 'Find in note')).setIcon('text-search').onClick(async () => {
+      if (this.settings.legacyPages) await this.setMode(view, 'source');
+      else await this.setWritingMode(view);
+      view.showSearch();
+    }));
     menu.addItem(i => i.setTitle(this.text('切换已打开的页面', 'Switch open pages')).setIcon('panels-top-left').onClick(() => this.openTabs()));
     if (view.file) menu.addItem(i => i.setTitle(this.text('将此笔记设为首页', 'Use this note as home')).setIcon('house').onClick(async () => {
       this.settings.homePath = view.file!.path;
@@ -226,9 +286,12 @@ export default class NebulaFocus extends Plugin {
   async openFile(file: TFile, edit = false): Promise<void> {
     if (edit) this.editIntent.add(file.path);
     try {
-      await this.app.workspace.getLeaf(false).openFile(file, { state: {
+      await this.app.workspace.getLeaf(false).openFile(file, file.extension !== 'md' ? {} : { state: this.settings.legacyPages ? {
         mode: edit ? 'source' : (this.settings.readingFirst ? 'preview' : undefined),
-      } });
+      } : { mode: 'source', source: false } });
+      if (file.extension === 'base' && this.app.workspace.getMostRecentLeaf()?.view.getViewType() !== 'bases') {
+        new Notice(this.text('请在 Obsidian 设置 → 核心插件中启用「数据库」，然后重新打开资料库。', 'Enable Bases in Obsidian Settings → Core plugins, then reopen this library.'));
+      }
       if (edit) this.app.workspace.getActiveViewOfType(MarkdownView)?.editor.focus();
       this.refresh();
     } catch (error) { this.report(error); }
@@ -268,11 +331,66 @@ export default class NebulaFocus extends Plugin {
     this.refresh();
   }
 
+  private refreshLibraries(): void {
+    const alive = new Set<FileView>();
+    if (this.active()) this.app.workspace.iterateAllLeaves(leaf => {
+      if (!(leaf.view instanceof FileView) || leaf.view.getViewType() !== 'bases' ||
+          !leaf.view.file || leaf.view.containerEl.ownerDocument !== document) return;
+      const view = leaf.view, file = view.file!;
+      alive.add(view);
+      const existing = this.libraryBars.get(view);
+      if (existing?.file === file && existing.element.isConnected) return;
+      if (existing) this.removeLibraryBar(view);
+      const element = document.createElement('div');
+      element.className = 'nf-bar';
+      element.setAttribute('role', 'toolbar');
+      element.setAttribute('aria-label', this.text('资料库导航', 'Library navigation'));
+      const left = element.createDiv('nf-bar-left');
+      this.button(left, 'panel-left', this.text('笔记', 'Notes'), () => this.openNavigator(), true);
+      this.button(left, 'library', this.text('资料库', 'Libraries'), () => this.libraries.open());
+      left.createSpan({ cls: 'nf-location', text: file.basename });
+      const right = element.createDiv('nf-bar-right');
+      view.containerEl.prepend(element);
+      view.containerEl.classList.add('nf-managed');
+      this.libraryBars.set(view, { element, file });
+      void this.libraries.members(file).then(() => {
+        if (!element.isConnected || this.libraryBars.get(view)?.element !== element) return;
+        view.containerEl.classList.add('nf-library-managed');
+        this.button(right, 'plus', this.text('收录笔记', 'Choose notes'), () => this.libraries.editMembers(file), true);
+        this.button(right, 'ellipsis', this.text('资料库操作', 'Library actions'), event => {
+          const menu = new Menu().setUseNativeMenu(false);
+          menu.addItem(i => i.setTitle(this.text('新建笔记', 'New note')).setIcon('file-plus').onClick(() => this.libraries.askNewNote(file)));
+          menu.addItem(i => i.setTitle(this.text('添加字段', 'Add field')).setIcon('list-plus').onClick(() => this.libraries.askField(file)));
+          menu.addSeparator();
+          menu.addItem(i => i.setTitle(this.text('显示原界面和全部工具', 'Show original interface and all tools')).setIcon('layout-template').onClick(() => this.setPaused(true)));
+          menu.showAtMouseEvent(event);
+        });
+      }).catch(() => { /* Native bases retain their own controls. */ });
+    });
+    for (const view of this.libraryBars.keys()) if (!alive.has(view)) this.removeLibraryBar(view);
+  }
+
+  private removeLibraryBar(view: FileView): void {
+    this.libraryBars.get(view)?.element.remove();
+    this.libraryBars.delete(view);
+    view.containerEl.classList.remove('nf-managed', 'nf-library-managed');
+  }
+
   renderPreferences(container: HTMLElement): void {
     const t = (zh: string, en: string) => this.text(zh, en);
     new Setting(container).setName(t('仅在手机和平板启用', 'Mobile and tablet only'))
       .addToggle(v => v.setValue(this.settings.mobileOnly).onChange(async value => { this.settings.mobileOnly = value; await this.saveSettings(); }));
-    new Setting(container).setName(t('默认阅读', 'Reading first')).setDesc(t('打开笔记时优先阅读；点击编辑后才输入。', 'Open notes in reading mode. Use Edit when you want to write.'))
+    new Setting(container).setName(t('旧版页面布局', 'Legacy page layout')).setDesc(t('兼容原来的封面、分栏和分区。默认关闭，使用连续写作。', 'Optional compatibility with covers, columns and sections. Continuous writing is the default.'))
+      .addToggle(v => v.setValue(this.settings.legacyPages).onChange(async value => {
+        this.settings.legacyPages = value; await this.saveSettings(true);
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (view) {
+          if (value) await this.setMode(view, 'preview');
+          else await this.setWritingMode(view);
+        }
+        container.empty(); this.renderPreferences(container);
+      }));
+    if (this.settings.legacyPages) new Setting(container).setName(t('默认阅读', 'Reading first')).setDesc(t('打开笔记时优先阅读；点击编辑后才输入。', 'Open notes in reading mode. Use Edit when you want to write.'))
       .addToggle(v => v.setValue(this.settings.readingFirst).onChange(async value => { this.settings.readingFirst = value; await this.saveSettings(); }));
     new Setting(container).setName(t('收起阅读时的底部导航', 'Hide navigation while reading')).setDesc(t('仅在替代工具栏已出现时生效；编辑时保留系统工具栏。', 'Only hidden when the replacement toolbar is mounted. Editing tools remain available.'))
       .addToggle(v => v.setValue(this.settings.quietNavigation).onChange(async value => { this.settings.quietNavigation = value; await this.saveSettings(); }));
@@ -296,7 +414,7 @@ export default class NebulaFocus extends Plugin {
       }));
     new Setting(container).setName(t('原界面', 'Original interface')).setDesc(t('临时恢复全部工具；禁用插件也会恢复原界面。', 'Temporarily restore all controls. Disabling the plugin also restores them.'))
       .addButton(v => v.setButtonText(t('显示原界面', 'Restore')).onClick(() => this.setPaused(true)));
-    container.createEl('p', { cls: 'nf-help', text: t('v0.8.0 · 原位编辑、撤销重做与草稿恢复；布局随 Markdown 保存。', 'v0.8.0 · In-place editing, undo, recovery drafts and portable layouts.') });
+    container.createEl('p', { cls: 'nf-help', text: t('v0.9.0 · 连续写作，按需整理。普通笔记不会自动添加属性。资料库需要启用 Obsidian 的数据库核心插件。', 'v0.9.0 · Continuous writing, optional libraries. Notes get no automatic properties. Libraries require the Obsidian Bases core plugin.') });
   }
 
   report(error: unknown): void {
@@ -306,12 +424,14 @@ export default class NebulaFocus extends Plugin {
 
   onunload(): void {
     this.disposed = true;
+    this.libraries?.stop();
     this.fileToken++;
     for (const timer of this.timers) window.clearTimeout(timer);
     this.timers.clear();
     for (const modal of this.dialogs) modal.close();
     this.dialogs.clear();
     for (const [view, bar] of this.bars) this.removeBar(view, bar);
+    for (const view of this.libraryBars.keys()) this.removeLibraryBar(view);
     this.resumeButton?.remove();
     document.body.classList.remove('nf-active', 'nf-quiet', 'nf-reading');
   }
@@ -386,6 +506,7 @@ class NavigatorModal extends Modal {
     this.titleEl.setText(t('笔记', 'Notes'));
     this.modalEl.classList.add('nf-dialog', 'nf-navigator');
     const header = this.contentEl.createDiv('nf-nav-actions');
+    this.plugin.button(header, 'library', t('资料库', 'Libraries'), () => { this.close(); this.plugin.libraries.open(); }, true);
     if (this.plugin.settings.homePath) this.plugin.button(header, 'house', t('首页', 'Home'), () => { this.close(); void this.plugin.openHome(); }, true);
     this.plugin.button(header, 'plus', t('新建', 'New'), event => this.createMenu(event), true);
     this.plugin.button(header, 'ellipsis', t('更多', 'More'), event => this.moreMenu(event));

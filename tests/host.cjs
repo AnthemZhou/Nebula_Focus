@@ -62,8 +62,11 @@ function createHost(win, seed = {}) {
   };
   for (const [path, text] of Object.entries(seed.files || defaults)) vault.add(new TFile(path, text));
   const workspaceRoot = doc.querySelector('.workspace') || doc.body.createDiv('workspace');
-  class MarkdownView {
+  class FileView {}
+  class TextFileView extends FileView {}
+  class MarkdownView extends TextFileView {
     constructor(leaf) {
+      super();
       this.leaf = leaf; this.mode = 'source'; this.containerEl = workspaceRoot.createDiv('workspace-leaf-content');
       this.containerEl.dataset.type = 'markdown';
       this.header = this.containerEl.createDiv({ cls: 'view-header', text: '原生标题与操作' });
@@ -75,7 +78,7 @@ function createHost(win, seed = {}) {
     }
     getViewType() { return 'markdown'; }
     getMode() { return this.mode; }
-    getState() { return {file: this.file?.path, mode: this.mode}; }
+    getState() { return {file: this.file?.path, mode: this.mode, source:this.rawSource}; }
     getDisplayText() { return this.file?.basename || ''; }
     showSearch() { new Notice('演示：这里会打开页内查找。'); }
     render() {
@@ -92,6 +95,20 @@ function createHost(win, seed = {}) {
       this.source.style.display = this.mode === 'source' ? '' : 'none';
     }
   }
+  class BaseView extends TextFileView {
+    constructor(leaf) {
+      super(); this.leaf=leaf; this.containerEl=workspaceRoot.createDiv('workspace-leaf-content');
+      this.containerEl.dataset.type='bases';
+      this.containerEl.createDiv({cls:'view-header',text:'Database'});
+      this.contentEl=this.containerEl.createDiv('view-content');
+    }
+    getViewType(){return 'bases';}
+    getDisplayText(){return this.file?.basename || '';}
+    render(){this.data=this.file.text;this.memory=this.data;this.contentEl.textContent='Obsidian renders this .base file as a table or cards.';}
+    getViewData(){return this.memory;}
+    setViewData(data){this.memory=data;}
+    async save(){if(this.file && this.memory!==this.data){await vault.process(this.file,()=>this.memory);this.data=this.memory;}}
+  }
   class Workspace extends Events {
     constructor() {
       super(); this.containerEl = workspaceRoot; this.rootSplit = {}; this.leaves = [];
@@ -99,6 +116,7 @@ function createHost(win, seed = {}) {
       this.rightSplit = this.leftSplit;
     }
     getActiveViewOfType(type) { return this.current?.view instanceof type ? this.current.view : null; }
+    getMostRecentLeaf() { return this.current; }
     iterateAllLeaves(callback) { this.leaves.forEach(callback); }
     getLeaf() { return this.current; }
     onLayoutReady(callback) { callback(); }
@@ -108,9 +126,11 @@ function createHost(win, seed = {}) {
   class Leaf {
     constructor() { this.view = new MarkdownView(this); }
     getRoot() { return workspace.rootSplit; }
-    async setViewState(state) { this.view.mode = state.state.mode; this.view.render(); workspace.trigger('layout-change'); }
+    async setViewState(state) { this.view.mode = state.state.mode; this.view.rawSource=state.state.source; this.view.render(); workspace.trigger('layout-change'); }
     async openFile(file, options = {}) {
-      this.view.file = file; this.view.mode = options.state?.mode || 'source'; this.view.render();
+      const View=file.extension==='base'?BaseView:MarkdownView;
+      if(!(this.view instanceof View)){if(this.view instanceof BaseView)await this.view.save();this.view.containerEl.remove();this.view=new View(this);}
+      this.view.file = file; this.view.mode = options.state?.mode || 'source'; this.view.rawSource=options.state?.source; this.view.render();
       workspace.current = this; workspace.trigger('file-open', file); workspace.trigger('active-leaf-change', this);
     }
   }
@@ -183,6 +203,7 @@ function createHost(win, seed = {}) {
   const openMenus = new Set();
   class Menu {
     constructor() { this.el = doc.createElement('div'); this.el.className = 'menu'; this.hideCallbacks = []; this.visible = false; }
+    setUseNativeMenu(){return this;}
     addItem(fn) {
       const b = this.el.createEl('button', {cls:'menu-item'});
       const menu = this;
@@ -220,6 +241,6 @@ function createHost(win, seed = {}) {
   const paths={ 'panel-left':'M4 4h16v16H4z M9 4v16', house:'m3 11 9-8 9 8 M5 10v11h14V10 M9 21v-7h6v7', ellipsis:'M5 12h.01M12 12h.01M19 12h.01', plus:'M12 5v14M5 12h14', folder:'M3 7h7l2 2h9v11H3z M3 7V4h7l2 3', 'file-text':'M5 3h10l4 4v14H5z M14 3v5h5 M8 12h8M8 16h6', 'arrow-left':'m11 5-7 7 7 7M4 12h16', sparkles:'m12 3 2 7 7 2-7 2-2 7-2-7-7-2 7-2z' };
   function setIcon(el, name) { const svg=doc.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('fill','none');svg.setAttribute('stroke','currentColor');svg.setAttribute('stroke-linecap','round');svg.setAttribute('stroke-linejoin','round');const p=doc.createElementNS(svg.namespaceURI,'path');p.setAttribute('d',paths[name]||paths['file-text']);svg.append(p);el.append(svg); }
   class PluginSettingTab {constructor(app,plugin){this.app=app;this.plugin=plugin;this.containerEl=doc.createElement('div');}}
-  return { app, leaf, vault, root, api: {Component,MarkdownRenderer,normalizePath:path=>path.replace(/\\/g,'/'),Plugin,PluginSettingTab,MarkdownView,Modal,Menu,Notice,Setting,TFile,TFolder,FuzzySuggestModal,Platform:{isMobile: seed.mobile !== false},getLanguage:()=>seed.language||'zh',setIcon}, setView(type){workspace.current={view:{getViewType:()=>type}};workspace.trigger('active-leaf-change',workspace.current);} };
+  return { app, leaf, vault, root, api: {Component,MarkdownRenderer,normalizePath:path=>path.replace(/\\/g,'/'),Plugin,PluginSettingTab,FileView,TextFileView,MarkdownView,Modal,Menu,Notice,Setting,TFile,TFolder,FuzzySuggestModal,parseYaml:JSON.parse,stringifyYaml:value=>JSON.stringify(value,null,2)+'\n',Platform:{isMobile: seed.mobile !== false},getLanguage:()=>seed.language||'zh',setIcon}, setView(type){workspace.current={view:{getViewType:()=>type}};workspace.trigger('active-leaf-change',workspace.current);} };
 }
 if (typeof module !== 'undefined') module.exports = { createHost };

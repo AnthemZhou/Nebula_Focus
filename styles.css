@@ -19,6 +19,47 @@
 body.is-mobile.nf-quiet.nf-reading :is(.mobile-navbar, .mobile-toolbar) { display: none; }
 .nf-page[hidden], .nf-button[hidden] { display: none; }
 
+/* One continuous native editor: focus never mounts a second editing surface. */
+.nf-writing {
+  --file-line-width: 720px;
+  --file-margins: 36px 32px;
+  --h1-size: 1.8em;
+  --h2-size: 1.45em;
+  --h3-size: 1.2em;
+  --h4-size: 1.08em;
+  --h1-weight: 650;
+  --h2-weight: 600;
+  --h3-weight: 600;
+}
+.nf-writing.nf-typography { --line-height-normal: 1.85; --line-height-tight: 1.45; }
+.nf-writing > .nf-bar { border-bottom-color: transparent; }
+.nf-writing .inline-title { display: none; }
+.nf-writing:not(.nf-show-properties) .metadata-container { display: none !important; }
+.nf-writing .cm-active { background-color: transparent; }
+.nf-writing .cm-editor.cm-focused { outline: none; }
+/* Live Preview normally reveals these tokens under the caret. Keep their visual
+   width at zero. Markdown source remains available explicitly from More. */
+.nf-writing .is-live-preview :is(
+  .cm-formatting-header, .cm-formatting-strong, .cm-formatting-em,
+  .cm-formatting-strikethrough, .cm-formatting-highlight
+) { display: none; }
+.nf-writing .markdown-source-view.mod-cm6 .cm-content { caret-color: var(--text-normal); }
+.nf-library-dialog .nf-search, .nf-members-dialog .nf-search { width: 100%; margin: 16px 0 8px; }
+.nf-member-list { max-height: min(52vh, 420px); overflow: auto; }
+.nf-member-row { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 9px 10px; border-radius: 7px; }
+.nf-member-row:hover { background: var(--nf-hover); }
+.nf-member-row > input { flex: none; }
+.nf-member-row > span { min-width: 0; overflow-wrap: anywhere; font-size: 14px; }
+.nf-library-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 16px; }
+.nf-library-dialog .nf-file-row:disabled { opacity: .55; cursor: default; }
+/* Native New infers properties from filters; our New adds an empty note to the
+   explicit membership list instead. The replacement is in Library actions. */
+.nf-library-managed .bases-toolbar-new-item-menu { display: none; }
+@container nebula-page (max-width: 480px) {
+  .nf-writing { --file-margins: 24px 20px; }
+  .nf-library-managed > .nf-bar { gap: 4px; padding-inline: 10px; }
+}
+
 /* Quiet navigation, with a breadcrumb that can shrink independently of actions. */
 .nf-bar {
   display: flex; align-items: center; justify-content: space-between;

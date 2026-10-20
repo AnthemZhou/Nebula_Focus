@@ -10,7 +10,7 @@ const model = {exports:{}}; new Function('module','exports',modelCode)(model,mod
 const delay = ms => new Promise(resolve => setTimeout(resolve,ms));
 async function boot(seed) {
   const dom = new JSDOM('<!doctype html><body class="is-mobile"><div class="workspace"></div><div class="mobile-navbar">Native</div></body>',{url:'https://fixture.invalid/',pretendToBeVisual:true});
-  const host = createHost(dom.window,{renderMarkdown:text=>new (require('markdown-it'))({html:true}).render(text),...seed}); const module={exports:{}};
+  const host = createHost(dom.window,{renderMarkdown:text=>new (require('markdown-it'))({html:true}).render(text),...seed,settings:{legacyPages:true,...seed?.settings}}); const module={exports:{}};
   const context=vm.createContext({window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,MutationObserver:dom.window.MutationObserver,console,TextEncoder,module,exports:module.exports,require:name=>{assert.equal(name,'obsidian');return host.api;}});
   new vm.Script(readFileSync('main.js','utf8')).runInContext(context);
   const plugin=new module.exports.default(); await plugin.onload(); await delay(90);

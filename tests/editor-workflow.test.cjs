@@ -12,7 +12,7 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
 async function boot(source) {
   const dom=new JSDOM('<!doctype html><body class="is-mobile"><div class="workspace"></div></body>',{url:'https://fixture.invalid/',pretendToBeVisual:true});
-  const host=createHost(dom.window,{files:{'Home.md':source},renderMarkdown:text=>new(require('markdown-it'))({html:true}).render(text)}),module={exports:{}};
+  const host=createHost(dom.window,{settings:{legacyPages:true},files:{'Home.md':source},renderMarkdown:text=>new(require('markdown-it'))({html:true}).render(text)}),module={exports:{}};
   const context=vm.createContext({window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,Node:dom.window.Node,
     NodeFilter:dom.window.NodeFilter,MutationObserver:dom.window.MutationObserver,TextEncoder,console,module,exports:module.exports,
     require:name=>{assert.equal(name,'obsidian');return host.api;}});

@@ -1,0 +1,215 @@
+{
+  "environment": {
+    "platform": "darwin",
+    "version": "1.14.4 (installer 1.13.7)",
+    "vault": "Nebula-Focus-0.6.0-KNPWMI"
+  },
+  "transportWarnings": [
+    {
+      "command": "eval",
+      "reason": "CLI timed out after complete response"
+    }
+  ],
+  "results": [
+    {
+      "name": "normal notes open as one continuous editor without adding frontmatter",
+      "passed": true,
+      "details": {
+        "mode": {
+          "file": "QA-Writing-1792492187068/Note-1.md",
+          "mode": "source",
+          "source": false
+        }
+      }
+    },
+    {
+      "name": "heading and inline emphasis retain their geometry when the caret enters them",
+      "passed": true,
+      "details": {
+        "before": {
+          "x": 174,
+          "y": 147,
+          "width": 76.1875,
+          "height": 22.5,
+          "font": "600 19.2px / 24.96px \"??\", \"??\", ui-sans-serif, -apple-system, \"system-ui\", system-ui, \"Segoe UI\", \"Google Sans Flex\", Roboto, \"Inter Variable\", Inter, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", sans-serif"
+        },
+        "after": {
+          "x": 174,
+          "y": 147,
+          "width": 76.1875,
+          "height": 22.5,
+          "font": "600 19.2px / 24.96px \"??\", \"??\", ui-sans-serif, -apple-system, \"system-ui\", system-ui, \"Segoe UI\", \"Google Sans Flex\", Roboto, \"Inter Variable\", Inter, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", sans-serif"
+        }
+      }
+    },
+    {
+      "name": "Chinese IME commits inside a heading without a replacement edit box",
+      "passed": true,
+      "details": {
+        "saved": "### 标题中文输入\n\n正文"
+      }
+    },
+    {
+      "name": "real Enter and Backspace split and rejoin text within the same editor",
+      "passed": true,
+      "details": {
+        "saved": "AlphaBeta\n\nTail"
+      }
+    },
+    {
+      "name": "cross-paragraph selection, replacement, undo and redo use native history",
+      "passed": true,
+      "details": {
+        "saved": "替换后的段落\n\nUntouched"
+      }
+    },
+    {
+      "name": "raw Markdown escape and return preserve body, properties and native selection",
+      "passed": true
+    },
+    {
+      "name": "library creation and adding blank columns leave every collected note unchanged",
+      "passed": true,
+      "details": {
+        "base": "nebula-focus: 1\nfilters:\n  and:\n    - file.ext == \"md\"\n    - or:\n        - file.path == \"QA-Writing-1792492187068/Note-7.md\"\nviews:\n  - type: table\n    name: 列表\n    order:\n      - file.name\n      - note.阅读状态\n  - type: cards\n    name: 卡片\n    order:\n      - file.name\n      - note.阅读状态\n",
+        "note": "### 读书笔记\n\n这篇尚未填写任何属性。"
+      }
+    },
+    {
+      "name": "focusing and leaving an empty native property cell adds no frontmatter",
+      "passed": true
+    },
+    {
+      "name": "typing a native table value writes only that note property",
+      "passed": true,
+      "details": {
+        "note": "---\n阅读状态: 在读\n---\n### 读书笔记\n\n这篇尚未填写任何属性。"
+      }
+    },
+    {
+      "name": "native view configuration keeps membership and optional columns interoperable",
+      "passed": true,
+      "details": {
+        "base": "nebula-focus: 1\nfilters:\n  and:\n    - file.ext == \"md\"\n    - or:\n        - file.path == \"QA-Writing-1792492187068/Note-7.md\"\nviews:\n  - type: table\n    name: 我的列表\n    order:\n      - file.name\n      - 阅读状态\n      - note.评分\n  - type: cards\n    name: 卡片\n    order:\n      - file.name\n      - 阅读状态\n      - note.评分\n"
+      }
+    },
+    {
+      "name": "native card view shows the same collected note and opens continuous writing",
+      "passed": true
+    },
+    {
+      "name": "membership picker saves selection deltas and removing a note preserves its property",
+      "passed": true
+    },
+    {
+      "name": "one note can join multiple libraries with no additional metadata",
+      "passed": true
+    },
+    {
+      "name": "renaming a collected note updates both library references without changing content",
+      "passed": true,
+      "details": {
+        "members": [
+          "QA-Writing-1792492187068/Renamed.md"
+        ]
+      }
+    },
+    {
+      "name": "new library note is blank and collected before it opens for writing",
+      "passed": true
+    },
+    {
+      "name": "ordinary native bases remain openable and retain their own New control",
+      "passed": true
+    },
+    {
+      "name": "pause and resume remove custom controls and keep the native editor contents",
+      "passed": true
+    },
+    {
+      "name": "real app moonstone 320px writing and library layout",
+      "passed": true,
+      "details": {
+        "writing": {
+          "pane": 276,
+          "column": 212
+        },
+        "library": {
+          "pane": 276
+        }
+      }
+    },
+    {
+      "name": "real app moonstone 393px writing and library layout",
+      "passed": true,
+      "details": {
+        "writing": {
+          "pane": 349,
+          "column": 285
+        },
+        "library": {
+          "pane": 349
+        }
+      }
+    },
+    {
+      "name": "real app moonstone 1024px writing and library layout",
+      "passed": true,
+      "details": {
+        "writing": {
+          "pane": 980,
+          "column": 720
+        },
+        "library": {
+          "pane": 980
+        }
+      }
+    },
+    {
+      "name": "real app obsidian 320px writing and library layout",
+      "passed": true,
+      "details": {
+        "writing": {
+          "pane": 276,
+          "column": 212
+        },
+        "library": {
+          "pane": 276
+        }
+      }
+    },
+    {
+      "name": "real app obsidian 393px writing and library layout",
+      "passed": true,
+      "details": {
+        "writing": {
+          "pane": 349,
+          "column": 285
+        },
+        "library": {
+          "pane": 349
+        }
+      }
+    },
+    {
+      "name": "real app obsidian 1024px writing and library layout",
+      "passed": true,
+      "details": {
+        "writing": {
+          "pane": 980,
+          "column": 720
+        },
+        "library": {
+          "pane": 980
+        }
+      }
+    },
+    {
+      "name": "new interface produces no captured runtime errors",
+      "passed": true,
+      "details": {
+        "errors": "No errors captured."
+      }
+    }
+  ]
+}

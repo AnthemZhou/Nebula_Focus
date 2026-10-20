@@ -3,20 +3,21 @@ export interface FocusSettings {
   readingFirst: boolean;
   quietNavigation: boolean;
   calmTypography: boolean;
+  legacyPages: boolean;
   homePath: string;
   language: 'auto' | 'zh' | 'en';
 }
 
 export const DEFAULT_SETTINGS: FocusSettings = {
   mobileOnly: true, readingFirst: true, quietNavigation: true,
-  calmTypography: true, homePath: '', language: 'auto',
+  calmTypography: true, legacyPages: false, homePath: '', language: 'auto',
 };
 
 export function readSettings(raw: unknown): FocusSettings {
   const result = { ...DEFAULT_SETTINGS };
   if (!raw || typeof raw !== 'object') return result;
   const value = raw as Record<string, unknown>;
-  for (const key of ['mobileOnly', 'readingFirst', 'quietNavigation', 'calmTypography'] as const) {
+  for (const key of ['mobileOnly', 'readingFirst', 'quietNavigation', 'calmTypography', 'legacyPages'] as const) {
     if (typeof value[key] === 'boolean') result[key] = value[key];
   }
   if (typeof value.homePath === 'string') result.homePath = value.homePath;

@@ -1,0 +1,96 @@
+{
+  "environment": {
+    "platform": "darwin",
+    "version": "1.14.4 (installer 1.13.7)",
+    "vault": "Nebula-Focus-0.6.0-KNPWMI"
+  },
+  "transportWarnings": [],
+  "results": [
+    {
+      "name": "local typing undo and redo preserve the live block and do not write early",
+      "passed": true
+    },
+    {
+      "name": "saved edits undo and redo exact original bytes including CRLF",
+      "passed": true,
+      "details": {
+        "lineEndings": "CRLF retained"
+      }
+    },
+    {
+      "name": "Enter split is one reversible source operation with caret restored",
+      "passed": true
+    },
+    {
+      "name": "Backspace merges paragraphs without losing formatting and undo restores both",
+      "passed": true
+    },
+    {
+      "name": "Delete at a block end merges forward and arrows traverse block boundaries",
+      "passed": true
+    },
+    {
+      "name": "style conversion preserves nearby text and remains directly editable",
+      "passed": true
+    },
+    {
+      "name": "nested children are preserved when unsupported structural conversion is refused",
+      "passed": true
+    },
+    {
+      "name": "empty list Enter exits to a paragraph and leaves previous items intact",
+      "passed": true,
+      "details": {
+        "source": "- Item\n\nOutside"
+      }
+    },
+    {
+      "name": "multiple recovery drafts survive unrelated saves and can be deleted separately",
+      "passed": true
+    },
+    {
+      "name": "failed multiline paste keeps the complete intended result and Done retries it",
+      "passed": true
+    },
+    {
+      "name": "undo cannot overwrite a concurrent external file edit",
+      "passed": true
+    },
+    {
+      "name": "cleared setext heading remains a heading and an empty-left split is safe",
+      "passed": true
+    },
+    {
+      "name": "real rendered hard breaks and literal entity labels survive editing and reopening",
+      "passed": true,
+      "details": {
+        "source": "## Syntax\n\nLine  \nBreak **bold** \\&copy; extra\n\nKeep"
+      }
+    },
+    {
+      "name": "320px light style control and draft recovery fit without text movement",
+      "passed": true,
+      "details": {
+        "width": 320,
+        "geometry": "identical entering edit",
+        "drafts": 2
+      }
+    },
+    {
+      "name": "320px dark style control and draft recovery fit without text movement",
+      "passed": true,
+      "details": {
+        "width": 320,
+        "geometry": "identical entering edit",
+        "drafts": 2
+      }
+    },
+    {
+      "name": "new editor runtime error buffer",
+      "passed": true,
+      "details": {
+        "errors": "No errors captured."
+      }
+    }
+  ]
+}

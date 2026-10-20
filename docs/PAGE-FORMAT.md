@@ -1,19 +1,50 @@
-# Page format v1 — Nebula Focus 0.8.0
+# Writing and library format — Nebula Focus 0.9.0
 
-Portable data lives in the note, not plugin settings. `nf-title`, `nf-icon`, `nf-cover`, `nf-cover-y`, `nf-columns`, `nf-ratio` are reserved top-level scalar YAML keys. Plugin-generated strings use JSON-compatible double quotes. Keep values scalar; complex YAML values and duplicate owned keys are rejected when updating. All unrelated frontmatter and body bytes are preserved when a page setting changes.
+## Ordinary notes
 
-Cover paths use quoted wikilinks so Obsidian can recognize the file reference. Cover placement is vertical 0–100 (center=50). Columns are 1 or 2; ratio denotes the first column's weight. The UI offers 35, 50 or 65; reader clamps to 25–75. At a pane width of ≤650px the renderer stacks in source order, including desktop split panes. No duplicate mobile layout is stored.
+A note can be a completely plain Markdown file with no YAML. Opening, typing in, or collecting a note does not create a frontmatter template. The default continuous editor is Obsidian Live Preview, with scoped presentation styles. Obsidian owns text persistence and undo history. Explicit Markdown source mode preserves access to all syntax and metadata.
 
-Sections begin at column-zero ATX `## ` headings outside fenced code, HTML/Obsidian comments and standalone display-math blocks; subheadings stay with their parent section. Leading content without a `##` is pinned above sections. Setext headings and complex HTML are not section boundaries. Dragging changes source order and normalizes whitespace between sections to blank lines; it does not rewrite each section's internal text. Other applications can read the source without this plugin.
+User-entered property values live in the individual note's native frontmatter. The writing surface hides the property panel by default; More → Show note properties reveals it for the current file. Switching files hides it again. Existing properties are never automatically deleted. Clearing an existing value in the native property editor follows Obsidian's behavior, which may leave an empty key; this is distinct from automatically creating fields on untouched notes.
 
-Direct editing is independent of the layout sections. A heading, paragraph or list-item paragraph maps to its own exact Markdown source span. The existing rendered inline DOM remains in place during editing; heading/list/quote prefixes remain in Markdown. Saving serializes formatting only inside that span, preserving all bytes outside it, including frontmatter and neighbouring paragraphs. Editing a block can normalize its inline syntax (for example `__bold__` to `**bold**`); entering and leaving an unchanged block writes nothing. Enter and multiline paste add independent paragraphs or list items. Complex renderer-owned constructs stay read-only on the portable page and use the native editor.
+## Independent libraries
 
-`<!-- nf:view=cards -->` inside a section selects a gallery. Its data consists of explicit `- [[path|optional label]]` or `* [[path]]` lines. Target files remain authoritative. Card text and cover are read from the target's metadata; there is no query engine or status mutation.
+A library is a native `.base` YAML file. For example:
 
-Images are separate vault attachments. Built-in vector covers are copied to `Nebula Assets` on selection; user files are imported under a unique safe name. Removing a cover does not delete the image (other pages may reference it). Attachment cleanup and page ZIP export are not implemented.
+```yaml
+nebula-focus: 1
+filters:
+  and:
+    - file.ext == "md"
+    - or:
+        - file.path == "Reading/One.md"
+        - file.path == "Reading/Two.md"
+views:
+  - type: table
+    name: Table
+    order:
+      - file.name
+      - note.reading-status
+  - type: cards
+    name: Cards
+    order:
+      - file.name
+      - note.reading-status
+```
 
-Writing uses optimistic concurrency: read revision, transform, Vault.process compares exact source before replacing. A conflict leaves the file alone and retains the inline draft. Unsaved block and title drafts use Obsidian App.loadLocalStorage/saveLocalStorage (public since 1.8.7), scoped by vault and keyed by file path. Drafts are never auto-applied. The version-2 envelope holds independent session IDs and up to 20 drafts per note; each mutation reads the latest cache, so saving another block or pane does not erase older drafts. Legacy single-slot caches migrate on mutation. A full cache refuses new records with a visible message instead of evicting existing text. Structural edits first cache their complete intended result and remain retryable after write failure. Successful save removes only the matching draft. Cancel preserves a recoverable draft. These caches are neither the portable page format nor a synced backup.
+The `nebula-focus` marker identifies managed membership. The first two filter clauses restrict results to explicitly selected Markdown paths. An empty selection uses `or: ["false"]`; it never defaults to the whole vault. Paths are JSON-quoted expression literals and YAML-serialized, including quotes and Unicode. No membership tag or database ID is written to a note.
 
-Undo/redo stores exact before/after source and logical carets in the page instance, checks the current file revision before writing, and refuses to overwrite external edits. History is memory-only, bounded to 60 saved transactions per file and 4 MiB across that page instance. Local typing has a separate bounded snapshot history. Restarting or destroying the page clears history; it does not clear recovery caches.
+Adding a field changes only view `order`. The native `note.` prefix may be normalized away by Bases; both forms refer to the same note property. `file.name`, modification time and other native file properties are computed by Obsidian, not copied into YAML. View configuration, formulas, sorts, display names and extra view filters remain in the base. A field value is shared by every library referencing that note and field name.
 
-AI reading the raw note sees these few metadata fields and optional marker. No image bytes are encoded into Markdown. No automatic AI preprocessing exists in 0.8.0; an integration may filter nf-* and view markers while retaining content order, links, and captions. Rendering order is not a substitute for explicit semantic relationships.
+Membership edits apply added/removed path deltas to the latest document using Vault.process. Open native TextFileView instances are flushed and synchronized through public APIs so a delayed native save or navigation cannot overwrite a newly added member with stale configuration. An unexpected concurrent change to view data is refused. Unknown native bases and externally rewritten membership structures are not rewritten. Comments/formatting of `.base` YAML may be normalized when saving, matching native Bases behavior.
+
+Renames of collected files or folders update managed references while the plugin is loaded. Missing references remain explicitly removable, preserving the possibility of restoring a trashed note. Renames while the plugin is disabled, external path changes, and removed membership filters may require reselecting files. Removing membership never deletes a note or clears its properties.
+
+Library New creates an empty Markdown file and then collects it. If collection fails, the created note is kept and the UI reports that it needs to be selected again. The native New toolbar control is replaced only in recognized managed bases because native filter inference does not add a new path to an explicit membership list. Native bases keep their own New control.
+
+## Legacy pages
+
+The old cover/columns/sections renderer remains opt-in under Legacy page layout. Existing `nf-*` metadata, attachments, view markers and recovery drafts are preserved. See [legacy page format](LEGACY-PAGE-FORMAT.md) for its source, conflict handling and draft/history limits. These are not the storage mechanism of the new continuous editor.
+
+## References
+
+Native compatibility follows Obsidian's [Bases syntax](https://help.obsidian.md/bases/syntax), [view controls](https://help.obsidian.md/bases/views), and [note properties](https://help.obsidian.md/properties). `.base` files remain useful when Nebula Focus is disabled, provided the Bases core plugin is enabled.

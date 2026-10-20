@@ -1,93 +1,70 @@
-# Nebula Focus 0.8.0
+# Nebula Focus 0.9.0
 
-Quiet, portable pages for Obsidian. GPL-3.0-only. **Experimental prerelease: tested in real macOS Obsidian 1.14.4; physical iOS/Android testing is still pending.**
+连续写作，按需整理。一个给 Obsidian 做减法的插件。GPL-3.0-only。
 
-## 这版可以做什么
+**实验性预发布。**已在 Mac 的真实 Obsidian 中测试；iPhone / Android 真机测试仍待完成。
 
-0.8.0 补齐逐段编辑的日常操作：撤销重做、拆分合并、文字样式和多份草稿恢复。标题、段落和列表项分别编辑。参考 [Effie 的即时呈现与简洁编辑交互](https://blog.effie.co/effie-tutorial-mac/)，点击后直接在原来的文字位置书写，标题不会展开成 `###`，也不会出现大文本框。整体视觉继续沿用参考 [shadcn/ui](https://ui.shadcn.com/) 调整的间距、边框和主题配色。
+## 这次的变化
 
-![0.8.0 — in-place editing in actual Obsidian](docs/ui-0.8.0-editing-light.png)
+正文改为一整篇连续编辑，使用 Obsidian 的原生实时阅览编辑器。可以跨段落选取、输入、粘贴、撤销重做，不再逐块进入编辑，也不再有“完成 / 取消”框。标题、粗体、斜体等常用格式的标记保持隐藏，光标进入标题时文字不会被 `###` 向右推。
 
-- 选择三张原创矢量封面，或上传 PNG/JPEG/WebP/GIF/AVIF（20 MB 以内）；选用后图片保存在笔记库的 `Nebula Assets/`。
-- 封面裁切、页面标题、图标、单/双栏及栏宽比例保存在当前 Markdown 顶部。正文顺序就是显示顺序。
-- 标题、每个段落和列表项分别编辑；保留原来的字体、间距、粗体与链接。点击其他文字、点击角落的完成按钮，或 Cmd/Ctrl+Enter 保存；Esc 取消并保留恢复草稿。页面标题用 Enter 保存。
-- 正文中 Enter 新建下一段，列表中 Enter 新建同级项目；Shift+Enter 在当前段落内换行。Cmd/Ctrl+B、I 切换粗体、斜体。多行纯文本粘贴分成独立段落。
-- 在段首 Backspace 或段尾 Delete 合并相邻同类段落或简单列表项；方向键在文字边界切换编辑块。空列表项、空引用中 Enter 返回普通正文。
-- 角落的“文字样式”菜单可转换正文、一级至三级标题、列表、待办和引用，也提供粗体、斜体、撤销与重做。嵌套结构的类型转换请使用原生编辑器。
-- Cmd/Ctrl+Z 撤销输入与已保存操作，Cmd/Ctrl+Shift+Z 或 Ctrl+Y 重做；撤销回车拆分会保留拆分前刚输入的文字。发生外部冲突时拒绝覆盖。
-- 每个 `## 二级标题` 及其下方内容作为一个分区。使用手柄拖动，或菜单上移/下移。开头没有二级标题的说明保留在顶部。桌面手柄悬停出现；手机可长按分区打开菜单，或操作其左侧手柄。支持手柄上 Alt+上下键。
-- 页面外观菜单提供单栏或双栏（35/65、50/50、65/35）。笔记面板宽度 650px 以下自动单栏（包括桌面分栏），按文件顺序阅读；布局值保留。
-- 普通项目链接列表可切换为封面卡片；卡片打开原笔记，不复制项目资料。
-- 上传正文图片，自动生成图片分区和本地附件引用。点图查看大图。
-- 简洁导航、首页入口、恢复原界面保留。默认在手机/平板启用；桌面请在设置关闭“仅在手机和平板启用”。
+资料库是单独入口。写作页面默认只留下文稿、笔记导航和少量操作；封面、分栏、拖动分区保留在可选的“旧版页面布局”中。
+
+![真实 Obsidian 中的连续写作](docs/ui-0.9.0-writing-light.png)
+
+## 资料库与属性
+
+- **普通文稿不自动增加属性。**打开、编辑、收录一篇笔记，都不会替它补上空的状态、日期、类型等字段。
+- **收录不移动、不复制笔记。**引用清单在独立 `.base` 文件里，一篇笔记可以出现在多个资料库。
+- **添加字段只增加一列。**在资料库中填写某篇笔记的字段值时，Obsidian 才把这个值写进那篇 Markdown 的 YAML 属性。
+- **写作页面默认隐藏属性区域。**需要查看时，使用“更多 → 显示笔记属性”；“查看 Markdown 源码”可查看完整原文。
+- **移出资料库不会删除内容或属性。**已经填写的字段仍属于笔记本身。
+- 表格、卡片、排序、筛选、字段类型等由 Obsidian 原生 Bases 承载。字段名称相同，就表示同一个笔记属性；不同用途的状态请用不同名称，例如“阅读状态”“项目状态”。
+
+![真实 Obsidian 中的资料库](docs/ui-0.9.0-library-light.png)
 
 ## 如何试用
 
-1. 安装包解压后，将 `nebula-focus` 文件夹放入笔记库 `.obsidian/plugins/`，确认 `main.js`、`manifest.json`、`styles.css` 直接位于该目录。
-2. 启用插件，打开一篇 Markdown 笔记。桌面端需在插件设置中启用桌面支持。
-3. 右上角“页面外观”调整封面、图标和分栏；“更多 → 原生 Markdown 编辑器”可使用原编辑器，点击“返回页面”回来。
-4. 用 `##` 划分可移动的内容分区；点击内容输入，在分区操作菜单中切换卡片显示。
-5. 示例库位于源码包的 `examples/vault/`，也提供独立 examples ZIP。请复制到空白测试库，包含 `Nebula Assets` 与项目文件，不要覆盖自己的 Home.md。
+1. 从 [0.9.0 预发布页面](https://github.com/AnthemZhou/Nebula_Focus/releases/tag/0.9.0) 下载安装包，将 `nebula-focus` 文件夹放入测试库的 `.obsidian/plugins/`。
+2. 启用插件。桌面端在插件设置中关闭“仅在手机和平板启用”。打开 Markdown 即可连续写作。
+3. 在 Obsidian“设置 → 核心插件”启用“数据库 / Bases”。点击左上角“资料库”，新建并选择收录笔记。
+4. 资料库右上角“收录笔记”管理成员；“资料库操作 → 添加字段”增加空列，“新建笔记”创建空白文稿并收录。
+5. 在表格单元格内填写字段值，点击原生卡片打开笔记。排序、筛选、视图切换使用原生资料库工具栏。
+6. 源码包的 `examples/vault/` 和独立 examples ZIP 提供示例。复制到空白测试库，避免覆盖自己的 Home.md。
 
-安装文件、完整源码和示例库请从 [0.8.0 预发布页面](https://github.com/AnthemZhou/Nebula_Focus/releases/tag/0.8.0) 下载。尚未进入 Obsidian 社区插件目录。请先在测试库中试用。
+`docs/mobile-preview.html` 是可离线切换的**真实 Mac Obsidian 截图预览**。它不编辑笔记，不模拟编辑器，也不代表手机真机测试。旧版可交互预览保留在带版本号的历史 HTML 中。
 
-`docs/mobile-preview-0.8.0.html` 是可离线打开的模拟宿主演示，使用真实插件代码、简化的 Markdown 渲染器和示例资料。演示修改只存在当前页面内存，刷新后还原；草稿使用浏览器本地缓存。它不是实际 Obsidian，也不访问你的笔记库。
+## 数据与兼容
 
-## 数据格式和备份
+笔记正文仍是普通 Markdown；已填写的属性仍是原生 YAML。资料库成员、列顺序、视图及筛选存在 `.base` 文件中。备份整个笔记库即可一起携带，停用 Nebula Focus 后仍可通过 Obsidian Bases 打开资料库。
 
-```yaml
----
-nf-title: "我的创作空间"
-nf-icon: "📁"
-nf-cover: "[[Nebula Assets/cover.svg]]"
-nf-cover-y: 50
-nf-columns: 2
-nf-ratio: 35
----
-```
+0.8 的 `nf-*` 外观属性、附件和卡片标记不会自动删除或迁移。需要旧版页面时，在“界面偏好”启用“旧版页面布局”。旧版恢复草稿也保留，通过旧版页面底部的恢复入口访问。
 
-```markdown
-## 项目
+连续写作使用 Obsidian 自身的保存、撤销和文件恢复机制；旧版逐块编辑的草稿缓存和历史机制只适用于兼容模式。源码回退可随时使用，不会把复杂内容转为普通文字。
 
-<!-- nf:view=cards -->
+资料库在插件启用时跟踪笔记和文件夹的改名。停用期间改名或从外部修改文件路径，可能需要重新收录；缺失的引用不会让资料库扩大成全库查询。手动重写资料库的收录筛选后，插件会拒绝继续修改无法识别的范围，请使用原生筛选管理。添加其他筛选时推荐使用“此视图”区域。
 
-- [[项目/示例项目]]
+详见 [文件格式](docs/PAGE-FORMAT.md) 和 [验证记录](docs/TESTING.md)。最低 Obsidian 1.9.0；当前实测版本为 1.14.4。没有网络请求、遥测、AI 接入或自建同步服务。
 
-## 想法
+## 开发
 
-正文仍是普通 Markdown。
-```
-
-只在用户修改外观或内容时写入。阅读不会自动转换文件。每次写入使用 Vault.process 检查原文版本；外部变化会拒绝覆盖。输入时分别缓存各次编辑的本机恢复草稿，失败/取消后可通过页面底部“恢复未保存草稿”复制或逐份删除；成功保存仅清除对应草稿。多行粘贴等结构操作会先保留完整结果，写入失败后可点击完成重试。每篇最多保留 20 份，达到上限会提示，不自动覆盖旧草稿。缓存是应急措施，不能替代笔记库备份；敏感内容的未保存草稿也会留在本机应用存储中。
-
-**恢复完整页面需要 Markdown 和引用的附件。**仅复制 Markdown 可以保留布局字段，但不能携带图片。关闭插件后正文、标题、链接和图片引用仍保留；封面和双栏需要插件解释。标题别名不会重命名实际文件。参见 `docs/PAGE-FORMAT.md`。
-
-## 范围和限制
-
-- 直接编辑支持可安全定位的标题、普通段落、引用段落与列表项。表格、代码、数学公式、嵌入和复杂第三方渲染使用“更多 → 原生 Markdown 编辑器”修改；不会把它们转成普通文字。
-- 撤销历史保留在当前页面实例内存中，每篇最多 60 次已保存操作，总大小最多 4 MiB；重启、关闭页面或卸载后不保留。它与磁盘文件备份、持久恢复草稿分别管理。
-- 双栏按从左到右、从上到下排列分区，不支持任意嵌套或自由坐标。
-- 卡片来自显式 `- [[笔记]]` 列表，不是数据库查询或状态看板；卡片内容取目标标题、封面和所在文件夹。
-- MarkdownRenderer 展示不是原生编辑器的完整替代。复杂嵌入、第三方渲染、脚注与跨分区引用等必须实机核对，必要时切换原生编辑器。
-- “页内查找”会自动切到原生 Markdown 编辑器，再打开查找。
-- 不含 Excel/账本、AI 接入、AI 清理导出、同步、页面打包备份功能；没有网络请求或遥测。
-- 中文页面功能已实现；0.6 页面新增菜单暂为中文，旧导航支持中英文。
-- 已于 2026-10-18 在 Mac 的真实 Obsidian 1.14.4 中验证编辑、草稿、外部冲突、附件、拖动、原生回退及默认深浅主题；中文组合输入通过实际 Chromium IME 通道测试。iPhone/Android 的键盘、触摸、长按和第三方主题仍需实机验证。
-
-## Development
-
-```
+```sh
 npm ci
 npm run build
 npm test
 node scripts/demo.mjs
 npm run package
+npm run prepare:test-vault
 ```
 
-For a fresh isolated vault with desktop mode enabled, run `npm run prepare:test-vault`. Open the printed folder in Obsidian and enable the plugin, then run `node scripts/obsidian-smoke.cjs /absolute/path/to/the/test-vault` and `node scripts/obsidian-block-smoke.cjs /absolute/path/to/the/test-vault`, followed by `node scripts/obsidian-editor-smoke.cjs /absolute/path/to/the/test-vault`. This uses the actual Obsidian CLI and refuses vaults without the test marker. Reports and screenshots go to `test-results/`. See [validation details](docs/TESTING.md). The separate HTML preview check additionally needs Playwright and Chromium.
+在实际 Obsidian 打开命令打印的隔离测试库并启用插件后，运行：
 
-Main runtime uses public Obsidian APIs, no Node/Electron imports. Minimum Obsidian 1.8.7.
+```sh
+node scripts/obsidian-writing-smoke.cjs /absolute/path/to/the/test-vault
+```
+
+运行时代码使用公开 Obsidian API，不导入 Node / Electron。测试驱动通过本机 Obsidian CLI 连接带标记的临时库，拒绝操作其他库。浏览器预览另有 `scripts/visual-check.cjs`。
 
 ## License
 
-Copyright © 2026 Shengyu Zhou. GPL-3.0-only. The three vector covers in `src/covers.ts` are original code-generated illustrations under the same license. Hider, Minimal and [shadcn/ui](https://github.com/shadcn-ui/ui) were design references; no component implementation was copied. The UI uses original scoped CSS and native Obsidian APIs; no React or Tailwind runtime is added. The host supplies the Obsidian API; markdown-it locates editable Markdown spans. Bundled dependency licenses are preserved in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) and main.js. Effie was a design reference based on its official documentation, not copied code.
+Copyright © 2026 Shengyu Zhou. GPL-3.0-only. [Effie](https://blog.effie.co/effie-tutorial-mac/) 是安静写作体验的参考，[shadcn/ui](https://github.com/shadcn-ui/ui) 是间距、边框与配色的参考；未复制它们的实现。界面使用原生 Obsidian API 和插件范围内的 CSS，没有添加 React / Tailwind 运行时。旧版矢量封面为原创。依赖许可证见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。

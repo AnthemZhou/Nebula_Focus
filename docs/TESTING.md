@@ -1,3 +1,54 @@
+# Validation — 0.9.0 continuous writing and optional libraries
+
+## Real Obsidian validation — 2026-10-20
+
+Host confirmed as **Darwin arm64, macOS 26.5.2**, running **Obsidian 1.14.4** (installer 1.13.7). The installed plugin files match the release candidate byte for byte. Work was confined to the marked temporary test vault; the personal vault was not changed.
+
+- **102/102** model and simulated-host tests pass, including managed library scope, concurrent membership deltas, native delayed-save synchronization, disk failure, mode persistence and all legacy regressions.
+- **24/24** new real-app writing/library checks: [report](MAC-0.9.0-WRITING.json).
+- **24/24** real-app legacy/general checks: [report](MAC-0.9.0-REGRESSION.json).
+- **16/16** real-app legacy block checks: [report](MAC-0.9.0-BLOCKS.json).
+- **16/16** real-app legacy editing/history checks: [report](MAC-0.9.0-EDITOR.json).
+
+All four final reports have empty captured runtime-error buffers. The writing and general runs each recorded one CLI child timeout after returning a complete evaluation response. The bounded transport accepted the completed response without repeating the operation. The other two reports have no transport warnings.
+
+The writing driver exercises the real native editor with Chromium IME composition, key input, cross-paragraph replacement, Cmd+Z and Shift+Cmd+Z. Heading and bold text retain identical measured rectangles and fonts on entering text. Explicit raw mode remains selected after deferred file-open notifications. Existing YAML properties are hidden by default and can be toggled explicitly without rewriting the note.
+
+The library driver verifies that creation, membership changes, adding columns and empty-cell focus/blur do not modify Markdown. Typing in a real native table cell writes only that note's property; the uncollected note remains byte-identical. Native view configuration retains membership; a real mouse click on a native card opens continuous writing. It also covers removal without deleting values, multiple libraries, rename tracking, immediate navigation after creating a note, ordinary native bases and pause/resume.
+
+At **320, 393 and 1024 CSS pixels**, default light/dark writing and library toolbars fit the actual app panes. The screenshots in the offline gallery are the shipped example notes in real Obsidian: [writing](ui-0.9.0-writing-light.png), [library](ui-0.9.0-library-light.png). The gallery is a read-only screenshot viewer, not an editor simulation. Its browser check loads all 12 captures at each of the three viewport widths without horizontal overflow or page errors.
+
+### Issues found and repaired
+
+- A native Bases TextFileView could save stale configuration on navigation and erase a just-added membership. Native changes are now flushed before a library mutation, then the public view data/cache is synchronized after the atomic file update. Simulated races and actual create-and-immediately-open behavior are covered.
+- Obsidian's deferred file-open notification could undo an explicit switch to Markdown source. File identity is now observed before the toolbar is displayed, so a late notification cannot replace the user's newer mode choice.
+- Native styling for notes that already contain frontmatter overrode the first property-hiding rule. The scoped writing rule now takes precedence; tests include existing values and both directions of the explicit toggle.
+- Driver timing was tightened to wait for editor content and native menu actions. Card opening uses a real pointer position because the native card view resolves its target from coordinates.
+
+### Reproduce
+
+```sh
+npm ci
+npm run build
+npm test
+npm run prepare:test-vault
+# Open the printed marked vault in actual Obsidian and enable Nebula Focus and Bases.
+node scripts/obsidian-writing-smoke.cjs /absolute/path/to/the/test-vault
+# These drivers explicitly select the optional legacy layout and Legacy Home fixture:
+node scripts/obsidian-smoke.cjs /absolute/path/to/the/test-vault
+node scripts/obsidian-block-smoke.cjs /absolute/path/to/the/test-vault
+node scripts/obsidian-editor-smoke.cjs /absolute/path/to/the/test-vault
+# Restore writing/Home, capture only shipped examples, then build the offline gallery:
+node scripts/capture-writing-examples.cjs /absolute/path/to/the/test-vault
+node scripts/demo.mjs
+```
+
+The main.js tested has SHA-256 `015f2abc0170318ba5c7434fb05d8122fd4899159a07977c6e0ba2e56903b5a1`; styles.css has `902b406bd036354f9f7c163fbd7c7df408ba037a107b9d7f853ba6672247ea9b`.
+
+Physical iPhone/Android keyboards, touch, the system Chinese candidate window, third-party themes and minimum-version 1.9.0 are not certified by this Mac 1.14.4 run. Links, code, math and other complex syntax retain native Live Preview editing behavior; the common heading/emphasis markers receive the stable presentation styles. Plain writing uses Obsidian's own save/history/recovery, while the legacy draft cache belongs only to the optional legacy editor. Renames while the plugin is unloaded may require reselecting library members.
+
+---
+
 # Validation — 0.8.0 continuous editing and recovery
 
 ## Real Obsidian validation — 2026-10-18

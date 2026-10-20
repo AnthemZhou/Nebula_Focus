@@ -53,6 +53,7 @@ cli('dev:errors', 'clear');
 evaluate(String.raw`
   if(app.vault.getName()!==${JSON.stringify(basename(vault))})throw Error('Wrong vault');
   const p=app.plugins.plugins['nebula-focus'];if(!p)throw Error('Plugin must be enabled');
+  p.settings.legacyPages=true;if(app.vault.getAbstractFileByPath('Legacy Home.md'))p.settings.homePath='Legacy Home.md';await p.saveSettings(true);
   const root='QA-'+Date.now();await app.vault.createFolder(root);
   window.__nfQA={root,p,seq:0,
     assert(value,message){if(!value)throw Error(message);},
