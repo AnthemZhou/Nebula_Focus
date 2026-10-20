@@ -6,8 +6,8 @@ const c=require('./obsidian-client.cjs')(process.argv[2]);
 const results=[],out=resolve('test-results');mkdirSync(out,{recursive:true});
 const version=require('../manifest.json').version;
 function check(name,run){try{const details=typeof run==='string'?c.evaluate(run):run();results.push({name,passed:true,details});console.log('PASS '+name);}catch(error){results.push({name,passed:false,error:error.stack});console.error('FAIL '+name+': '+error.message);}}
-function down(key,code,modifiers=0,text){c.cdp('Input.dispatchKeyEvent',{type:'keyDown',key,code,modifiers,text,windowsVirtualKeyCode:{ShiftLeft:16,Digit8:56,ArrowRight:39,Escape:27,KeyZ:90}[code]});}
-function up(key,code,modifiers=0){c.cdp('Input.dispatchKeyEvent',{type:'keyUp',key,code,modifiers,windowsVirtualKeyCode:{ShiftLeft:16,Digit8:56,ArrowRight:39,Escape:27,KeyZ:90}[code]});}
+function down(key,code,modifiers=0,text){c.cdp('Input.dispatchKeyEvent',{type:'keyDown',key,code,modifiers,text,windowsVirtualKeyCode:{ShiftLeft:16,Digit8:56,ArrowRight:39,ArrowLeft:37,Home:36,End:35,Escape:27,KeyZ:90}[code]});}
+function up(key,code,modifiers=0){c.cdp('Input.dispatchKeyEvent',{type:'keyUp',key,code,modifiers,windowsVirtualKeyCode:{ShiftLeft:16,Digit8:56,ArrowRight:39,ArrowLeft:37,Home:36,End:35,Escape:27,KeyZ:90}[code]});}
 function hold(){down('Shift','ShiftLeft',8);}
 function release(){up('Shift','ShiftLeft');}
 function star(){hold();down('*','Digit8',8,'*');up('*','Digit8',8);release();}
@@ -24,7 +24,8 @@ try{
  async wait(fn){for(let i=0;i<120;i++){if(await fn())return;await new Promise(r=>setTimeout(r,25));}throw Error('Timed out: '+fn);},
  view(){return app.workspace.getMostRecentLeaf().view;},
  async note(text){const f=await app.vault.create(this.root+'/Note-'+(++this.seq)+'.md',text);await this.p.openFile(f);await this.wait(()=>this.view().file===f&&this.view().editor?.getValue()===text&&this.view().containerEl.querySelector('.cm-content'));await new Promise(r=>setTimeout(r,100));this.view().editor.setCursor({line:0,ch:0});this.view().editor.focus();return f;},
- guide(){return document.querySelector('.nf-format-guide');},
+ guide(){return document.querySelector('.nf-format-guide:not([data-closing])');},
+ async settled(){await this.wait(()=>this.guide()&&this.guide().getAnimations().length===0);await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));},
  textStyle(text){const walk=document.createTreeWalker(this.view().containerEl.querySelector('.cm-content'),4);while(walk.nextNode()){if(walk.currentNode.textContent.includes(text))return getComputedStyle(walk.currentNode.parentElement).fontStyle;}return null;},
  button(label,parent=document){const e=[...parent.querySelectorAll('button,.menu-item')].find(e=>e.textContent===label||e.getAttribute('aria-label')===label);if(!e)throw Error('Missing '+label);e.click();},
  async saved(){await this.view().save();return app.vault.read(this.view().file);}
@@ -52,7 +53,7 @@ try{
  const q=window.__nfFormat,source='\\*保留星号\n\n\`\`\`text\n*代码内不配对\n\`\`\`\n\n行内 \`*代码\`';await q.note(source);q.assert(await q.saved()===source,'Literal source changed');q.assert(!q.view().containerEl.querySelector('.nf-literal-asterisk'),'Code or escaped star marked as prose');return {saved:await q.saved()};`);
  check('holding Shift opens help without moving focus, selection or text; release closes it',()=>{
   c.evaluate(`const q=window.__nfFormat;await q.note('长按 Shift 查看格式');q.before=q.view().editor.getCursor();`);hold();
-  const opened=c.evaluate(`const q=window.__nfFormat;await q.wait(()=>q.guide());q.assert(document.activeElement.matches('.cm-content'),'Guide stole editor focus');q.assert(q.view().editor.getValue()==='长按 Shift 查看格式','Help changed text');q.assert(JSON.stringify(q.before)===JSON.stringify(q.view().editor.getCursor()),'Cursor moved');return {rows:q.guide().querySelectorAll('dt').length};`);
+  const opened=c.evaluate(`const q=window.__nfFormat;await q.wait(()=>q.guide());q.assert(document.activeElement.matches('.cm-content'),'Guide stole editor focus');q.assert(q.view().editor.getValue()==='长按 Shift 查看格式','Help changed text');q.assert(JSON.stringify(q.before)===JSON.stringify(q.view().editor.getCursor()),'Cursor moved');return {rows:q.guide().querySelectorAll('.nf-guide-card').length};`);
   release();assert.equal(c.evaluate(`return !!window.__nfFormat.guide();`),false);return opened;
  });
  check('Shift+Arrow selects text normally and suppresses the guide',()=>{
@@ -77,10 +78,57 @@ try{
   c.evaluate(`const q=window.__nfFormat;await q.note('*源文');await q.p.setWritingMode(q.view(),true,true);`);hold();
   const raw=c.evaluate(`const q=window.__nfFormat;await new Promise(r=>setTimeout(r,650));q.assert(!q.guide(),'Guide in source mode');q.assert(q.view().getState().source===true,'Source mode lost');return {saved:await q.saved()};`);release();c.evaluate(`const q=window.__nfFormat;return q.p.setWritingMode(q.view(),false,true);`);return raw;
  });
+ check('category tabs switch by keyboard without editing the note',()=>{
+  c.evaluate(`const q=window.__nfFormat;q.p.formatGuide.open();q.guide().querySelector('[role=tab]').focus();q.source=q.view().editor.getValue();q.assert(q.guide().querySelectorAll('.nf-guide-card').length===8,'Wrong prefix count');`);
+  down('ArrowRight','ArrowRight');up('ArrowRight','ArrowRight');
+  c.evaluate(`const q=window.__nfFormat;q.assert(q.guide().querySelector('[aria-selected=true]').dataset.section==='inline','Arrow did not select text');q.assert(q.guide().querySelectorAll('.nf-guide-card').length===3,'Both groups visible');q.assert(q.guide().textContent.includes('保留星号原样'),'Literal-star tip missing');`);
+  down('Home','Home');up('Home','Home');
+  return c.evaluate(`const q=window.__nfFormat;q.assert(q.guide().querySelectorAll('.nf-guide-card').length===8,'Home did not return to prefixes');q.assert(q.view().editor.getValue()===q.source,'Tabs wrote note');q.p.formatGuide.close(true);`);
+ });
+ check('a real mouse click can browse held help without stealing writing focus',()=>{
+  c.evaluate(`const q=window.__nfFormat;q.p.formatGuide.close(false,true);q.view().editor.focus();`);hold();
+  const point=c.evaluate(`const q=window.__nfFormat;await q.settled();const r=q.guide().querySelector('[data-section=inline]').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};`);
+  for(const type of ['mousePressed','mouseReleased'])c.cdp('Input.dispatchMouseEvent',{type,...point,button:'left',clickCount:1,modifiers:8});
+  const details=c.evaluate(`const q=window.__nfFormat;q.assert(q.guide()?.querySelectorAll('.nf-guide-card').length===3,'Mouse failed to switch held help');q.assert(document.activeElement.matches('.cm-content'),'Held help stole focus');return {active:document.activeElement.className};`);release();return details;
+ });
+ check('entrance and exit animate; quick reopen cannot be removed by an old exit',`
+ const q=window.__nfFormat;q.p.formatGuide.open(false);q.assert(q.guide().getAnimations().length===1,'No entrance animation');await q.settled();
+ q.p.formatGuide.close();const old=document.querySelector('.nf-format-guide[data-closing]');q.assert(old&&old.inert&&old.getAttribute('aria-hidden')==='true','Exit still interactive');
+ q.p.formatGuide.open(false);const fresh=q.guide();await q.settled();q.assert(fresh===q.guide()&&!old.isConnected,'Old exit affected new guide');q.p.formatGuide.close(false,true);return {entryMs:240,exitMs:140};`);
+ check('reduced motion disables both entrance and exit animations',()=>{
+  c.cdp('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+  try{return c.evaluate(`const q=window.__nfFormat;q.p.formatGuide.open();q.assert(q.guide().getAnimations().length===0,'Reduced motion still animates');q.p.formatGuide.close();q.assert(!document.querySelector('.nf-format-guide'),'Reduced motion left exit');`);}
+  finally{c.cdp('Emulation.setEmulatedMedia',{features:[]});}
+ });
+ check('a split writing pane centers its own sheet and tracks sidebar resizing',()=>{
+  c.cdp('Emulation.setDeviceMetricsOverride',{width:1024,height:852,deviceScaleFactor:1,mobile:false});
+  return c.evaluate(`const q=window.__nfFormat,original=q.view().leaf,file=q.view().file,split=app.workspace.createLeafBySplit(original,'vertical');try{
+   await split.openFile(file,{state:{mode:'source',source:false}});app.workspace.setActiveLeaf(split,{focus:true});await q.wait(()=>split.view.containerEl.classList.contains('nf-writing'));await new Promise(r=>setTimeout(r,100));q.p.formatGuide.open(false);await q.settled();
+   const centered=()=>{const pane=split.view.containerEl.getBoundingClientRect(),r=q.guide().getBoundingClientRect();return Math.abs((r.left+r.right-pane.left-pane.right)/2)<1&&Math.abs(pane.bottom-r.bottom-12)<1&&r.left>=pane.left;};
+   q.assert(centered(),'Not centered within right pane');const before=split.view.containerEl.getBoundingClientRect().width;app.workspace.leftSplit.expand();await q.wait(()=>split.view.containerEl.getBoundingClientRect().width<before&&centered());
+   return {before,after:split.view.containerEl.getBoundingClientRect().width,centered:true};
+  }finally{q.p.formatGuide.close(false,true);app.workspace.leftSplit.collapse();split.detach();app.workspace.setActiveLeaf(original,{focus:true});}`);
+ });
+ check('a short window scrolls the cards while keeping the controls reachable',()=>{
+  c.cdp('Emulation.setDeviceMetricsOverride',{width:393,height:430,deviceScaleFactor:1,mobile:false});
+  return c.evaluate(`const q=window.__nfFormat;q.p.formatGuide.open();await q.settled();const e=q.guide(),r=e.getBoundingClientRect(),body=e.querySelector('.nf-guide-body');q.assert(r.top>=0&&r.bottom<=innerHeight,'Short sheet clipped');q.assert(body.scrollHeight>body.clientHeight,'Short sheet cannot scroll');body.scrollTop=body.scrollHeight;await new Promise(r=>requestAnimationFrame(r));q.assert(body.scrollTop>0,'Cards did not scroll');const close=e.querySelector('.nf-guide-close').getBoundingClientRect();q.assert(close.top>=r.top&&close.bottom<=r.bottom,'Close not reachable');q.p.formatGuide.close(false,true);return {bounds:r.toJSON(),scrollTop:body.scrollTop};`);
+ });
+ check('English labels remain readable in a narrow pane',()=>{
+  c.cdp('Emulation.setDeviceMetricsOverride',{width:320,height:852,deviceScaleFactor:1,mobile:false});
+  return c.evaluate(`const q=window.__nfFormat,language=q.p.settings.language;try{q.p.settings.language='en';q.p.formatGuide.open(false);await q.settled();q.assert(q.guide().textContent.includes('Paragraph'),'English labels missing');for(const card of q.guide().querySelectorAll('.nf-guide-card'))q.assert(card.scrollWidth<=card.clientWidth+1,'English card overflows');return {width:q.guide().getBoundingClientRect().width};}finally{q.p.formatGuide.close(false,true);q.p.settings.language=language;}`);
+ });
+ check('very short panes scroll the whole sheet without squeezing away its contents',()=>{
+  const measurements=[];
+  for(const height of [240,280]){
+   c.cdp('Emulation.setDeviceMetricsOverride',{width:1024,height,deviceScaleFactor:1,mobile:false});
+   measurements.push(c.evaluate(`const q=window.__nfFormat;q.p.formatGuide.open();await q.settled();const e=q.guide(),body=e.querySelector('.nf-guide-body');q.assert(e.classList.contains('nf-guide-short'),'Short layout missing');q.assert(body.clientHeight>200,'Cards squeezed away');q.assert(e.scrollHeight>e.clientHeight,'Whole sheet cannot scroll');e.scrollTop=e.scrollHeight;await new Promise(r=>requestAnimationFrame(r));const r=e.getBoundingClientRect(),foot=e.querySelector('.nf-guide-footer').getBoundingClientRect();q.assert(e.scrollTop>0&&foot.bottom<=r.bottom&&foot.top>=r.top,'Bottom content unreachable');e.scrollTop=0;q.assert(e.querySelector('.nf-guide-close').getBoundingClientRect().top>=r.top,'Close unreachable');const details={viewportHeight:innerHeight,sheetHeight:r.height,bodyHeight:body.clientHeight};q.p.formatGuide.close(false,true);return details;`));
+  }
+  return measurements;
+ });
  for(const theme of ['light','dark'])for(const width of [320,393,1024]){
   check(`guide fits ${theme} ${width}px without moving the document`,()=>{
    c.cdp('Emulation.setDeviceMetricsOverride',{width,height:852,deviceScaleFactor:1,mobile:false});
-   const details=c.evaluate(`const q=window.__nfFormat;q.p.formatGuide.close();app.changeTheme('${theme==='dark'?'obsidian':'moonstone'}');app.updateTheme();await q.note('### 安静地写\\n\\n按住 Shift，随时查看格式。\\n\\n先写下来，整理可以晚一点。');const content=q.view().containerEl.querySelector('.cm-content'),before=content.getBoundingClientRect().toJSON();q.p.formatGuide.open();await new Promise(r=>setTimeout(r,80));const r=q.guide().getBoundingClientRect();q.assert(r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight,'Guide clipped');q.assert(q.guide().scrollWidth<=q.guide().clientWidth+1,'Guide horizontal overflow');q.assert(JSON.stringify(before)===JSON.stringify(content.getBoundingClientRect().toJSON()),'Help shifted text');return {bounds:r.toJSON(),scrollable:q.guide().scrollHeight>q.guide().clientHeight};`);
+   const details=c.evaluate(`const q=window.__nfFormat;q.p.formatGuide.close(false,true);app.changeTheme('${theme==='dark'?'obsidian':'moonstone'}');app.updateTheme();await q.note('### 安静地写\\n\\n按住 Shift，随时查看格式。\\n\\n先写下来，整理可以晚一点。');const content=q.view().containerEl.querySelector('.cm-content'),before=content.getBoundingClientRect().toJSON();q.p.formatGuide.open(false);await q.settled();const r=q.guide().getBoundingClientRect(),pane=q.view().containerEl.getBoundingClientRect();q.assert(r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight,'Guide clipped');q.assert(Math.abs((r.left+r.right-pane.left-pane.right)/2)<1,'Guide not centered');q.assert(Math.abs(pane.bottom-r.bottom-12)<1,'Guide not at pane bottom');q.assert(q.guide().scrollWidth<=q.guide().clientWidth+1,'Guide horizontal overflow');q.assert(parseFloat(getComputedStyle(q.guide().querySelector('.nf-guide-card code')).fontSize)>=23,'Symbols too small');q.assert(parseFloat(getComputedStyle(q.guide().querySelector('.nf-guide-label')).fontSize)>=16,'Labels too small');q.assert(JSON.stringify(before)===JSON.stringify(content.getBoundingClientRect().toJSON()),'Help shifted text');return {bounds:r.toJSON(),centered:true,symbolSize:24,labelSize:16};`);
    c.cli('dev:screenshot',`path=${resolve(`docs/ui-${version}-guide-${theme}-${width}.png`)}`);return details;
   });
  }
@@ -91,7 +139,7 @@ try{
  });
  check('Obsidian reports no runtime errors',()=>{const errors=c.cli('dev:errors');assert(/No errors captured|^\[\]$|^$/.test(errors),errors);return {errors};});
 }finally{
- try{release();c.evaluate(`const q=window.__nfFormat;if(q){const p=app.plugins.plugins['nebula-focus'];app.changeTheme(q.theme);app.updateTheme();const f=app.vault.getAbstractFileByPath(p.settings.homePath||'Home.md');if(f)await p.openFile(f);}`);c.cdp('Emulation.clearDeviceMetricsOverride');c.cdp('Emulation.setFocusEmulationEnabled',{enabled:false});c.cli('dev:debug','off');}catch(error){results.push({name:'cleanup',passed:false,error:error.message});}
+ try{release();c.evaluate(`const q=window.__nfFormat;if(q){const p=app.plugins.plugins['nebula-focus'];app.changeTheme(q.theme);app.updateTheme();const f=app.vault.getAbstractFileByPath(p.settings.homePath||'Home.md');if(f)await p.openFile(f);}`);c.cdp('Emulation.setEmulatedMedia',{features:[]});c.cdp('Emulation.clearDeviceMetricsOverride');c.cdp('Emulation.setFocusEmulationEnabled',{enabled:false});c.cli('dev:debug','off');}catch(error){results.push({name:'cleanup',passed:false,error:error.message});}
  writeFileSync(resolve(out,'obsidian-format-smoke.json'),JSON.stringify({environment,results,warnings:c.warnings},null,2)+'\n');
 }
 if(results.some(r=>!r.passed))process.exitCode=1;

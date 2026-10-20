@@ -1,4 +1,43 @@
-# Validation — 0.9.1 formatting guide and literal stars
+# Validation — 0.9.2 bottom-centered formatting guide
+
+## Real Obsidian validation — 2026-10-20
+
+Tested on **Darwin arm64, macOS 26.5.2**, with actual **Obsidian 1.14.4** (installer 1.13.7). The marked temporary vault created for 0.9.1 was reused with the 0.9.2 plugin files. No personal vault was modified.
+
+- **130/130** automated tests pass. Added coverage includes visible-pane geometry, pane resize observation and cleanup, keyboard category tabs, old/new animation isolation and reduced motion.
+- **27/27** real-app formatting checks pass: [report](MAC-0.9.2-FORMAT.json). The final run has no transport warnings and no captured runtime errors.
+- Actual key, mouse and IME events verify the original Shift/star behavior, native undo, read-only category switching, preserved editor focus, Escape, file changes, raw mode, pause and unload.
+- A real vertical split and sidebar expansion verify that the sheet remains centered in the active writing pane with 12 px bottom clearance. At 320/393/1024 CSS pixels in both themes, document geometry stays unchanged, syntax is 24 px and labels are 16 px. English labels fit the narrow layout.
+- Entry/exit animations and rapid reopen are tested in the actual renderer. Emulated reduced motion removes both animations. A 393 × 430 window keeps the card area scrollable with the controls visible. At 1024 × 240 and 1024 × 280, the whole sheet scrolls and every card remains reachable.
+
+The prior release's 24 writing/Bases checks remain historical evidence below; they were not rerun for this presentation change. The full automated suite includes those existing model regressions. The offline gallery contains 18 actual-app captures of the current guide and writing/library examples. Its browser check loads all 18 captures at each of 320/393/1024 px without horizontal overflow or page errors. Narrow desktop viewports do not certify physical phone behavior.
+
+The earlier user-used 0.6.0 test vault was also updated by replacing only the three plugin files. They match the final 0.9.2 build byte for byte, the plugin loads as 0.9.2, and its existing Home.md remains byte-identical.
+
+### Presentation and lifecycle
+
+The sheet uses the intersection of the active writing pane and visible viewport, rather than the whole window, for positioning and size limits. ResizeObserver tracks split and sidebar changes. The Paragraph and Text tabs show only one group at a time. Closing ends interaction immediately while a separate inert node finishes its 140 ms exit. A new opening, file change, blur or plugin unload cleans up the old animation. System reduced motion skips the 240 ms entry and the exit.
+
+Review found that fixed controls could squeeze the cards to zero height in very short panes. When available sheet height is below 280 px, the entire sheet scrolls without reducing font size; the final real-app checks cover reaching its footer and returning to the close control. Normal-height panes retain separate body scrolling.
+
+### Reproduce
+
+```sh
+npm ci
+npm run build
+npm test
+npm run prepare:test-vault
+# Open the marked vault in actual Obsidian and enable Nebula Focus and Bases.
+node scripts/obsidian-format-smoke.cjs /absolute/path/to/the/test-vault
+node scripts/capture-writing-examples.cjs /absolute/path/to/the/test-vault
+node scripts/demo.mjs
+```
+
+Physical mobile keyboards/touch, the system IME candidate window, third-party themes and minimum-version Obsidian 1.9.0 remain unverified.
+
+---
+
+# Previous validation — 0.9.1 formatting guide and literal stars
 
 ## Real Obsidian validation — 2026-10-20
 

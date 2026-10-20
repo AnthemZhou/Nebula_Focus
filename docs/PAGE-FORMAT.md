@@ -1,4 +1,4 @@
-# Writing and library format — Nebula Focus 0.9.1
+# Writing and library format — Nebula Focus 0.9.2
 
 ## Ordinary notes
 
@@ -9,6 +9,12 @@ User-entered property values live in the individual note's native frontmatter. T
 ## Formatting guide and literal stars
 
 Holding Shift alone for 600 ms in the default writing editor opens a read-only guide without taking focus. Releasing Shift, pressing another key, selecting text, composing IME input, switching files or leaving the window dismisses it. More → Formatting guide and the command palette offer a persistent, keyboard-accessible version. It never inserts prefixes or changes a note.
+
+The guide is centered at the bottom of the active writing pane, including split views, with a maximum width of 640 px and 12 px margins inside its visible area. It follows pane resizing and stays within the visible viewport. Larger syntax and labels appear in two groups, Paragraph and Text. Paragraph contains eight cards in four columns on wide panes and two columns on narrow panes; Text contains italic, bold and highlight examples. The persistent guide supports arrow keys, Home and End for switching groups, and Escape to close and return to the editor. Switching groups is also read-only.
+
+The panel enters over 240 ms and exits over 140 ms with a slight vertical movement and fade. The system's reduced-motion preference disables these animations. Closing ends interaction immediately; a departing animation cannot affect a newly opened guide. View changes and plugin disposal clean up the panel, animation and pane-size observer. These presentation changes do not introduce a note format, property or storage migration.
+
+The card area scrolls when necessary. When the available sheet height is below 280 px, the whole sheet scrolls instead, preserving readable text and access to all cards in very short panes.
 
 Obsidian's stream highlighter provisionally styles an unmatched leading `*` as italic. A public CodeMirror extension checks CommonMark source ranges and corrects that presentation in top-level ordinary paragraphs. The unmatched star remains visible; complete emphasis, including a pair spanning soft line breaks, retains native styling. Valid nested emphasis and inline code are excluded from the correction. This changes decorations only, with no source transactions or changes to automatic-pairing preferences.
 

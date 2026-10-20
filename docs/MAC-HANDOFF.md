@@ -1,5 +1,7 @@
 # Mac continuation — Nebula Focus 0.6.0
 
+**2026-10-20 follow-up:** 0.9.2 redesigns the formatting guide as a bottom-centered sheet within the active pane, with larger cards, Paragraph/Text groups and reduced-motion-aware transitions. 130 automated tests and 27 actual Mac Obsidian checks pass, including split/sidebar resizing and very short panes. See TESTING.md for current evidence.
+
 **2026-10-20 follow-up:** 0.9.1 adds hold-Shift formatting help and repairs unmatched leading-star presentation. 125 automated tests and 43 current real-app checks pass in a fresh 0.9.1 temporary vault; previous test-vault edits were preserved. See TESTING.md for scope and reports.
 
 **2026-10-20 follow-up:** 0.9.0 makes continuous native writing the default and adds independent optional Bases libraries with on-demand note properties. 102 automated and 80 real-app checks pass on this Mac. Native delayed-save synchronization, deferred file-open mode resets and property-panel CSS precedence were repaired. See README.md, PAGE-FORMAT.md and TESTING.md for current behavior and evidence. Legacy layouts remain opt-in.

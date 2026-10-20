@@ -101,7 +101,7 @@ export default class NebulaFocus extends Plugin {
   }
 
   private onFileOpened(file: TFile | null): void {
-    this.formatGuide?.close();
+    this.formatGuide?.close(false, true);
     const token = ++this.fileToken;
     this.refresh();
     if (!file || !this.active()) return;
@@ -442,7 +442,7 @@ export default class NebulaFocus extends Plugin {
       }));
     new Setting(container).setName(t('原界面', 'Original interface')).setDesc(t('临时恢复全部工具；禁用插件也会恢复原界面。', 'Temporarily restore all controls. Disabling the plugin also restores them.'))
       .addButton(v => v.setButtonText(t('显示原界面', 'Restore')).onClick(() => this.setPaused(true)));
-    container.createEl('p', { cls: 'nf-help', text: t('v0.9.1 · 连续写作，按需整理。普通笔记不会自动添加属性。资料库需要启用 Obsidian 的数据库核心插件。', 'v0.9.1 · Continuous writing, optional libraries. Notes get no automatic properties. Libraries require the Obsidian Bases core plugin.') });
+    container.createEl('p', { cls: 'nf-help', text: t('v0.9.2 · 连续写作，按需整理。普通笔记不会自动添加属性。资料库需要启用 Obsidian 的数据库核心插件。', 'v0.9.2 · Continuous writing, optional libraries. Notes get no automatic properties. Libraries require the Obsidian Bases core plugin.') });
   }
 
   report(error: unknown): void {

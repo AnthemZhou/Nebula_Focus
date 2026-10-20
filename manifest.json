@@ -1,7 +1,7 @@
 {
   "id": "nebula-focus",
   "name": "Nebula Focus",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "minAppVersion": "1.9.0",
   "description": "Continuous writing with optional native Bases libraries. Notes stay plain Markdown; properties are added only when filled.",
   "author": "Shengyu Zhou",

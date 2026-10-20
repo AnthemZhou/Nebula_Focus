@@ -44,38 +44,68 @@ body.is-mobile.nf-quiet.nf-reading :is(.mobile-navbar, .mobile-toolbar) { displa
   .cm-formatting-strikethrough, .cm-formatting-highlight
 ) { display: none; }
 .nf-writing .markdown-source-view.mod-cm6 .cm-content { caret-color: var(--text-normal); }
-/* A reference card floats over the page without moving text or taking editor
-   focus while Shift is held. The menu entry opens the same card persistently. */
+/* A bottom-centered material sheet. Usually only the body scrolls; very short
+   panes scroll the whole sheet rather than squeezing its content to zero. */
 .nf-format-guide {
   position: fixed; z-index: var(--layer-popover, 30);
-  width: 350px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px);
-  box-sizing: border-box; overflow: auto; overscroll-behavior: contain;
-  padding: 18px 20px; border: 1px solid var(--nf-border); border-radius: 12px;
-  background: var(--nf-surface); color: var(--nf-foreground);
-  box-shadow: 0 8px 32px #00000018;
-  font: 13px/1.55 var(--font-interface, system-ui);
+  display: flex; flex-direction: column; gap: 16px; box-sizing: border-box;
+  padding: 22px; overflow: hidden; border: 1px solid var(--nf-border); border-radius: 24px;
+  background: color-mix(in srgb, var(--nf-surface) 94%, transparent);
+  color: var(--nf-foreground); backdrop-filter: blur(24px) saturate(1.25);
+  -webkit-backdrop-filter: blur(24px) saturate(1.25);
+  box-shadow: 0 18px 56px #0000001f, 0 3px 12px #0000000a, inset 0 1px 0 #ffffff66;
+  font: 16px/1.5 -apple-system, BlinkMacSystemFont, var(--font-interface, system-ui);
+  transform-origin: center bottom;
 }
-.nf-guide-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.nf-guide-header strong { font-size: 15px; font-weight: 600; }
-.nf-guide-close {
-  display: grid; place-items: center; width: 28px; height: 28px; padding: 0;
-  border: 0; box-shadow: none; background: transparent; color: var(--nf-muted);
-  font-size: 23px; cursor: pointer;
+.theme-dark .nf-format-guide { box-shadow: 0 18px 56px #00000050, 0 3px 12px #00000026, inset 0 1px 0 #ffffff0d; }
+.nf-format-guide[data-closing] { pointer-events: none; }
+.nf-guide-header { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 16px; }
+.nf-guide-header strong { font-size: 20px; line-height: 1.3; font-weight: 650; letter-spacing: -.35px; }
+.nf-format-guide .nf-guide-close {
+  display: grid; place-items: center; flex: none; width: 36px; height: 36px; padding: 0;
+  border: 0; border-radius: 50%; box-shadow: none; background: var(--nf-hover); color: var(--nf-muted);
+  font: 24px/1 var(--font-interface, system-ui); cursor: pointer;
 }
-.nf-guide-close:hover { background: var(--nf-hover); }
-.nf-guide-hint, .nf-guide-foot { color: var(--nf-muted); font-size: 12px; margin: 8px 0 14px; }
-.nf-guide-prefixes { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px 16px; margin: 0; }
-.nf-guide-prefixes dt { display: flex; align-items: center; gap: 8px; margin: 0; }
-.nf-guide-prefixes dd { margin: 0; }
-.nf-format-guide code { padding: 0; background: transparent; color: var(--nf-foreground); font: 12px/1.5 var(--font-monospace); }
-.nf-format-guide kbd {
-  font: 10px/1.5 var(--font-interface, system-ui); color: var(--nf-muted);
-  padding: 1px 5px; border: 1px solid var(--nf-border); border-radius: 4px; background: var(--nf-subtle);
+.nf-format-guide .nf-guide-close:hover { background: var(--nf-border); color: var(--nf-foreground); }
+.nf-guide-tabs { display: flex; flex: none; gap: 3px; padding: 3px; border-radius: 12px; background: var(--nf-hover); }
+.nf-guide-tabs > button {
+  flex: 1; min-width: 0; height: 36px; padding: 4px 12px; border: 0; border-radius: 9px;
+  box-shadow: none; background: transparent; color: var(--nf-muted);
+  font: 600 15px/1.4 var(--font-interface, system-ui); cursor: pointer;
 }
-.nf-guide-inline { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--nf-border); }
-.nf-guide-inline p { margin: 0 0 8px; color: var(--nf-muted); font-size: 12px; }
-.nf-guide-inline > div { display: flex; justify-content: space-between; margin: 5px 0; gap: 16px; }
-.nf-guide-foot { margin: 14px 0 0; overflow-wrap: anywhere; }
+.nf-guide-tabs > button[aria-selected="true"] {
+  color: var(--nf-foreground); background: var(--nf-surface); box-shadow: 0 1px 4px #00000012;
+}
+.nf-format-guide :is(button, [role="tabpanel"]):focus-visible { outline: 2px solid var(--nf-ring); outline-offset: 2px; }
+.nf-guide-body { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 1px 2px; }
+.nf-guide-hint { margin: 0 0 14px; font-size: 15px; color: var(--nf-muted); }
+.nf-guide-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.nf-guide-card {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  min-height: 100px; box-sizing: border-box; padding: 14px 8px; border-radius: 14px;
+  background: var(--nf-subtle); text-align: center;
+}
+.nf-format-guide code { padding: 0; background: transparent; color: var(--nf-foreground); font: 500 24px/1.3 var(--font-monospace); }
+.nf-guide-label { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 5px; font-size: 16px; line-height: 1.4; }
+.nf-format-guide kbd { padding: 1px 5px; border: 1px solid var(--nf-border); border-radius: 5px; background: var(--nf-surface); color: var(--nf-muted); font: 13px/1.4 var(--font-interface, system-ui); }
+.nf-guide-inline { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.nf-guide-inline code { font-size: 21px; }
+.nf-guide-italic .nf-guide-label { font-style: italic; }
+.nf-guide-bold .nf-guide-label { font-weight: 750; }
+.nf-guide-highlight .nf-guide-label { padding: 0 5px; border-radius: 4px; background: var(--text-highlight-bg, #f4cc6050); }
+.nf-guide-note { margin: 14px 0 0; color: var(--nf-muted); font-size: 15px; }
+.nf-guide-note code { font-size: 18px; }
+.nf-guide-footer { flex: none; text-align: center; color: var(--nf-muted); font-size: 14px; }
+.nf-guide-narrow { padding: 18px; gap: 14px; border-radius: 22px; }
+.nf-guide-narrow .nf-guide-prefix { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.nf-guide-narrow .nf-guide-card { min-height: 86px; gap: 8px; }
+.nf-guide-narrow .nf-guide-inline { grid-template-columns: minmax(0, 1fr); }
+.nf-guide-narrow .nf-guide-inline .nf-guide-card { flex-direction: row; justify-content: space-between; min-height: 76px; padding-inline: 16px; }
+.nf-guide-short { overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.nf-guide-short .nf-guide-body { flex: none; overflow: visible; }
+@media (prefers-reduced-transparency: reduce) {
+  .nf-format-guide { background: var(--nf-surface); backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
 .nf-library-dialog .nf-search, .nf-members-dialog .nf-search { width: 100%; margin: 16px 0 8px; }
 .nf-member-list { max-height: min(52vh, 420px); overflow: auto; }
 .nf-member-row { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 9px 10px; border-radius: 7px; }
