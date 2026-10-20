@@ -15,7 +15,7 @@ async function boot(source) {
   const host=createHost(dom.window,{settings:{legacyPages:true},files:{'Home.md':source},renderMarkdown:text=>new(require('markdown-it'))({html:true}).render(text)}),module={exports:{}};
   const context=vm.createContext({window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,Node:dom.window.Node,
     NodeFilter:dom.window.NodeFilter,MutationObserver:dom.window.MutationObserver,TextEncoder,console,module,exports:module.exports,
-    require:name=>{assert.equal(name,'obsidian');return host.api;}});
+    require:name=>{if(name==='@codemirror/view'||name==='@codemirror/state')return require(name);assert.equal(name,'obsidian');return host.api;}});
   new vm.Script(readFileSync('main.js','utf8')).runInContext(context);
   const plugin=new module.exports.default();await plugin.onload();await delay(90);
   return {...host,plugin,doc:dom.window.document,win:dom.window,

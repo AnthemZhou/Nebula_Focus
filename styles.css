@@ -1,6 +1,6 @@
 /* Nebula Focus — Copyright (c) 2026 Shengyu Zhou. GPL-3.0-only license. */
 /* Semantic surfaces follow the active Obsidian theme. All rules are plugin scoped. */
-.nf-managed, .nf-dialog, .nf-resume {
+.nf-managed, .nf-dialog, .nf-resume, .nf-format-guide {
   --nf-surface: var(--background-primary);
   --nf-foreground: var(--text-normal);
   --nf-muted: var(--text-muted);
@@ -44,6 +44,38 @@ body.is-mobile.nf-quiet.nf-reading :is(.mobile-navbar, .mobile-toolbar) { displa
   .cm-formatting-strikethrough, .cm-formatting-highlight
 ) { display: none; }
 .nf-writing .markdown-source-view.mod-cm6 .cm-content { caret-color: var(--text-normal); }
+/* A reference card floats over the page without moving text or taking editor
+   focus while Shift is held. The menu entry opens the same card persistently. */
+.nf-format-guide {
+  position: fixed; z-index: var(--layer-popover, 30);
+  width: 350px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px);
+  box-sizing: border-box; overflow: auto; overscroll-behavior: contain;
+  padding: 18px 20px; border: 1px solid var(--nf-border); border-radius: 12px;
+  background: var(--nf-surface); color: var(--nf-foreground);
+  box-shadow: 0 8px 32px #00000018;
+  font: 13px/1.55 var(--font-interface, system-ui);
+}
+.nf-guide-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.nf-guide-header strong { font-size: 15px; font-weight: 600; }
+.nf-guide-close {
+  display: grid; place-items: center; width: 28px; height: 28px; padding: 0;
+  border: 0; box-shadow: none; background: transparent; color: var(--nf-muted);
+  font-size: 23px; cursor: pointer;
+}
+.nf-guide-close:hover { background: var(--nf-hover); }
+.nf-guide-hint, .nf-guide-foot { color: var(--nf-muted); font-size: 12px; margin: 8px 0 14px; }
+.nf-guide-prefixes { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px 16px; margin: 0; }
+.nf-guide-prefixes dt { display: flex; align-items: center; gap: 8px; margin: 0; }
+.nf-guide-prefixes dd { margin: 0; }
+.nf-format-guide code { padding: 0; background: transparent; color: var(--nf-foreground); font: 12px/1.5 var(--font-monospace); }
+.nf-format-guide kbd {
+  font: 10px/1.5 var(--font-interface, system-ui); color: var(--nf-muted);
+  padding: 1px 5px; border: 1px solid var(--nf-border); border-radius: 4px; background: var(--nf-subtle);
+}
+.nf-guide-inline { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--nf-border); }
+.nf-guide-inline p { margin: 0 0 8px; color: var(--nf-muted); font-size: 12px; }
+.nf-guide-inline > div { display: flex; justify-content: space-between; margin: 5px 0; gap: 16px; }
+.nf-guide-foot { margin: 14px 0 0; overflow-wrap: anywhere; }
 .nf-library-dialog .nf-search, .nf-members-dialog .nf-search { width: 100%; margin: 16px 0 8px; }
 .nf-member-list { max-height: min(52vh, 420px); overflow: auto; }
 .nf-member-row { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 9px 10px; border-radius: 7px; }

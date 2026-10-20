@@ -1,0 +1,202 @@
+{
+  "environment": {
+    "platform": "darwin",
+    "version": "1.14.4 (installer 1.13.7)",
+    "vault": "Nebula-Focus-0.9.1-IBFnhE"
+  },
+  "results": [
+    {
+      "name": "a lone leading star stays visible and does not italicize the paragraph",
+      "passed": true,
+      "details": {
+        "saved": "*普通文字 Alpha。",
+        "style": "normal"
+      }
+    },
+    {
+      "name": "closing the star restores real italic and native undo restores literal display",
+      "passed": true,
+      "details": {
+        "paired": {
+          "saved": "*普通文字 Alpha。*"
+        },
+        "undone": "*普通文字 Alpha。"
+      }
+    },
+    {
+      "name": "star plus space still creates a native list",
+      "passed": true,
+      "details": {
+        "saved": "* 列表正文"
+      }
+    },
+    {
+      "name": "valid multiline and nested italics retain their native style",
+      "passed": true,
+      "details": {
+        "saved": "*普通文字和 _真正斜体_。"
+      }
+    },
+    {
+      "name": "escaped stars and code remain literal and source remains unchanged",
+      "passed": true,
+      "details": {
+        "saved": "\\*保留星号\n\n```text\n*代码内不配对\n```\n\n行内 `*代码`"
+      }
+    },
+    {
+      "name": "holding Shift opens help without moving focus, selection or text; release closes it",
+      "passed": true,
+      "details": {
+        "rows": 8
+      }
+    },
+    {
+      "name": "Shift+Arrow selects text normally and suppresses the guide",
+      "passed": true,
+      "details": {
+        "selected": "长"
+      }
+    },
+    {
+      "name": "Chinese composition cancels pending help and commits unchanged text",
+      "passed": true,
+      "details": {
+        "saved": "中文输入"
+      }
+    },
+    {
+      "name": "More menu pins the guide; Escape returns focus to writing",
+      "passed": true
+    },
+    {
+      "name": "changing files and pausing close pending and visible guides",
+      "passed": true
+    },
+    {
+      "name": "raw source keeps native formatting and disables the hold guide",
+      "passed": true,
+      "details": {
+        "saved": "*源文"
+      }
+    },
+    {
+      "name": "guide fits light 320px without moving the document",
+      "passed": true,
+      "details": {
+        "bounds": {
+          "x": 12,
+          "y": 334.9921875,
+          "width": 296,
+          "height": 501.0078125,
+          "top": 334.9921875,
+          "right": 308,
+          "bottom": 836,
+          "left": 12
+        },
+        "scrollable": false
+      }
+    },
+    {
+      "name": "guide fits light 393px without moving the document",
+      "passed": true,
+      "details": {
+        "bounds": {
+          "x": 27,
+          "y": 334.9921875,
+          "width": 350,
+          "height": 501.0078125,
+          "top": 334.9921875,
+          "right": 377,
+          "bottom": 836,
+          "left": 27
+        },
+        "scrollable": false
+      }
+    },
+    {
+      "name": "guide fits light 1024px without moving the document",
+      "passed": true,
+      "details": {
+        "bounds": {
+          "x": 658,
+          "y": 334.9921875,
+          "width": 350,
+          "height": 501.0078125,
+          "top": 334.9921875,
+          "right": 1008,
+          "bottom": 836,
+          "left": 658
+        },
+        "scrollable": false
+      }
+    },
+    {
+      "name": "guide fits dark 320px without moving the document",
+      "passed": true,
+      "details": {
+        "bounds": {
+          "x": 12,
+          "y": 334.9921875,
+          "width": 296,
+          "height": 501.0078125,
+          "top": 334.9921875,
+          "right": 308,
+          "bottom": 836,
+          "left": 12
+        },
+        "scrollable": false
+      }
+    },
+    {
+      "name": "guide fits dark 393px without moving the document",
+      "passed": true,
+      "details": {
+        "bounds": {
+          "x": 27,
+          "y": 334.9921875,
+          "width": 350,
+          "height": 501.0078125,
+          "top": 334.9921875,
+          "right": 377,
+          "bottom": 836,
+          "left": 27
+        },
+        "scrollable": false
+      }
+    },
+    {
+      "name": "guide fits dark 1024px without moving the document",
+      "passed": true,
+      "details": {
+        "bounds": {
+          "x": 658,
+          "y": 334.9921875,
+          "width": 350,
+          "height": 501.0078125,
+          "top": 334.9921875,
+          "right": 1008,
+          "bottom": 836,
+          "left": 658
+        },
+        "scrollable": false
+      }
+    },
+    {
+      "name": "unloading removes the guide and all hold listeners",
+      "passed": true,
+      "details": {
+        "guidePresent": false,
+        "oldDisposed": true
+      }
+    },
+    {
+      "name": "Obsidian reports no runtime errors",
+      "passed": true,
+      "details": {
+        "errors": "No errors captured."
+      }
+    }
+  ],
+  "warnings": []
+}

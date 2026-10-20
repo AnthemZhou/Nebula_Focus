@@ -1,4 +1,4 @@
-# Nebula Focus 0.9.0
+# Nebula Focus 0.9.1
 
 连续写作，按需整理。一个给 Obsidian 做减法的插件。GPL-3.0-only。
 
@@ -6,11 +6,17 @@
 
 ## 这次的变化
 
+**单独按住 Shift 约 0.6 秒，显示格式速查；松开收起。**标题、列表、待办、引用和代码块的段首输入方式集中展示。Shift + 8 和 Shift + 方向键照常使用；「更多 → 格式速查」可持续显示，按 Esc 关闭。命令面板也有 `Nebula Focus: Show formatting guide`，可自行绑定热键。速查只提供提示，不修改正文。
+
+修复普通段落开头只输入一个 `*` 就整段变斜、星号又被隐藏的问题。未配对的星号现在保持可见，补齐 `*文字*` 后才显示斜体。`* `（星号后加空格）仍是列表；`\*` 表示字面星号。复杂 Obsidian 扩展语法与旧版布局继续使用原生行为。
+
+![真实 Obsidian 中的格式速查](docs/ui-0.9.1-guide-light-1024.png)
+
 正文改为一整篇连续编辑，使用 Obsidian 的原生实时阅览编辑器。可以跨段落选取、输入、粘贴、撤销重做，不再逐块进入编辑，也不再有“完成 / 取消”框。标题、粗体、斜体等常用格式的标记保持隐藏，光标进入标题时文字不会被 `###` 向右推。
 
 资料库是单独入口。写作页面默认只留下文稿、笔记导航和少量操作；封面、分栏、拖动分区保留在可选的“旧版页面布局”中。
 
-![真实 Obsidian 中的连续写作](docs/ui-0.9.0-writing-light.png)
+![真实 Obsidian 中的连续写作](docs/ui-0.9.1-writing-light.png)
 
 ## 资料库与属性
 
@@ -21,11 +27,11 @@
 - **移出资料库不会删除内容或属性。**已经填写的字段仍属于笔记本身。
 - 表格、卡片、排序、筛选、字段类型等由 Obsidian 原生 Bases 承载。字段名称相同，就表示同一个笔记属性；不同用途的状态请用不同名称，例如“阅读状态”“项目状态”。
 
-![真实 Obsidian 中的资料库](docs/ui-0.9.0-library-light.png)
+![真实 Obsidian 中的资料库](docs/ui-0.9.1-library-light.png)
 
 ## 如何试用
 
-1. 从 [0.9.0 预发布页面](https://github.com/AnthemZhou/Nebula_Focus/releases/tag/0.9.0) 下载安装包，将 `nebula-focus` 文件夹放入测试库的 `.obsidian/plugins/`。
+1. 从 [0.9.1 预发布页面](https://github.com/AnthemZhou/Nebula_Focus/releases/tag/0.9.1) 下载安装包，将 `nebula-focus` 文件夹放入测试库的 `.obsidian/plugins/`。
 2. 启用插件。桌面端在插件设置中关闭“仅在手机和平板启用”。打开 Markdown 即可连续写作。
 3. 在 Obsidian“设置 → 核心插件”启用“数据库 / Bases”。点击左上角“资料库”，新建并选择收录笔记。
 4. 资料库右上角“收录笔记”管理成员；“资料库操作 → 添加字段”增加空列，“新建笔记”创建空白文稿并收录。
@@ -61,6 +67,7 @@ npm run prepare:test-vault
 
 ```sh
 node scripts/obsidian-writing-smoke.cjs /absolute/path/to/the/test-vault
+node scripts/obsidian-format-smoke.cjs /absolute/path/to/the/test-vault
 ```
 
 运行时代码使用公开 Obsidian API，不导入 Node / Electron。测试驱动通过本机 Obsidian CLI 连接带标记的临时库，拒绝操作其他库。浏览器预览另有 `scripts/visual-check.cjs`。

@@ -1,10 +1,18 @@
-# Writing and library format — Nebula Focus 0.9.0
+# Writing and library format — Nebula Focus 0.9.1
 
 ## Ordinary notes
 
 A note can be a completely plain Markdown file with no YAML. Opening, typing in, or collecting a note does not create a frontmatter template. The default continuous editor is Obsidian Live Preview, with scoped presentation styles. Obsidian owns text persistence and undo history. Explicit Markdown source mode preserves access to all syntax and metadata.
 
 User-entered property values live in the individual note's native frontmatter. The writing surface hides the property panel by default; More → Show note properties reveals it for the current file. Switching files hides it again. Existing properties are never automatically deleted. Clearing an existing value in the native property editor follows Obsidian's behavior, which may leave an empty key; this is distinct from automatically creating fields on untouched notes.
+
+## Formatting guide and literal stars
+
+Holding Shift alone for 600 ms in the default writing editor opens a read-only guide without taking focus. Releasing Shift, pressing another key, selecting text, composing IME input, switching files or leaving the window dismisses it. More → Formatting guide and the command palette offer a persistent, keyboard-accessible version. It never inserts prefixes or changes a note.
+
+Obsidian's stream highlighter provisionally styles an unmatched leading `*` as italic. A public CodeMirror extension checks CommonMark source ranges and corrects that presentation in top-level ordinary paragraphs. The unmatched star remains visible; complete emphasis, including a pair spanning soft line breaks, retains native styling. Valid nested emphasis and inline code are excluded from the correction. This changes decorations only, with no source transactions or changes to automatic-pairing preferences.
+
+The correction deliberately leaves headings, lists, blockquotes, YAML, HTML and paragraphs containing wiki links, Obsidian comments or math to native rendering. Explicit Markdown source mode and legacy layouts remain native. The guide explains `*text*` for italics, `* ` for a list and `\*` for a literal star. See Obsidian's [formatting reference](https://help.obsidian.md/syntax).
 
 ## Independent libraries
 

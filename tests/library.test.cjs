@@ -15,7 +15,7 @@ async function boot(){
   const mod={exports:{}};
   new vm.Script(readFileSync('main.js','utf8')).runInContext(vm.createContext({
     window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,MutationObserver:dom.window.MutationObserver,TextEncoder,console,
-    module:mod,exports:mod.exports,require:name=>{assert.equal(name,'obsidian');return host.api;}
+    module:mod,exports:mod.exports,require:name=>{if(name==='@codemirror/view'||name==='@codemirror/state')return require(name);assert.equal(name,'obsidian');return host.api;}
   }));
   const plugin=new mod.exports.default();await plugin.onload();await delay(70);
   return {...host,plugin,doc:dom.window.document,close(){plugin.cleanup();dom.window.close();}};

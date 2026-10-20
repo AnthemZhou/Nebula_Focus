@@ -11,7 +11,7 @@ async function boot(files={'Home.md':'## A\n\nOriginal\n','Other.md':'## B\n\nOt
   const dom=new JSDOM('<!doctype html><body><div class="workspace"></div></body>',{url:'https://fixture.invalid/',pretendToBeVisual:true});
   const host=createHost(dom.window,{files,renderMarkdown:text=>new MarkdownIt({html:true}).render(text)});
   const mod={exports:{}};
-  const context=vm.createContext({window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,TextEncoder,console,module:mod,exports:mod.exports,require:name=>{assert.equal(name,'obsidian');return host.api;}});
+  const context=vm.createContext({window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,TextEncoder,console,module:mod,exports:mod.exports,require:name=>{if(name==='@codemirror/view'||name==='@codemirror/state')return require(name);assert.equal(name,'obsidian');return host.api;}});
   new vm.Script(pageCode).runInContext(context);
   const page=new mod.exports.FocusPage(host.app,host.leaf.view);await page.update();
   return {...host,page,doc:dom.window.document,async navigate(path){await host.leaf.openFile(host.vault.getAbstractFileByPath(path));await page.update();},close(){page.destroy();dom.window.close();}};

@@ -1,4 +1,26 @@
-# Validation — 0.9.0 continuous writing and optional libraries
+# Validation — 0.9.1 formatting guide and literal stars
+
+## Real Obsidian validation — 2026-10-20
+
+Confirmed **Darwin arm64, macOS 26.5.2**, with **Obsidian 1.14.4** (installer 1.13.7). A fresh marked temporary vault was used so the owner's edits in the previous test vault remained intact. No personal vault was modified.
+
+- **125/125** automated tests pass, including real CodeMirror DOM tests, parser range/incremental-cache cases, keyboard lifecycle tests and previous library/legacy regressions.
+- **19/19** real-app formatting checks: [report](MAC-0.9.1-FORMAT.json). Native key events reproduce Shift+8, complete an italic pair, undo it, create a list, hold/release Shift and select with Shift+Arrow. Native IME input, fixed-menu focus, Escape, file changes, pause, raw mode and unload are covered.
+- **24/24** real-app continuous-writing and native Bases checks: [report](MAC-0.9.1-WRITING.json). This includes Chinese input, heading geometry, native history, optional properties, membership and delayed-save preservation.
+
+Both final reports have no transport warnings and empty captured runtime-error buffers. Guide geometry remains within the viewport at 320, 393 and 1024 CSS pixels in light and dark themes, without shifting the document. The offline gallery contains 18 actual-app captures; all load without horizontal overflow or browser errors at each of those widths. Narrow desktop viewports do not certify physical mobile behavior.
+
+### Root cause and repairs
+
+The real editor stored only `*普通文字 Alpha。`, but its stream highlighter emitted italic spans through the rest of the paragraph. Nebula's CSS hid that unmatched star, making the format change unexplained. A visual CodeMirror extension now checks independent CommonMark source ranges, keeps an unmatched leading star visible and clears only spurious italic styling. Completed and multiline emphasis remain native. Source text, selection and native automatic-pair settings are preserved. Incremental parser fragments avoid reparsing every unchanged block on each keystroke in long documents.
+
+The guide never performs an editor transaction. Shift starts a 600 ms timer only within the active writing editor; chords, selections, IME, pointer actions and blur cancel it. The fixed version supports focus and Escape. Testing repaired two additional lifecycle issues: a captured element blur incorrectly closing fixed help, and a second Shift not dismissing already visible temporary help.
+
+The correction is intentionally limited to ordinary top-level paragraphs beginning with one star. YAML, HTML, lists, headings, quotes and paragraphs containing Obsidian wiki links, comments or math keep native rendering. No broader Markdown parser replacement is claimed. Third-party themes/plugins and physical iPhone/Android keyboards remain unverified.
+
+---
+
+## Previous release — 0.9.0 continuous writing and optional libraries
 
 ## Real Obsidian validation — 2026-10-20
 

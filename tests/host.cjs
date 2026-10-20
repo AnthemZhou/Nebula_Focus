@@ -172,6 +172,7 @@ function createHost(win, seed = {}) {
     addSettingTab() {}
     addRibbonIcon(icon, name, callback) { this.ribbon.push(callback); }
     registerEvent(ref) { this.refs.push(ref); }
+    registerEditorExtension(extension) { this.editorExtension = extension; }
     cleanup() { this.onunload(); this.refs.forEach(ref => ref.owner.offref(ref)); }
   }
   class Modal {

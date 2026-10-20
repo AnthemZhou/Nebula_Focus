@@ -5,6 +5,8 @@ import {
 import { FocusPage } from './page';
 import { childPath, DEFAULT_SETTINGS, FocusSettings, matchesQuery, parentPath, readSettings } from './model';
 import { Libraries } from './library';
+import { FormatGuide } from './format-guide';
+import { unclosedEmphasisExtension } from './emphasis';
 
 type Bar = { element: HTMLElement; edit: HTMLButtonElement; location: HTMLElement; observer: MutationObserver; page?: FocusPage };
 
@@ -23,6 +25,7 @@ export default class NebulaFocus extends Plugin {
   private libraryBars = new Map<FileView, { element: HTMLElement; file: TFile }>();
   private rawViews = new WeakSet<MarkdownView>();
   private openedPaths = new WeakMap<MarkdownView, string>();
+  private formatGuide?: FormatGuide;
 
   text(zh: string, en: string): string {
     const language = this.settings.language === 'auto' ? getLanguage() : this.settings.language;
@@ -35,6 +38,18 @@ export default class NebulaFocus extends Plugin {
   async onload(): Promise<void> {
     this.settings = readSettings(await this.loadData());
     this.libraries = new Libraries(this);
+    this.registerEditorExtension(unclosedEmphasisExtension(view =>
+      view.dom.ownerDocument === document && !!view.dom.closest('.nf-writing') &&
+      !!view.dom.closest('.is-live-preview')));
+    this.formatGuide = new FormatGuide({
+      text: (zh, en) => this.text(zh, en),
+      target: () => {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        return this.active() && !this.settings.legacyPages && view?.getMode() === 'source' &&
+          view.containerEl.ownerDocument === document && view.containerEl.classList.contains('nf-writing')
+          ? view.containerEl : null;
+      },
+    });
     this.addSettingTab(new FocusSettingTab(this.app, this));
     this.addRibbonIcon('panel-left', 'Nebula Focus', () => this.openNavigator());
     this.addCommand({ id: 'open-navigator', name: 'Open compact navigator', callback: () => this.openNavigator() });
@@ -43,6 +58,13 @@ export default class NebulaFocus extends Plugin {
     this.addCommand({ id: 'restore-native', name: 'Restore original interface', callback: () => this.setPaused(true) });
     this.addCommand({ id: 'open-home', name: 'Open home note', callback: () => { void this.openHome(); } });
     this.addCommand({ id: 'preferences', name: 'Open preferences', callback: () => this.openPreferences() });
+    this.addCommand({ id: 'format-guide', name: 'Show formatting guide', checkCallback: checking => {
+      const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+      if (!this.active() || this.settings.legacyPages || view?.getMode() !== 'source' ||
+          !view.containerEl.classList.contains('nf-writing')) return false;
+      if (!checking) this.formatGuide?.open();
+      return true;
+    } });
     this.addCommand({ id: 'toggle-edit', name: 'Toggle reading and editing',
       checkCallback: checking => {
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -79,6 +101,7 @@ export default class NebulaFocus extends Plugin {
   }
 
   private onFileOpened(file: TFile | null): void {
+    this.formatGuide?.close();
     const token = ++this.fileToken;
     this.refresh();
     if (!file || !this.active()) return;
@@ -179,6 +202,7 @@ export default class NebulaFocus extends Plugin {
     document.body.classList.toggle('nf-quiet', this.active() && hasReplacement && this.settings.quietNavigation);
     document.body.classList.toggle('nf-reading', this.active() && hasReplacement && activeView?.getMode() === 'preview');
     this.syncResumeButton();
+    this.formatGuide?.sync();
   }
 
   private makeBar(view: MarkdownView): Bar {
@@ -232,6 +256,10 @@ export default class NebulaFocus extends Plugin {
   private noteMenu(view: MarkdownView, event: MouseEvent): void {
     const menu = new Menu().setUseNativeMenu(false);
     if (!this.settings.legacyPages) {
+      if (view.getMode() === 'source' && view.containerEl.classList.contains('nf-writing')) {
+        menu.addItem(i => i.setTitle(this.text('格式速查（长按 Shift）', 'Formatting guide (hold Shift)'))
+          .setIcon('circle-help').onClick(() => this.formatGuide?.open()));
+      }
       if (view.file) menu.addItem(i => i.setTitle(this.text('收录到资料库', 'Add to library')).setIcon('library').onClick(() => this.libraries.open(view.file!)));
       menu.addItem(i => i.setTitle(this.text('显示笔记属性', 'Show note properties')).setIcon('list')
         .setChecked(view.containerEl.classList.contains('nf-show-properties'))
@@ -414,7 +442,7 @@ export default class NebulaFocus extends Plugin {
       }));
     new Setting(container).setName(t('原界面', 'Original interface')).setDesc(t('临时恢复全部工具；禁用插件也会恢复原界面。', 'Temporarily restore all controls. Disabling the plugin also restores them.'))
       .addButton(v => v.setButtonText(t('显示原界面', 'Restore')).onClick(() => this.setPaused(true)));
-    container.createEl('p', { cls: 'nf-help', text: t('v0.9.0 · 连续写作，按需整理。普通笔记不会自动添加属性。资料库需要启用 Obsidian 的数据库核心插件。', 'v0.9.0 · Continuous writing, optional libraries. Notes get no automatic properties. Libraries require the Obsidian Bases core plugin.') });
+    container.createEl('p', { cls: 'nf-help', text: t('v0.9.1 · 连续写作，按需整理。普通笔记不会自动添加属性。资料库需要启用 Obsidian 的数据库核心插件。', 'v0.9.1 · Continuous writing, optional libraries. Notes get no automatic properties. Libraries require the Obsidian Bases core plugin.') });
   }
 
   report(error: unknown): void {
@@ -424,6 +452,7 @@ export default class NebulaFocus extends Plugin {
 
   onunload(): void {
     this.disposed = true;
+    this.formatGuide?.destroy();
     this.libraries?.stop();
     this.fileToken++;
     for (const timer of this.timers) window.clearTimeout(timer);
