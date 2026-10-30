@@ -1,0 +1,24 @@
+filters:
+  and:
+    - file.inFolder("Ideas")
+    - file.ext == "md"
+formulas:
+  想法: 'file.asLink(if(note["这里写想法"], note["这里写想法"], file.name))'
+properties:
+  formula.想法:
+    displayName: 这里写想法
+views:
+  - type: table
+    name: 想法收集箱
+    order:
+      - formula.想法
+      - note.领域
+      - note.类型
+      - note.重要性
+      - note.文件和媒体
+    columnSize:
+      formula.想法: 380
+      note.领域: 130
+      note.类型: 120
+      note.重要性: 110
+      note.文件和媒体: 180

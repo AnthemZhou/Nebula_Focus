@@ -22,7 +22,6 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
-      - run: node scripts/demo.mjs
       - run: npm run package
       - name: Read version
         id: version
@@ -42,6 +41,6 @@ jobs:
           fi
           FLAGS=()
           if [[ "$VERSION" == 0.* ]]; then FLAGS+=(--prerelease); fi
-          gh release create "$VERSION" main.js manifest.json styles.css dist/*.zip dist/SHA256SUMS.txt docs/mobile-preview.html \
+          gh release create "$VERSION" main.js manifest.json styles.css "dist/nebula-focus-$VERSION.zip" "dist/nebula-focus-$VERSION-source.zip" "dist/nebula-focus-$VERSION-examples.zip" dist/SHA256SUMS.txt \
             --target "$GITHUB_SHA" --title "Nebula Focus $VERSION" \
             --notes-file docs/RELEASE_NOTES.md "${FLAGS[@]}"

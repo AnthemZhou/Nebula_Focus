@@ -3,3 +3,6 @@ dist/
 test-results/
 main.js
 *.log
+
+# Historical standalone development includes private migration backups.
+native-reading-ui/

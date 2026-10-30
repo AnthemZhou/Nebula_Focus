@@ -1,10 +1,10 @@
 {
   "id": "nebula-focus",
   "name": "Nebula Focus",
-  "version": "0.9.2",
-  "minAppVersion": "1.9.0",
-  "description": "Continuous writing with optional native Bases libraries. Notes stay plain Markdown; properties are added only when filled.",
+  "version": "1.0.0",
+  "minAppVersion": "1.14.4",
+  "description": "Notion-like native Bases UI for Obsidian: compact tables, colored tags, covers and inline editing.",
   "author": "Shengyu Zhou",
   "authorUrl": "https://github.com/AnthemZhou",
-  "isDesktopOnly": false
+  "isDesktopOnly": true
 }

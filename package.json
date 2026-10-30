@@ -1,7 +1,7 @@
 {
   "name": "nebula-focus",
-  "version": "0.9.2",
-  "description": "Continuous writing and optional native Bases libraries for Obsidian.",
+  "version": "1.0.0",
+  "description": "Notion-like native Bases UI for Obsidian: compact tables, colored tags, covers and inline editing.",
   "main": "main.js",
   "license": "GPL-3.0-only",
   "author": "Shengyu Zhou",
@@ -9,20 +9,13 @@
     "build": "tsc --noEmit && node esbuild.config.mjs",
     "dev": "node esbuild.config.mjs --watch",
     "test": "node --test tests/*.test.cjs",
-    "package": "python3 scripts/package.py",
-    "prepare:test-vault": "node scripts/prepare-test-vault.mjs"
+    "package": "python3 scripts/package.py"
   },
   "devDependencies": {
-    "@types/markdown-it": "^14.2.0",
     "@types/node": "^24.0.0",
     "esbuild": "^0.25.0",
     "jsdom": "^26.0.0",
     "obsidian": "1.14.4",
     "typescript": "^5.9.0"
-  },
-  "dependencies": {
-    "@lezer/markdown": "^1.8.1",
-    "markdown-it": "^15.0.3",
-    "@lezer/common": "^1.5.3"
   }
 }

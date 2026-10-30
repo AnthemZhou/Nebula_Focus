@@ -1,631 +1,660 @@
-import {
-  App, FileView, FuzzySuggestModal, MarkdownView, Menu, Modal, Notice, Platform, Plugin,
-  PluginSettingTab, Setting, TFile, TFolder, WorkspaceLeaf, getLanguage, setIcon,
-} from 'obsidian';
-import { FocusPage } from './page';
-import { childPath, DEFAULT_SETTINGS, FocusSettings, matchesQuery, parentPath, readSettings } from './model';
-import { Libraries } from './library';
-import { FormatGuide } from './format-guide';
-import { unclosedEmphasisExtension } from './emphasis';
+import {Plugin, TFile, Notice, MarkdownView, Component, Menu, Modal, setIcon} from 'obsidian';
+import {compactLink, firstImage, isDueProperty, isEmpty, overdue, propertyName} from './model';
+import {IdeaTables} from './idea-table';
+import {IdeaColumnWidths} from './idea-widths';
+import {IdeaHeaders} from './idea-header';
+import {IdeaRowHeights} from './idea-row-heights';
+import {IdeaTagEditors} from './idea-tag-editor';
+import {PropertySuggestions} from './property-suggestions';
+import {IdeaTitleEditors} from './idea-title-editor';
 
-type Bar = { element: HTMLElement; edit: HTMLButtonElement; location: HTMLElement; observer: MutationObserver; page?: FocusPage };
+// Obsidian has no public decorator hook for its built-in Bases views.
+// Keep this small, guarded adapter separate from the public file/metadata APIs.
+// An unrecognised version/shape falls back to the unchanged native renderer.
+type Native = any;
+type Entry = {file: TFile; getValue: (prop: string) => Native};
+type Group = {key: Native; entries: Entry[]};
+const TABLE_IMAGE = '.workspace-leaf-content :is(td, th, .bases-table-cell) img';
 
 export default class NebulaFocus extends Plugin {
-  settings: FocusSettings = { ...DEFAULT_SETTINGS };
-  paused = false;
+  adapters = new Map<Native, Presentation>();
+  private timer = 0;
+  private observer?: MutationObserver;
+  private active = true;
   private disposed = false;
-  private bars = new Map<MarkdownView, Bar>();
-  private resumeButton?: HTMLButtonElement;
-  private timers = new Set<number>();
-  private editIntent = new Set<string>();
-  private fileToken = 0;
-  private navigator?: NavigatorModal;
-  private dialogs = new Set<Modal>();
-  libraries!: Libraries;
-  private libraryBars = new Map<FileView, { element: HTMLElement; file: TFile }>();
-  private rawViews = new WeakSet<MarkdownView>();
-  private openedPaths = new WeakMap<MarkdownView, string>();
-  private formatGuide?: FormatGuide;
+  private imageCache = new Map<string, {mtime: number; image: string | null}>();
+  private linkLabels = new Set<HTMLElement>();
+  private metaButtons = new Map<HTMLElement, HTMLButtonElement>();
+  private edgeEmbeds = new Set<HTMLElement>();
+  private edgeRoots = new Set<HTMLElement>();
+  private edgeObserver?: ResizeObserver;
+  private factoryRestores: (() => void)[] = [];
+  private tableImages = new Map<HTMLElement, Map<string, string | null>>();
+  private imagePreview?: Modal;
+  private ideaTables = new IdeaTables();
+  private ideaWidths = new IdeaColumnWidths();
+  private ideaRows = new IdeaRowHeights();
+  private ideaHeaders?: IdeaHeaders;
+  private ideaTags = new IdeaTagEditors();
+  private ideaTitles = new IdeaTitleEditors();
+  private propertySuggestions?: PropertySuggestions;
+  private uiSettings: Record<string, any> = {};
+  private settingsAvailable = true;
+  private settingsWrite: Promise<void> = Promise.resolve();
+  private attachmentThumbnails = new Map<HTMLElement, {image: HTMLImageElement; href: string; pill: HTMLElement}>();
 
-  text(zh: string, en: string): string {
-    const language = this.settings.language === 'auto' ? getLanguage() : this.settings.language;
-    return language.startsWith('zh') ? zh : en;
-  }
-
-  enabled(): boolean { return !this.disposed && (!this.settings.mobileOnly || Platform.isMobile); }
-  active(): boolean { return this.enabled() && !this.paused; }
-
-  async onload(): Promise<void> {
-    this.settings = readSettings(await this.loadData());
-    this.libraries = new Libraries(this);
-    this.registerEditorExtension(unclosedEmphasisExtension(view =>
-      view.dom.ownerDocument === document && !!view.dom.closest('.nf-writing') &&
-      !!view.dom.closest('.is-live-preview')));
-    this.formatGuide = new FormatGuide({
-      text: (zh, en) => this.text(zh, en),
-      target: () => {
-        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-        return this.active() && !this.settings.legacyPages && view?.getMode() === 'source' &&
-          view.containerEl.ownerDocument === document && view.containerEl.classList.contains('nf-writing')
-          ? view.containerEl : null;
-      },
-    });
-    this.addSettingTab(new FocusSettingTab(this.app, this));
-    this.addRibbonIcon('panel-left', 'Nebula Focus', () => this.openNavigator());
-    this.addCommand({ id: 'open-navigator', name: 'Open compact navigator', callback: () => this.openNavigator() });
-    this.addCommand({ id: 'open-libraries', name: 'Open libraries', callback: () => this.libraries.open() });
-    this.addCommand({ id: 'toggle-focus', name: 'Toggle focused interface', callback: () => this.togglePause() });
-    this.addCommand({ id: 'restore-native', name: 'Restore original interface', callback: () => this.setPaused(true) });
-    this.addCommand({ id: 'open-home', name: 'Open home note', callback: () => { void this.openHome(); } });
-    this.addCommand({ id: 'preferences', name: 'Open preferences', callback: () => this.openPreferences() });
-    this.addCommand({ id: 'format-guide', name: 'Show formatting guide', checkCallback: checking => {
-      const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-      if (!this.active() || this.settings.legacyPages || view?.getMode() !== 'source' ||
-          !view.containerEl.classList.contains('nf-writing')) return false;
-      if (!checking) this.formatGuide?.open();
-      return true;
-    } });
-    this.addCommand({ id: 'toggle-edit', name: 'Toggle reading and editing',
-      checkCallback: checking => {
-        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-        if (!view) return false;
-        if (!checking) void this.toggleEditing(view);
-        return true;
-      },
-    });
-    this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.refresh()));
-    this.registerEvent(this.app.vault.on('modify', file => this.refresh(true,file.path)));
-    this.registerEvent(this.app.workspace.on('layout-change', () => this.refresh()));
-    this.registerEvent(this.app.workspace.on('file-open', file => this.onFileOpened(file)));
-    this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
-      void this.libraries.renamed(oldPath, file.path).catch(error => this.report(error));
-      if (this.settings.homePath === oldPath) {
-        this.settings.homePath = file.path;
-        void this.saveSettings();
-      }
-    }));
-    this.app.workspace.onLayoutReady(() => {
-      if (this.disposed) return;
-      this.refresh();
-      const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-      if (view?.file && !view.editor?.hasFocus()) this.onFileOpened(view.file);
-    });
-  }
-
-  later(callback: () => void, delay = 50): void {
-    const id = window.setTimeout(() => {
-      this.timers.delete(id);
-      if (!this.disposed) callback();
-    }, delay);
-    this.timers.add(id);
-  }
-
-  private onFileOpened(file: TFile | null): void {
-    this.formatGuide?.close(false, true);
-    const token = ++this.fileToken;
-    this.refresh();
-    if (!file || !this.active()) return;
-    if (!this.settings.legacyPages) {
-      this.later(() => {
-        if (token !== this.fileToken || !this.active()) return;
-        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-        if (view?.file === file && !this.rawViews.has(view)) void this.setWritingMode(view);
-      });
-      return;
-    }
-    if (!this.settings.readingFirst) return;
-    this.later(() => {
-      if (token !== this.fileToken || !this.active() || this.editIntent.has(file.path)) return;
-      const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-      if (view?.file?.path === file.path && view.getMode() !== 'preview' && !view.editor?.hasFocus()) {
-        void this.setMode(view, 'preview');
-      }
-    });
-  }
-
-  async setMode(view: MarkdownView, mode: 'source' | 'preview'): Promise<void> {
+  async onload() {
     try {
-      if(mode==='source')this.bars.get(view)?.page?.suspend();
-      await view.leaf.setViewState({ type: 'markdown', state: { ...view.getState(), mode } });
-      this.refresh();
-      if (mode === 'source') view.editor?.focus();
-    } catch (error) { this.report(error); }
-  }
-
-  async toggleEditing(view: MarkdownView): Promise<void> {
-    if (!this.settings.legacyPages) {
-      await this.setWritingMode(view, !(this.rawViews.has(view) || view.getState().source === true), true);
-      return;
-    }
-    await this.setMode(view, view.getMode() === 'preview' ? 'source' : 'preview');
-  }
-
-  async setWritingMode(view: MarkdownView, raw = false, focus = false): Promise<void> {
-    try {
-      if (raw) this.rawViews.add(view); else this.rawViews.delete(view);
-      const state = view.getState();
-      if (view.getMode() !== 'source' || state.source !== raw) {
-        await view.leaf.setViewState({ type: 'markdown', state: { ...state, mode: 'source', source: raw } });
-      }
-      this.refresh();
-      if (focus) view.editor?.focus();
-    } catch (error) { this.report(error); }
-  }
-
-  refresh(force = false, modifiedPath?: string): void {
+      const saved = await this.loadData();
+      if (saved && typeof saved === 'object' && !Array.isArray(saved)) this.uiSettings = saved;
+    } catch {this.settingsAvailable = false;}
     if (this.disposed) return;
-    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-    const alive = new Set<MarkdownView>();
-    if (this.active()) this.app.workspace.iterateAllLeaves(leaf => {
-      if (!(leaf.view instanceof MarkdownView) || !leaf.view.file) return;
-      const view = leaf.view;
-      // Keep pop-out windows native. All changes stay in this app document.
-      if (view.containerEl.ownerDocument !== document) return;
-      // The file-open event can arrive after openFile has resolved and after a
-      // user changes mode. Observe identity here, before displaying controls.
-      if (view.file && this.openedPaths.get(view) !== view.file.path) {
-        this.openedPaths.set(view, view.file.path);
-        this.rawViews.delete(view);
-        view.containerEl.classList.remove('nf-show-properties');
-      }
-      alive.add(view);
-      let bar = this.bars.get(view);
-      if (bar && !view.containerEl.contains(bar.element)) {
-        this.removeBar(view, bar);
-        bar = undefined;
-      }
-      if (!bar) {
-        bar = this.makeBar(view);
-        this.bars.set(view, bar);
-      }
-      const editing = view.getMode() === 'source';
-      bar.location.textContent = view.file?.path.replace(/\.md$/i, '') || '';
-      bar.location.title = view.file?.path || '';
-      if (bar.page) {
-        bar.page.element.hidden = editing;
-        if (!editing) void bar.page.update(force && modifiedPath!==view.file?.path).catch(error => this.report(error));
-      }
-      bar.edit.hidden = this.settings.legacyPages ? !editing : !(this.rawViews.has(view) || view.getState().source === true);
-      const label = this.settings.legacyPages
-        ? (editing ? this.text('返回页面', 'Page') : this.text('原文', 'Source'))
-        : this.text('返回写作', 'Back to writing');
-      if (bar.edit.textContent !== label) bar.edit.textContent = label;
-      bar.edit.setAttribute('aria-label', label);
-      view.containerEl.classList.toggle('nf-reading-view', !editing);
-      view.containerEl.classList.toggle('nf-typography', this.settings.calmTypography);
-      view.containerEl.classList.toggle('nf-writing', !this.settings.legacyPages && !this.rawViews.has(view) && view.getState().source !== true);
+    this.ideaTags = new IdeaTagEditors({
+      read: key => {
+        const value = this.uiSettings.tagOptionOrder?.[key];
+        return Array.isArray(value) && value.every(item => typeof item === 'string') ? value : undefined;
+      },
+      write: (key, values) => this.saveTagOrder(key, values),
     });
-    for (const [view, bar] of this.bars) if (!alive.has(view)) this.removeBar(view, bar);
-    this.refreshLibraries();
-    const hasReplacement = !!activeView && this.bars.has(activeView);
-    document.body.classList.toggle('nf-active', this.active() && hasReplacement);
-    document.body.classList.toggle('nf-quiet', this.active() && hasReplacement && this.settings.quietNavigation);
-    document.body.classList.toggle('nf-reading', this.active() && hasReplacement && activeView?.getMode() === 'preview');
-    this.syncResumeButton();
-    this.formatGuide?.sync();
-  }
-
-  private makeBar(view: MarkdownView): Bar {
-    const element = document.createElement('div');
-    element.className = 'nf-bar';
-    element.setAttribute('role', 'toolbar');
-    element.setAttribute('aria-label', 'Nebula Focus');
-    const left = element.createDiv('nf-bar-left');
-    this.button(left, 'panel-left', this.text('笔记', 'Notes'), () => this.openNavigator(), true);
-    if (!this.settings.legacyPages) this.button(left, 'library', this.text('资料库', 'Libraries'), () => this.libraries.open());
-    if (this.settings.homePath) this.button(left, 'house', this.text('首页', 'Home'), () => { void this.openHome(); });
-    const location = left.createSpan('nf-location');
-    const right = element.createDiv('nf-bar-right');
-    const edit = this.button(right, null, this.text('返回页面', 'Page'), () => { void this.toggleEditing(view); }, true);
-    this.button(right, 'ellipsis', this.text('更多', 'More'), event => this.noteMenu(view, event));
-    const page = this.settings.legacyPages ? new FocusPage(this.app, view) : undefined;
-    if (page) this.button(right, 'sliders-horizontal', this.text('页面外观', 'Page appearance'), event => page.pageMenu(event));
-    view.containerEl.prepend(element);
-    view.containerEl.classList.add('nf-managed');
-    const observer = new MutationObserver(mutations => {
-      if (mutations.some(m => m.type === 'attributes' && m.target instanceof HTMLElement &&
-          (m.target.matches('.markdown-reading-view, .markdown-source-view') || m.attributeName === 'data-mode'))) {
-        this.refresh();
-      }
+    this.propertySuggestions = new PropertySuggestions(this.app);
+    document.body.classList.add('bui-enabled');
+    this.edgeObserver = new ResizeObserver(() => this.schedule());
+    this.addCommand({id: 'toggle-reading-ui', name: '切换 Notion-like / 原生外观',
+      hotkeys: [{modifiers: ['Mod', 'Alt'], key: 'U'}], callback: () => {
+      this.active = !this.active;
+      document.body.classList.toggle('bui-enabled', this.active);
+      if (!this.active) this.clearPresentation();
+      this.schedule();
+      this.app.workspace.trigger('css-change');
+      new Notice(this.active ? '阅读优化已开启' : '已恢复原生外观');
+    }});
+    this.app.workspace.onLayoutReady(() => { if (this.disposed) return; this.installFactories(); this.scan(); });
+    for (const event of ['layout-change', 'active-leaf-change', 'file-open'] as const)
+      this.registerEvent(this.app.workspace.on(event as any, () => this.schedule()));
+    this.registerEvent(this.app.metadataCache.on('changed', file => {
+      this.imageCache.delete(file.path);
+      for (const adapter of this.adapters.values()) adapter.invalidate();
+      this.schedule();
+    }));
+    this.registerEvent(this.app.vault.on('rename', () => {this.imageCache.clear(); this.schedule();}));
+    this.registerEvent(this.app.workspace.on('css-change', () => {this.ideaWidths.invalidate(); this.ideaRows.invalidate(); this.schedule();}));
+    const fontsChanged = () => {this.ideaWidths.invalidate(); this.ideaRows.invalidate(); this.schedule();};
+    document.fonts?.addEventListener('loadingdone', fontsChanged);
+    this.register(() => document.fonts?.removeEventListener('loadingdone', fontsChanged));
+    this.registerDomEvent(window, 'resize', () => this.schedule());
+    this.registerDomEvent(document, 'focusin', () => this.schedule());
+    this.registerDomEvent(document, 'input', () => this.schedule());
+    // Replace press-and-hold zoom only on table thumbnails. Modified clicks
+    // and image links keep their native navigation behaviour.
+    this.registerDomEvent(document, 'mousedown', event => {
+      if (this.tableImageTarget(event)) { event.preventDefault(); event.stopPropagation(); }
+    }, true);
+    this.registerDomEvent(document, 'click', event => {
+      const img = this.tableImageTarget(event);
+      if (!img) return;
+      event.preventDefault(); event.stopPropagation();
+      this.openTableImage(img);
+    }, true);
+    this.registerDomEvent(document, 'keydown', event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      const img = this.tableImageTarget(event);
+      if (!img) return;
+      event.preventDefault(); event.stopPropagation();
+      this.openTableImage(img);
+    }, true);
+    this.registerInterval(window.setInterval(() => {
+      // Refresh deadline styling without replacing focused cards or images.
+      for (const adapter of this.adapters.values()) adapter.refreshDeadlines();
+      this.schedule();
+    }, 60_000));
+    this.observer = new MutationObserver(records => {
+      if (records.some(r => {
+        if (!(r.target instanceof Element)) return false;
+        if (r.target.closest('.bui-presentation')) return false;
+        return this.app.workspace.containerEl.contains(r.target) ||
+          !!r.target.closest('.suggestion-container.mod-property-value') ||
+          [...r.addedNodes, ...r.removedNodes].some(n => n instanceof Element && n.matches('.suggestion-container.mod-property-value'));
+      })) this.schedule();
     });
-    observer.observe(view.containerEl, { subtree: true, attributes: true, attributeFilter: ['style', 'data-mode'] });
-    return { element, edit, location, observer, page };
+    this.observer.observe(document.body, {childList: true, subtree: true});
   }
 
-  private removeBar(view: MarkdownView, bar: Bar): void {
-    bar.page?.destroy();
-    bar.observer.disconnect();
-    bar.element.remove();
-    view.containerEl.classList.remove('nf-managed', 'nf-reading-view', 'nf-typography', 'nf-writing', 'nf-show-properties');
-    this.bars.delete(view);
-  }
-
-  button(parent: HTMLElement, icon: string | null, label: string,
-    callback: (event: MouseEvent) => void, showLabel = false): HTMLButtonElement {
-    const button = parent.createEl('button', { cls: 'nf-button', attr: { type: 'button', 'aria-label': label, title: label } });
-    if (icon) {
-      const glyph = button.createSpan('nf-icon');
-      glyph.setAttribute('aria-hidden', 'true');
-      setIcon(glyph, icon);
+  private installFactories() {
+    const registrations = (this.app as Native).internalPlugins?.plugins?.bases?.instance?.registrations;
+    if (!registrations) return;
+    for (const type of ['kanban', 'cards']) {
+      const registration = registrations instanceof Map ? registrations.get(type) : registrations[type];
+      if (!registration || typeof registration.factory !== 'function') continue;
+      const original = registration.factory;
+      const plugin = this;
+      const wrapped = function(this: Native, ...args: Native[]) {
+        const view = original.apply(this, args);
+        plugin.attach(view);
+        return view;
+      };
+      registration.factory = wrapped;
+      this.factoryRestores.push(() => {if (registration.factory === wrapped) registration.factory = original;});
     }
-    if (showLabel || !icon) button.createSpan({ text: label });
-    button.addEventListener('click', callback);
-    return button;
   }
 
-  private noteMenu(view: MarkdownView, event: MouseEvent): void {
-    const menu = new Menu().setUseNativeMenu(false);
-    if (!this.settings.legacyPages) {
-      if (view.getMode() === 'source' && view.containerEl.classList.contains('nf-writing')) {
-        menu.addItem(i => i.setTitle(this.text('格式速查（长按 Shift）', 'Formatting guide (hold Shift)'))
-          .setIcon('circle-help').onClick(() => this.formatGuide?.open()));
-      }
-      if (view.file) menu.addItem(i => i.setTitle(this.text('收录到资料库', 'Add to library')).setIcon('library').onClick(() => this.libraries.open(view.file!)));
-      menu.addItem(i => i.setTitle(this.text('显示笔记属性', 'Show note properties')).setIcon('list')
-        .setChecked(view.containerEl.classList.contains('nf-show-properties'))
-        .onClick(() => view.containerEl.classList.toggle('nf-show-properties')));
-      menu.addSeparator();
-    }
-    menu.addItem(i => i.setTitle(this.text('查看 Markdown 源码', 'View Markdown source')).setIcon('code').onClick(() => {
-      void (this.settings.legacyPages ? this.setMode(view, 'source') : this.setWritingMode(view, true, true));
-    }));
-    menu.addItem(i => i.setTitle(this.text('搜索笔记', 'Search notes')).setIcon('search').onClick(() => this.openNavigator(true)));
-    menu.addItem(i => i.setTitle(this.text('页内查找', 'Find in note')).setIcon('text-search').onClick(async () => {
-      if (this.settings.legacyPages) await this.setMode(view, 'source');
-      else await this.setWritingMode(view);
-      view.showSearch();
-    }));
-    menu.addItem(i => i.setTitle(this.text('切换已打开的页面', 'Switch open pages')).setIcon('panels-top-left').onClick(() => this.openTabs()));
-    if (view.file) menu.addItem(i => i.setTitle(this.text('将此笔记设为首页', 'Use this note as home')).setIcon('house').onClick(async () => {
-      this.settings.homePath = view.file!.path;
-      await this.saveSettings(true);
-      new Notice(this.text('已设为首页', 'Home note set'));
-    }));
-    menu.addSeparator();
-    menu.addItem(i => i.setTitle(this.text('界面偏好', 'Preferences')).setIcon('sliders-horizontal').onClick(() => this.openPreferences()));
-    menu.addItem(i => i.setTitle(this.text('显示原界面和全部工具', 'Show original interface and all tools')).setIcon('layout-template').onClick(() => this.setPaused(true)));
-    menu.showAtMouseEvent(event);
+  schedule() {
+    if (this.timer) return;
+    this.timer = window.setTimeout(() => {this.timer = 0; this.scan();}, 70);
   }
 
-  private openTabs(): void {
-    const leaves: WorkspaceLeaf[] = [];
+  private saveTagOrder(key: string, values: string[]): Promise<void> {
+    // Serialize explicit preference changes and preserve other plugin settings.
+    // If loading failed, do not overwrite a settings file we could not read.
+    const order = [...values];
+    const write = this.settingsWrite.then(async () => {
+      if (!this.settingsAvailable) throw new Error('Plugin settings unavailable');
+      const next = {...this.uiSettings, tagOptionOrder: {...this.uiSettings.tagOptionOrder, [key]: order}};
+      await this.saveData(next);
+      this.uiSettings = next;
+    });
+    this.settingsWrite = write.catch(() => {});
+    return write;
+  }
+
+  private scan() {
+    if (!this.active) return;
+    this.propertySuggestions?.refresh(document);
+    // Native drag frames only need column positions; defer decoration and
+    // content measurements until the resize adapter finishes the gesture.
+    if (this.ideaRows.isResizing()) return;
+    const seen = new Set<Native>();
+    const visit = (component: Native, depth = 0) => {
+      if (!component || seen.has(component) || depth > 14) return;
+      seen.add(component);
+      if (component.controller?.view) this.attach(component.controller.view);
+      if (component.queryController && component.config) this.attach(component);
+      for (const child of component._children ?? []) visit(child, depth + 1);
+    };
     this.app.workspace.iterateAllLeaves(leaf => {
-      if (leaf.getRoot() === this.app.workspace.rootSplit && leaf.view.getViewType() !== 'empty') leaves.push(leaf);
+      visit(leaf.view);
+      const el = leaf.view.containerEl;
+      el.classList.toggle('bui-has-bases', !!el.querySelector('.bases-embed, .block-language-base'));
+      if (leaf.view instanceof MarkdownView) this.decorateNote(leaf.view);
     });
-    const picker = new LeafPicker(this.app, leaves, leaf => { void this.app.workspace.revealLeaf(leaf); }, () => this.untrack(picker));
-    this.track(picker).open();
-  }
-
-  track<T extends Modal>(modal: T): T { this.dialogs.add(modal); return modal; }
-  untrack(modal: Modal): void { this.dialogs.delete(modal); }
-
-  openNavigator(focusSearch = false): void {
-    if (this.navigator) this.navigator.close();
-    this.app.workspace.leftSplit?.collapse();
-    const modal = new NavigatorModal(this, focusSearch);
-    this.navigator = modal;
-    this.track(modal).open();
-  }
-  navigatorClosed(modal: NavigatorModal): void {
-    if (this.navigator === modal) this.navigator = undefined;
-    this.untrack(modal);
-  }
-
-  async openFile(file: TFile, edit = false): Promise<void> {
-    if (edit) this.editIntent.add(file.path);
-    try {
-      await this.app.workspace.getLeaf(false).openFile(file, file.extension !== 'md' ? {} : { state: this.settings.legacyPages ? {
-        mode: edit ? 'source' : (this.settings.readingFirst ? 'preview' : undefined),
-      } : { mode: 'source', source: false } });
-      if (file.extension === 'base' && this.app.workspace.getMostRecentLeaf()?.view.getViewType() !== 'bases') {
-        new Notice(this.text('请在 Obsidian 设置 → 核心插件中启用「数据库」，然后重新打开资料库。', 'Enable Bases in Obsidian Settings → Core plugins, then reopen this library.'));
-      }
-      if (edit) this.app.workspace.getActiveViewOfType(MarkdownView)?.editor.focus();
-      this.refresh();
-    } catch (error) { this.report(error); }
-    finally { this.later(() => this.editIntent.delete(file.path), 250); }
-  }
-
-  async openHome(): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(this.settings.homePath);
-    if (file instanceof TFile) await this.openFile(file);
-    else {
-      new Notice(this.text('请在界面偏好中选择一篇笔记作为首页。', 'Choose an existing home note in preferences.'));
-      this.openPreferences();
+    for (const [view, adapter] of this.adapters) {
+      if (!view._loaded || !adapter.host.isConnected) { adapter.destroy(); this.adapters.delete(view); }
+      else adapter.render();
     }
+    this.ideaTables.refresh(document);
+    this.ideaTitles.prune();
+    this.ideaWidths.prune();
+    this.ideaRows.prune();
+    this.ideaHeaders?.prune();
+    this.ideaTags.prune();
+    this.decorateTables();
+    this.decorateIdeaAttachments();
+    this.decorateTableImages();
+    for (const el of this.edgeRoots) if (!el.isConnected) {this.edgeObserver?.unobserve(el); this.edgeRoots.delete(el);}
+    for (const el of this.edgeEmbeds) if (!el.isConnected) this.edgeEmbeds.delete(el);
   }
 
-  setPaused(paused: boolean): void {
-    this.paused = paused;
-    this.fileToken++;
-    this.refresh();
+  attach(view: Native) {
+    if (this.active && view?.type === 'table') {
+      if (this.ideaWidths.refresh(view)) view.updateVirtualDisplay();
+      if (this.ideaRows.refresh(view)) view.updateVirtualDisplay();
+      (this.ideaHeaders ??= new IdeaHeaders(this.app)).attach(view);
+      this.ideaTags.attach(view);
+      this.ideaTitles.refresh(view);
+      return;
+    }
+    if (!this.active || this.adapters.has(view) || !['kanban', 'cards'].includes(view?.type)) return;
+    if (!(view.containerEl instanceof HTMLElement) || !(view.queryController?.viewContainerEl instanceof HTMLElement) ||
+      typeof view.onDataUpdated !== 'function' || typeof view.config?.getOrder !== 'function') return;
+    if (view.type === 'kanban' && (typeof view.moveCardToColumn !== 'function' || typeof view.canMoveCard !== 'function')) return;
+    const adapter = new Presentation(this, view);
+    this.adapters.set(view, adapter);
+    view.register(() => {adapter.destroy(); this.adapters.delete(view);});
   }
-  togglePause(): void { this.setPaused(!this.paused); }
 
-  private syncResumeButton(): void {
-    if (this.paused && this.enabled()) {
-      if (!this.resumeButton) {
-        this.resumeButton = this.button(document.body, 'sparkles', this.text('恢复简洁界面', 'Resume focus'), () => this.setPaused(false), true);
-        this.resumeButton.classList.add('nf-resume');
+  image(file: TFile): string | null {
+    const cached = this.imageCache.get(file.path);
+    if (cached?.mtime === file.stat.mtime) return cached.image;
+    const image = firstImage(this.app.metadataCache.getFileCache(file)?.embeds, link =>
+      this.app.metadataCache.getFirstLinkpathDest(link, file.path)?.path ?? null);
+    const result = image && !/^https?:\/\//i.test(image)
+      ? this.app.vault.getResourcePath(this.app.vault.getFileByPath(image)!) : image;
+    this.imageCache.set(file.path, {mtime: file.stat.mtime, image: result});
+    return result;
+  }
+
+  cover(entry: Entry, _view: Native): string | null {
+    // Presentation derives its cover from content; no helper property is required.
+    return this.image(entry.file);
+  }
+
+  private decorateNote(view: MarkdownView) {
+    const root = view.containerEl;
+    this.extendBasesToEdge(root);
+    const h1 = root.querySelector<HTMLElement>('.markdown-preview-section h1');
+    const inlineTitle = root.querySelector<HTMLElement>('.inline-title');
+    root.querySelectorAll('.bui-duplicate-heading').forEach(el => el.classList.remove('bui-duplicate-heading'));
+    if (h1 && inlineTitle && inlineTitle.offsetHeight > 0 &&
+        h1.textContent?.trim() === inlineTitle.textContent?.trim()) h1.classList.add('bui-duplicate-heading');
+    const metadata = root.querySelector<HTMLElement>('.metadata-container');
+    if (metadata) {
+      const reading = view.getMode() === 'preview';
+      let count = 0;
+      for (const row of metadata.querySelectorAll<HTMLElement>('.metadata-property[data-property-key]')) {
+        const key = row.dataset.propertyKey ?? '';
+        row.classList.toggle('bui-cover-property', reading && /^(封面|cover|banner)$/i.test(key));
+        const auxiliary = reading && /^(notion_id|source_id)$/i.test(key);
+        row.classList.toggle('bui-low-priority', auxiliary);
+        if (auxiliary) count++;
       }
-    } else { this.resumeButton?.remove(); this.resumeButton = undefined; }
-  }
-
-  openPreferences(): void { this.track(new PreferencesModal(this)).open(); }
-
-  async saveSettings(rebuild = false): Promise<void> {
-    await this.saveData(this.settings);
-    if (rebuild) for (const [view, bar] of this.bars) this.removeBar(view, bar);
-    this.refresh();
-  }
-
-  private refreshLibraries(): void {
-    const alive = new Set<FileView>();
-    if (this.active()) this.app.workspace.iterateAllLeaves(leaf => {
-      if (!(leaf.view instanceof FileView) || leaf.view.getViewType() !== 'bases' ||
-          !leaf.view.file || leaf.view.containerEl.ownerDocument !== document) return;
-      const view = leaf.view, file = view.file!;
-      alive.add(view);
-      const existing = this.libraryBars.get(view);
-      if (existing?.file === file && existing.element.isConnected) return;
-      if (existing) this.removeLibraryBar(view);
-      const element = document.createElement('div');
-      element.className = 'nf-bar';
-      element.setAttribute('role', 'toolbar');
-      element.setAttribute('aria-label', this.text('资料库导航', 'Library navigation'));
-      const left = element.createDiv('nf-bar-left');
-      this.button(left, 'panel-left', this.text('笔记', 'Notes'), () => this.openNavigator(), true);
-      this.button(left, 'library', this.text('资料库', 'Libraries'), () => this.libraries.open());
-      left.createSpan({ cls: 'nf-location', text: file.basename });
-      const right = element.createDiv('nf-bar-right');
-      view.containerEl.prepend(element);
-      view.containerEl.classList.add('nf-managed');
-      this.libraryBars.set(view, { element, file });
-      void this.libraries.members(file).then(() => {
-        if (!element.isConnected || this.libraryBars.get(view)?.element !== element) return;
-        view.containerEl.classList.add('nf-library-managed');
-        this.button(right, 'plus', this.text('收录笔记', 'Choose notes'), () => this.libraries.editMembers(file), true);
-        this.button(right, 'ellipsis', this.text('资料库操作', 'Library actions'), event => {
-          const menu = new Menu().setUseNativeMenu(false);
-          menu.addItem(i => i.setTitle(this.text('新建笔记', 'New note')).setIcon('file-plus').onClick(() => this.libraries.askNewNote(file)));
-          menu.addItem(i => i.setTitle(this.text('添加字段', 'Add field')).setIcon('list-plus').onClick(() => this.libraries.askField(file)));
-          menu.addSeparator();
-          menu.addItem(i => i.setTitle(this.text('显示原界面和全部工具', 'Show original interface and all tools')).setIcon('layout-template').onClick(() => this.setPaused(true)));
-          menu.showAtMouseEvent(event);
+      let button = this.metaButtons.get(metadata);
+      if (count && !button) {
+        button = metadata.createEl('button', {cls:'bui-aux-toggle'});
+        button.addEventListener('click', event => {
+          event.preventDefault(); event.stopPropagation();
+          metadata.classList.toggle('bui-show-aux');
+          this.schedule();
         });
-      }).catch(() => { /* Native bases retain their own controls. */ });
-    });
-    for (const view of this.libraryBars.keys()) if (!alive.has(view)) this.removeLibraryBar(view);
+        this.metaButtons.set(metadata, button);
+      }
+      if (button) {
+        button.hidden = !count;
+        const expanded = metadata.classList.contains('bui-show-aux');
+        const text = expanded ? '收起辅助属性' : `显示辅助属性（${count}）`;
+        if (button.textContent !== text) button.textContent = text;
+        button.setAttribute('aria-expanded', String(expanded));
+      }
+    }
   }
 
-  private removeLibraryBar(view: FileView): void {
-    this.libraryBars.get(view)?.element.remove();
-    this.libraryBars.delete(view);
-    view.containerEl.classList.remove('nf-managed', 'nf-library-managed');
-  }
-
-  renderPreferences(container: HTMLElement): void {
-    const t = (zh: string, en: string) => this.text(zh, en);
-    new Setting(container).setName(t('仅在手机和平板启用', 'Mobile and tablet only'))
-      .addToggle(v => v.setValue(this.settings.mobileOnly).onChange(async value => { this.settings.mobileOnly = value; await this.saveSettings(); }));
-    new Setting(container).setName(t('旧版页面布局', 'Legacy page layout')).setDesc(t('兼容原来的封面、分栏和分区。默认关闭，使用连续写作。', 'Optional compatibility with covers, columns and sections. Continuous writing is the default.'))
-      .addToggle(v => v.setValue(this.settings.legacyPages).onChange(async value => {
-        this.settings.legacyPages = value; await this.saveSettings(true);
-        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-        if (view) {
-          if (value) await this.setMode(view, 'preview');
-          else await this.setWritingMode(view);
+  private decorateTables() {
+    for (const el of document.querySelectorAll<HTMLElement>('.bases-td[data-property]')) {
+      const prop = el.dataset.property ?? '';
+      const date = el.querySelector<HTMLInputElement>('input[type="date"], input[type="datetime-local"]');
+      el.classList.toggle('bui-overdue', isDueProperty(prop) && overdue(date?.value ?? el.textContent?.trim()));
+      const link = el.querySelector<HTMLElement>('.external-link, .metadata-link-inner');
+      if (link && /^(视频链接|链接|url|website)$/i.test(propertyName(prop)) &&
+          !el.contains(document.activeElement)) {
+        const text = link.textContent ?? '';
+        const label = compactLink(text);
+        if (label) {
+          // Keep the native editable value intact. A CSS pseudo-element is
+          // display-only; focus reveals the original URL for normal editing.
+          this.linkLabels.add(link);
+          link.removeAttribute('data-bui-label');
+          const size = link.ownerDocument.defaultView?.getComputedStyle(link).fontSize;
+          if (size) link.style.setProperty('--bui-link-font-size', size);
+          link.setAttribute('data-bui-label', label);
+        } else {
+          link.removeAttribute('data-bui-label');
+          link.style.removeProperty('--bui-link-font-size');
+          this.linkLabels.delete(link);
         }
-        container.empty(); this.renderPreferences(container);
-      }));
-    if (this.settings.legacyPages) new Setting(container).setName(t('默认阅读', 'Reading first')).setDesc(t('打开笔记时优先阅读；点击编辑后才输入。', 'Open notes in reading mode. Use Edit when you want to write.'))
-      .addToggle(v => v.setValue(this.settings.readingFirst).onChange(async value => { this.settings.readingFirst = value; await this.saveSettings(); }));
-    new Setting(container).setName(t('收起阅读时的底部导航', 'Hide navigation while reading')).setDesc(t('仅在替代工具栏已出现时生效；编辑时保留系统工具栏。', 'Only hidden when the replacement toolbar is mounted. Editing tools remain available.'))
-      .addToggle(v => v.setValue(this.settings.quietNavigation).onChange(async value => { this.settings.quietNavigation = value; await this.saveSettings(); }));
-    new Setting(container).setName(t('舒适阅读间距', 'Comfortable reading spacing'))
-      .addToggle(v => v.setValue(this.settings.calmTypography).onChange(async value => { this.settings.calmTypography = value; await this.saveSettings(); }));
-    new Setting(container).setName(t('首页笔记', 'Home note')).setDesc(this.settings.homePath || t('尚未设置；不会自动创建首页内容。', 'Not set. No home content is created automatically.'))
-      .addButton(v => v.setButtonText(t('选择', 'Choose')).onClick(() => {
-        const picker = new HomePicker(this.app, this.app.vault.getMarkdownFiles(), async file => {
-          this.settings.homePath = file.path; await this.saveSettings(true);
-          container.empty(); this.renderPreferences(container);
-        }, () => this.untrack(picker));
-        this.track(picker).open();
-      }))
-      .addExtraButton(v => v.setIcon('x').setTooltip(t('清除首页设置', 'Clear home note')).onClick(async () => {
-        this.settings.homePath = ''; await this.saveSettings(true); container.empty(); this.renderPreferences(container);
-      }));
-    new Setting(container).setName(t('语言', 'Language')).addDropdown(v => v.addOptions({ auto: 'Automatic', zh: '简体中文', en: 'English' })
-      .setValue(this.settings.language).onChange(async value => {
-        this.settings.language = value as FocusSettings['language']; await this.saveSettings(true);
-        container.empty(); this.renderPreferences(container);
-      }));
-    new Setting(container).setName(t('原界面', 'Original interface')).setDesc(t('临时恢复全部工具；禁用插件也会恢复原界面。', 'Temporarily restore all controls. Disabling the plugin also restores them.'))
-      .addButton(v => v.setButtonText(t('显示原界面', 'Restore')).onClick(() => this.setPaused(true)));
-    container.createEl('p', { cls: 'nf-help', text: t('v0.9.2 · 连续写作，按需整理。普通笔记不会自动添加属性。资料库需要启用 Obsidian 的数据库核心插件。', 'v0.9.2 · Continuous writing, optional libraries. Notes get no automatic properties. Libraries require the Obsidian Bases core plugin.') });
-  }
-
-  report(error: unknown): void {
-    console.error('Nebula Focus:', error);
-    new Notice(this.text('操作未完成，请重试。原始内容未被替换。', 'Action could not be completed. Please try again.'));
-  }
-
-  onunload(): void {
-    this.disposed = true;
-    this.formatGuide?.destroy();
-    this.libraries?.stop();
-    this.fileToken++;
-    for (const timer of this.timers) window.clearTimeout(timer);
-    this.timers.clear();
-    for (const modal of this.dialogs) modal.close();
-    this.dialogs.clear();
-    for (const [view, bar] of this.bars) this.removeBar(view, bar);
-    for (const view of this.libraryBars.keys()) this.removeLibraryBar(view);
-    this.resumeButton?.remove();
-    document.body.classList.remove('nf-active', 'nf-quiet', 'nf-reading');
-  }
-}
-
-class FocusSettingTab extends PluginSettingTab {
-  constructor(app: App, private plugin: NebulaFocus) { super(app, plugin); }
-  display(): void { this.containerEl.empty(); this.plugin.renderPreferences(this.containerEl); }
-}
-
-class PreferencesModal extends Modal {
-  constructor(private plugin: NebulaFocus) { super(plugin.app); }
-  onOpen(): void {
-    this.titleEl.setText(this.plugin.text('界面偏好', 'Preferences'));
-    this.modalEl.classList.add('nf-dialog', 'nf-preferences');
-    this.plugin.renderPreferences(this.contentEl);
-  }
-  onClose(): void { this.contentEl.empty(); this.plugin.untrack(this); }
-}
-
-class HomePicker extends FuzzySuggestModal<TFile> {
-  constructor(app: App, private files: TFile[], private choose: (file: TFile) => void, private cleanup: () => void) {
-    super(app); this.setPlaceholder('Home / 首页');
-  }
-  getItems(): TFile[] { return this.files; }
-  getItemText(file: TFile): string { return file.path; }
-  onChooseItem(file: TFile): void { this.choose(file); }
-  onClose(): void { super.onClose(); this.cleanup(); }
-}
-
-class LeafPicker extends FuzzySuggestModal<WorkspaceLeaf> {
-  constructor(app: App, private leaves: WorkspaceLeaf[], private choose: (leaf: WorkspaceLeaf) => void, private cleanup: () => void) { super(app); }
-  getItems(): WorkspaceLeaf[] { return this.leaves; }
-  getItemText(leaf: WorkspaceLeaf): string { return leaf.view.getDisplayText(); }
-  onChooseItem(leaf: WorkspaceLeaf): void { this.choose(leaf); }
-  onClose(): void { super.onClose(); this.cleanup(); }
-}
-
-class NameModal extends Modal {
-  constructor(private plugin: NebulaFocus, private heading: string, private submit: (name: string) => Promise<void>) { super(plugin.app); }
-  onOpen(): void {
-    this.titleEl.setText(this.heading);
-    this.modalEl.classList.add('nf-dialog');
-    const form = this.contentEl.createEl('form', { cls: 'nf-name-form' });
-    const input = form.createEl('input', { type: 'text', attr: { 'aria-label': this.heading, placeholder: this.heading, autocomplete: 'off' } });
-    input.required = true;
-    const error = form.createEl('p', { cls: 'nf-error', attr: { role: 'alert' } });
-    const submit = form.createEl('button', { text: this.plugin.text('创建', 'Create'), cls: 'mod-cta', type: 'submit' });
-    form.addEventListener('submit', event => {
-      event.preventDefault();
-      if (submit.disabled) return;
-      submit.disabled = true;
-      void this.submit(input.value).then(() => this.close()).catch(() => {
-        error.setText(this.plugin.text('无法创建：请检查名称，避免重名或包含 / 等路径符号。', 'Could not create. Use a unique name without path separators.'));
-        submit.disabled = false;
-      });
+      }
+    }
+    document.querySelectorAll<HTMLElement>('.metadata-property[data-property-key]').forEach(el => {
+      const key = el.dataset.propertyKey ?? '';
+      const date = el.querySelector<HTMLInputElement>('input[type="date"], input[type="datetime-local"]');
+      el.classList.toggle('bui-overdue', isDueProperty(key) && overdue(date?.value));
     });
-    this.plugin.later(() => input.focus());
   }
-  onClose(): void { this.contentEl.empty(); this.plugin.untrack(this); }
+
+  private tableImageTarget(event: MouseEvent | KeyboardEvent): HTMLImageElement | null {
+    if (!this.active || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
+        ('button' in event && event.button !== 0)) return null;
+    const target = event.target;
+    if (!(target instanceof Element) || !target.matches(TABLE_IMAGE) || target.closest('a[href]')) return null;
+    return target as HTMLImageElement;
+  }
+
+  private decorateIdeaAttachments() {
+    const seen = new Set<HTMLElement>();
+    for (const link of document.querySelectorAll<HTMLElement>('.bui-ideas-base .bases-td[data-property="note.文件和媒体"] .multi-select-pill-content.internal-link[data-href]')) {
+      const href = link.dataset.href ?? '';
+      if (!/\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(href)) continue;
+      const pill = link.parentElement;
+      const file = this.app.vault.getFileByPath(href) ?? this.app.metadataCache.getFirstLinkpathDest(href, '');
+      if (!pill || !file) continue;
+      seen.add(link);
+      const previous = this.attachmentThumbnails.get(link);
+      if (previous?.href === href && previous.image.parentElement === pill) continue;
+      if (previous) {previous.image.remove(); previous.pill.classList.remove('bui-attachment-with-thumb');}
+      const image = document.createElement('img');
+      image.className = 'bui-attachment-thumb';
+      image.src = this.app.vault.getResourcePath(file);
+      image.alt = href.split('/').pop() ?? '图片';
+      image.draggable = false;
+      pill.prepend(image); pill.classList.add('bui-attachment-with-thumb');
+      this.attachmentThumbnails.set(link, {image, href, pill});
+    }
+    for (const [link, {image, pill}] of this.attachmentThumbnails) if (!seen.has(link)) {
+      image.remove(); pill.classList.remove('bui-attachment-with-thumb'); this.attachmentThumbnails.delete(link);
+    }
+  }
+
+  private decorateTableImages() {
+    for (const [img, attributes] of this.tableImages) if (!img.isConnected) {
+      for (const [name, value] of attributes) value === null ? img.removeAttribute(name) : img.setAttribute(name, value);
+      this.tableImages.delete(img);
+    }
+    for (const img of document.querySelectorAll<HTMLImageElement>(TABLE_IMAGE)) {
+      if (this.tableImages.has(img) || img.closest('a[href]')) continue;
+      this.tableImages.set(img, new Map(['tabindex', 'role', 'aria-label', 'title'].map(name => [name, img.getAttribute(name)])));
+      img.tabIndex = 0;
+      img.setAttribute('role', 'button');
+      img.setAttribute('aria-label', `放大图片：${img.alt || '图片'}`);
+      img.title = '点击放大';
+    }
+  }
+
+  private openTableImage(img: HTMLImageElement) {
+    const src = img.currentSrc || img.src;
+    if (!src) return;
+    this.imagePreview?.close();
+    img.focus({preventScroll: true});
+    const modal = this.imagePreview = new Modal(this.app);
+    modal.modalEl.classList.add('bui-image-preview');
+    modal.modalEl.setAttribute('aria-label', `图片预览：${img.alt || '图片'}`);
+    modal.contentEl.createEl('img', {attr: {src, alt: img.alt || '图片'}});
+    modal.onClose = () => {
+      modal.contentEl.replaceChildren();
+      if (this.imagePreview === modal) this.imagePreview = undefined;
+      if (img.isConnected) img.focus({preventScroll: true});
+    };
+    modal.open();
+  }
+
+  private extendBasesToEdge(root: HTMLElement) {
+    for (const embed of root.querySelectorAll<HTMLElement>('.bases-embed, .block-language-base')) {
+      const scroller = embed.closest<HTMLElement>('.markdown-preview-view, .cm-scroller');
+      if (!scroller || !embed.getBoundingClientRect().width) continue;
+      if (!this.edgeRoots.has(scroller)) {
+        this.edgeRoots.add(scroller);
+        this.edgeObserver?.observe(scroller);
+      }
+      // Measure against the unexpanded right edge to avoid a feedback loop.
+      const previous = parseFloat(embed.style.getPropertyValue('--bui-right-bleed')) || 0;
+      const originalRight = embed.getBoundingClientRect().right - previous;
+      const paneRight = scroller.getBoundingClientRect().left + scroller.clientLeft + scroller.clientWidth;
+      const bleed = `${Math.max(0, paneRight - originalRight).toFixed(2)}px`;
+      embed.classList.add('bui-edge-to-pane');
+      if (embed.style.getPropertyValue('--bui-right-bleed') !== bleed)
+        embed.style.setProperty('--bui-right-bleed', bleed);
+      this.edgeEmbeds.add(embed);
+    }
+  }
+
+  private clearPresentation() {
+    this.imagePreview?.close();
+    this.propertySuggestions?.clear();
+    this.ideaTags.clear();
+    this.ideaTitles.clear();
+    this.ideaTables.clear();
+    this.ideaWidths.clear();
+    this.ideaRows.clear();
+    this.ideaHeaders?.clear();
+    for (const {image, pill} of this.attachmentThumbnails.values()) {image.remove(); pill.classList.remove('bui-attachment-with-thumb');}
+    this.attachmentThumbnails.clear();
+    for (const [img, attributes] of this.tableImages)
+      for (const [name, value] of attributes) value === null ? img.removeAttribute(name) : img.setAttribute(name, value);
+    this.tableImages.clear();
+    for (const adapter of this.adapters.values()) adapter.destroy();
+    this.adapters.clear();
+    for (const el of this.linkLabels) {
+      el.removeAttribute('data-bui-label');
+      el.style.removeProperty('--bui-link-font-size');
+    }
+    this.linkLabels.clear();
+    for (const [metadata, button] of this.metaButtons) {button.remove(); metadata.classList.remove('bui-show-aux');}
+    this.metaButtons.clear();
+    document.querySelectorAll('.bui-duplicate-heading,.bui-overdue,.bui-has-bases,.bui-has-ideas,.bui-low-priority,.bui-cover-property').forEach(el =>
+      el.classList.remove('bui-duplicate-heading','bui-overdue','bui-has-bases','bui-has-ideas','bui-low-priority','bui-cover-property'));
+    for (const el of this.edgeEmbeds) {
+      el.classList.remove('bui-edge-to-pane');
+      el.style.removeProperty('--bui-right-bleed');
+    }
+    this.edgeEmbeds.clear();
+    this.edgeObserver?.disconnect(); this.edgeRoots.clear();
+  }
+
+  onunload() {
+    this.disposed = true;
+    this.active = false;
+    this.observer?.disconnect();
+    window.clearTimeout(this.timer);
+    for (const restore of this.factoryRestores) restore();
+    this.clearPresentation();
+    document.body.classList.remove('bui-enabled');
+    this.app.workspace.trigger('css-change');
+  }
 }
 
-class NavigatorModal extends Modal {
-  private folder = '';
-  private query = '';
-  private list!: HTMLElement;
-  private crumb!: HTMLElement;
-  private sort: 'name' | 'recent' = 'name';
-  constructor(private plugin: NebulaFocus, private focusSearch: boolean) { super(plugin.app); }
-  onOpen(): void {
-    const t = (zh: string, en: string) => this.plugin.text(zh, en);
-    this.titleEl.setText(t('笔记', 'Notes'));
-    this.modalEl.classList.add('nf-dialog', 'nf-navigator');
-    const header = this.contentEl.createDiv('nf-nav-actions');
-    this.plugin.button(header, 'library', t('资料库', 'Libraries'), () => { this.close(); this.plugin.libraries.open(); }, true);
-    if (this.plugin.settings.homePath) this.plugin.button(header, 'house', t('首页', 'Home'), () => { this.close(); void this.plugin.openHome(); }, true);
-    this.plugin.button(header, 'plus', t('新建', 'New'), event => this.createMenu(event), true);
-    this.plugin.button(header, 'ellipsis', t('更多', 'More'), event => this.moreMenu(event));
-    const search = this.contentEl.createDiv('nf-search-field');
-    const searchIcon = search.createSpan({ cls: 'nf-icon', attr: { 'aria-hidden': 'true' } });
-    setIcon(searchIcon, 'search');
-    const input = search.createEl('input', { cls: 'nf-search', type: 'search', attr: {
-      placeholder: t('搜索笔记和文件夹', 'Search notes and folders'), 'aria-label': t('搜索笔记和文件夹', 'Search notes and folders'),
-      autocapitalize: 'off', autocomplete: 'off',
-    } });
-    input.addEventListener('input', () => { this.query = input.value; this.render(); });
-    this.crumb = this.contentEl.createDiv('nf-breadcrumb');
-    this.list = this.contentEl.createDiv('nf-file-list');
+class Presentation {
+  host: HTMLElement;
+  private native: HTMLElement;
+  private el: HTMLElement;
+  private original: Native;
+  private wrapped: Native;
+  private signature = '';
+  private dead = false;
+  private component = new Component();
+  private dragged: Entry | null = null;
+  private draggedGroup: Group | null = null;
+  private originalHidden: boolean;
+
+  constructor(private plugin: NebulaFocus, private view: Native) {
+    this.host = view.queryController.viewContainerEl;
+    this.native = view.containerEl;
+    this.originalHidden = this.native.hidden;
+    this.el = this.host.createDiv('bui-presentation');
+    this.component.load();
+    this.original = view.onDataUpdated;
+    const adapter = this;
+    this.wrapped = function(this: Native, ...args: Native[]) {
+      adapter.signature = '';
+      const result = adapter.original.apply(this, args);
+      adapter.render();
+      return result;
+    };
+    view.onDataUpdated = this.wrapped;
+    this.el.addEventListener('keydown', event => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z' &&
+          !(event.target instanceof HTMLInputElement)) {
+        const action = event.shiftKey ? view.redoTransaction : view.undoTransaction;
+        if (typeof action === 'function') {event.preventDefault(); action.call(view);}
+      }
+    });
     this.render();
-    // Prevent the mobile keyboard from appearing before the user asks to search.
-    this.plugin.later(() => {
-      if (!this.modalEl.isConnected) return;
-      if (this.focusSearch) input.focus();
-      else { input.blur(); this.modalEl.tabIndex = -1; this.modalEl.focus({ preventScroll: true }); }
-    }, 0);
   }
 
-  private render(): void {
-    const t = (zh: string, en: string) => this.plugin.text(zh, en);
-    this.list.empty(); this.crumb.empty();
-    const searching = !!this.query.trim();
-    if (!searching && this.folder) this.plugin.button(this.crumb, 'arrow-left', t('上一级', 'Up'), () => { this.folder = parentPath(this.folder); this.render(); }, true);
-    this.crumb.createSpan({ text: searching ? t('搜索结果', 'Search results') : (this.folder || t('全部笔记', 'All notes')) });
-    const base = this.folder ? this.app.vault.getAbstractFileByPath(this.folder) : this.app.vault.getRoot();
-    const items = searching ? this.app.vault.getAllLoadedFiles().filter(f => !!f.path && matchesQuery(f.path, this.query))
-      : base instanceof TFolder ? [...base.children] : [];
-    const readable = items.filter(f => f instanceof TFolder || (f instanceof TFile && ['md', 'base', 'canvas', 'pdf'].includes(f.extension)))
-      .sort((a, b) => {
-        if (a instanceof TFolder !== (b instanceof TFolder)) return a instanceof TFolder ? -1 : 1;
-        if (this.sort === 'recent' && a instanceof TFile && b instanceof TFile) return b.stat.mtime - a.stat.mtime;
-        return a.name.localeCompare(b.name, undefined, { numeric: true });
+  invalidate() {this.signature = '';}
+
+  refreshDeadlines() {
+    this.el.querySelectorAll<HTMLElement>('[data-bui-due]').forEach(field => {
+      const past = overdue(field.dataset.buiDue, new Date(), field.dataset.buiStatus);
+      field.classList.toggle('bui-overdue', past);
+      field.title = past ? '已超过截止日期' : '';
+    });
+  }
+
+  render() {
+    if (this.dead || !this.view.data) return;
+    const view = this.view;
+    const groups: Group[] = view.type === 'kanban' ? view.orderedGroups : view.data.groupedData;
+    // Preserve native behaviour for huge collections and unknown configuration.
+    if (!Array.isArray(groups) || (view.data.data?.length ?? 0) > 500 ||
+        (view.type === 'kanban' && !view.config.groupBy)) {
+      this.native.hidden = this.originalHidden;
+      this.el.hidden = true;
+      return;
+    }
+    let signature: string;
+    try {
+      signature = JSON.stringify([view.config.getOrder(), view.config.get('image'), view.config.get('cardSize'),
+        view.config.get('columnWidth'), groups.map(g => [g.key?.toString(), g.entries.map(e =>
+          [e.file.path, e.file.stat.mtime, ...view.config.getOrder().map((p: string) => e.getValue(p)?.toString())])])]);
+    } catch { this.fallback(); return; }
+    if (signature === this.signature) return;
+    this.signature = signature;
+    try {
+      this.native.hidden = true;
+      this.el.hidden = false;
+      this.component.unload(); this.component = new Component(); this.component.load();
+      this.el.replaceChildren();
+      this.el.classList.toggle('bui-board', view.type === 'kanban');
+      this.el.classList.toggle('bui-gallery', view.type === 'cards');
+      if (view.type === 'kanban') this.el.style.setProperty('--bui-column-width', `${Math.max(240, Math.min(360, Number(view.config.get('columnWidth')) || 260))}px`);
+      else this.el.style.setProperty('--bui-card-size', `${Math.max(180, Math.min(360, Number(view.config.get('cardSize')) || 220))}px`);
+      for (const group of groups) this.group(group);
+      if (!groups.length) this.el.createDiv({cls: 'bui-empty', text: '当前视图没有记录'});
+    } catch (error) {
+      console.warn('Native Reading UI: native renderer retained', error);
+      this.fallback();
+    }
+  }
+
+  private group(group: Group) {
+    const board = this.view.type === 'kanban';
+    const section = this.el.createEl('section', {cls: board ? 'bui-column' : 'bui-gallery-group'});
+    if (board || group.key?.toString()) {
+      const heading = section.createDiv('bui-group-heading');
+      heading.createEl('h3', {text: group.key?.toString() || '未设置'});
+      heading.createSpan({cls: 'bui-count', text: String(group.entries.length)});
+      if (board && !this.view.isReadOnly && typeof this.view.moveColumn === 'function') {
+        heading.draggable = true;
+        heading.addEventListener('dragstart', event => {
+          if ((event.target as Element).closest('button')) {event.preventDefault(); return;}
+          this.draggedGroup = group;
+          event.dataTransfer?.setData('text/plain', group.key?.toString() || '');
+          if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+        });
+        heading.addEventListener('dragend', () => {this.draggedGroup = null;});
+      }
+      if (board && !this.view.isReadOnly && typeof this.view.createNoteInGroup === 'function') {
+        const add = heading.createEl('button', {cls: 'bui-add clickable-icon', attr: {'aria-label': '在此列新建笔记'}});
+        setIcon(add, 'plus');
+        add.addEventListener('click', () => this.view.createNoteInGroup(group));
+      }
+    }
+    const list = section.createDiv(board ? 'bui-column-cards' : 'bui-gallery-grid');
+    for (const entry of group.entries) this.card(list, entry);
+    if (board && !this.view.isReadOnly && typeof this.view.createNoteInGroup === 'function') {
+      const add = section.createEl('button', {cls: 'bui-column-new', attr: {'aria-label': `在${group.key?.toString() || '未设置'}列新建笔记`}});
+      setIcon(add.createSpan(), 'plus');
+      add.createSpan({text: '新建'});
+      add.addEventListener('click', () => this.view.createNoteInGroup(group));
+    }
+    if (board) {
+      section.addEventListener('dragover', event => {
+        if (!this.draggedGroup && (!this.dragged || !this.view.canMoveCard(this.dragged.file))) return;
+        event.preventDefault(); if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+        section.classList.add('bui-drop-target');
       });
-    const status = this.list.createDiv({ cls: 'nf-sr-only', attr: { role: 'status', 'aria-live': 'polite' } });
-    status.setText(`${readable.length} ${t('项', 'items')}`);
-    if (!readable.length) this.list.createEl('p', { cls: 'nf-empty', text: searching ? t('没有找到匹配内容。', 'No matching notes.') : t('这里还没有笔记。点击新建开始。', 'No notes here yet. Use New to get started.') });
-    for (const item of readable.slice(0, 150)) {
-      const row = this.list.createEl('button', { cls: 'nf-file-row', type: 'button' });
-      const icon = row.createSpan('nf-file-icon'); icon.setAttribute('aria-hidden', 'true');
-      setIcon(icon, item instanceof TFolder ? 'folder' : item instanceof TFile && item.extension === 'base' ? 'table-2' : 'file-text');
-      const copy = row.createSpan('nf-file-copy');
-      copy.createSpan({ cls: 'nf-file-name', text: item instanceof TFile ? item.basename : item.name });
-      if (searching) copy.createSpan({ cls: 'nf-file-path', text: item.path });
-      row.addEventListener('click', () => {
-        if (item instanceof TFolder) {
-          this.folder = item.path; this.query = '';
-          const input = this.contentEl.querySelector<HTMLInputElement>('.nf-search'); if (input) input.value = '';
-          this.render();
-        } else if (item instanceof TFile) { this.close(); void this.plugin.openFile(item); }
+      section.addEventListener('dragleave', event => {
+        if (!(event.relatedTarget instanceof Node) || !section.contains(event.relatedTarget)) section.classList.remove('bui-drop-target');
+      });
+      section.addEventListener('drop', event => {
+        if (this.draggedGroup) {
+          event.preventDefault();
+          section.classList.remove('bui-drop-target');
+          const moved = this.draggedGroup; this.draggedGroup = null;
+          this.view.moveColumn(moved, this.view.orderedGroups.indexOf(group));
+          return;
+        }
+        if (!this.dragged || !this.view.canMoveCard(this.dragged.file)) return;
+        event.preventDefault();
+        const entry = this.dragged; this.dragged = null;
+        section.classList.remove('bui-drop-target');
+        // Only an explicit user drop invokes the original native mutation.
+        Promise.resolve(this.view.moveCardToColumn(entry.file, group.key))
+          .catch((error: Error) => new Notice(error.message));
       });
     }
-    if (readable.length > 150) this.list.createEl('p', { cls: 'nf-help', text: t('显示前 150 项，请搜索以缩小范围。', 'Showing 150 items. Search to narrow the results.') });
   }
 
-  private createMenu(event: MouseEvent): void {
-    const t = (zh: string, en: string) => this.plugin.text(zh, en);
-    const menu = new Menu();
-    menu.addItem(i => i.setTitle(t('新建笔记', 'New note')).setIcon('file-plus').onClick(() => this.askName(true)));
-    menu.addItem(i => i.setTitle(t('新建文件夹', 'New folder')).setIcon('folder-plus').onClick(() => this.askName(false)));
-    menu.showAtMouseEvent(event);
-  }
-
-  private askName(note: boolean): void {
-    const folder = this.folder;
-    const modal = new NameModal(this.plugin, note ? this.plugin.text('笔记名称', 'Note name') : this.plugin.text('文件夹名称', 'Folder name'), async name => {
-      const path = childPath(folder, name, note);
-      if (this.app.vault.getAbstractFileByPath(path)) throw new Error('already-exists');
-      if (note) {
-        const file = await this.app.vault.create(path, '');
-        this.close(); await this.plugin.openFile(file, true);
-      } else { await this.app.vault.createFolder(path); this.render(); }
+  private card(parent: HTMLElement, entry: Entry) {
+    const app = this.plugin.app;
+    const board = this.view.type === 'kanban';
+    const card = parent.createEl('article', {cls: 'bui-card'});
+    card.dataset.path = entry.file.path;
+    const cover = this.plugin.cover(entry, this.view);
+    if (cover) {
+      const image = card.createEl('img', {cls: 'bui-cover', attr: {
+        src: cover, alt: entry.file.basename, loading: 'lazy', draggable: 'false',
+      }});
+      image.addEventListener('error', () => image.remove(), {once: true});
+    }
+    const content = card.createDiv('bui-card-content');
+    const title = content.createEl('a', {cls: 'bui-card-title internal-link', text: entry.file.basename,
+      attr: {href: entry.file.path, 'data-href': entry.file.path}});
+    title.addEventListener('click', event => {
+      event.preventDefault();
+      app.workspace.openLinkText(entry.file.path, '', event.metaKey || event.ctrlKey);
     });
-    this.plugin.track(modal).open();
+    card.addEventListener('click', event => {
+      if ((event.target as Element).closest('a,button,input')) return;
+      app.workspace.openLinkText(entry.file.path, '', event.metaKey || event.ctrlKey);
+    });
+    card.addEventListener('contextmenu', event => {
+      event.preventDefault();
+      const menu = new Menu();
+      menu.addItem(item => item.setTitle('打开笔记').setIcon('file-text').onClick(() => app.workspace.openLinkText(entry.file.path, '')));
+      menu.addItem(item => item.setTitle('在新标签页打开').setIcon('file-plus').onClick(() => app.workspace.openLinkText(entry.file.path, '', true)));
+      app.workspace.trigger('file-menu', menu, entry.file, 'link-context-menu');
+      menu.showAtMouseEvent(event);
+    });
+    if (board && this.view.canMoveCard(entry.file)) {
+      card.draggable = true;
+      card.addEventListener('dragstart', event => {
+        this.dragged = entry;
+        event.dataTransfer?.setData('text/plain', entry.file.path);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+      });
+      card.addEventListener('dragend', () => {
+        this.dragged = null;
+        this.el.querySelectorAll('.bui-drop-target').forEach(el => el.classList.remove('bui-drop-target'));
+      });
+    }
+    const fields = content.createDiv(board ? 'bui-card-fields' : 'bui-card-meta');
+    const fm = app.metadataCache.getFileCache(entry.file)?.frontmatter ?? {};
+    for (const prop of this.view.config.getOrder() as string[]) {
+      if (prop === 'file.name') continue;
+      let value: Native;
+      try { value = entry.getValue(prop); } catch {continue;}
+      const name = propertyName(prop);
+      const raw = Object.prototype.hasOwnProperty.call(fm, name) ? fm[name]
+        : (value?.data !== undefined ? value.data : value?.toString());
+      if (!value || isEmpty(raw) || (raw === 'null' && value.data === undefined && !Object.prototype.hasOwnProperty.call(fm, name))) continue;
+      const field = fields.createDiv('bui-field');
+      field.dataset.property = name;
+      const label = this.view.config.getDisplayName(prop);
+      field.createSpan({cls: 'bui-field-label', text: label});
+      const output = field.createDiv('bui-field-value');
+      if (typeof value.renderTo === 'function') value.renderTo(output, (app as Native).renderContext);
+      else output.textContent = value.toString();
+      if (isDueProperty(prop)) {
+        field.dataset.buiDue = String(fm[name] ?? value.data ?? value.toString());
+        field.dataset.buiStatus = String(fm.状态 ?? fm.status ?? '');
+        const past = overdue(field.dataset.buiDue, new Date(), field.dataset.buiStatus);
+        field.classList.toggle('bui-overdue', past);
+        if (past) field.title = '已超过截止日期';
+      }
+      if (name === '项目下一步') field.classList.add('bui-next-step');
+      if (name === '项目摘要') field.classList.add('bui-summary');
+    }
   }
 
-  private moreMenu(event: MouseEvent): void {
-    const t = (zh: string, en: string) => this.plugin.text(zh, en);
-    const menu = new Menu();
-    menu.addItem(i => i.setTitle(t('按名称排序', 'Sort by name')).setChecked(this.sort === 'name').onClick(() => { this.sort = 'name'; this.render(); }));
-    menu.addItem(i => i.setTitle(t('最近修改优先', 'Recently modified first')).setChecked(this.sort === 'recent').onClick(() => { this.sort = 'recent'; this.render(); }));
-    menu.addSeparator();
-    menu.addItem(i => i.setTitle(t('界面偏好', 'Preferences')).setIcon('sliders-horizontal').onClick(() => { this.close(); this.plugin.openPreferences(); }));
-    menu.addItem(i => i.setTitle(t('原文件管理与全部工具', 'Original file manager and all tools')).setIcon('folder-open').onClick(() => {
-      this.close(); this.plugin.setPaused(true); this.app.workspace.leftSplit.expand();
-    }));
-    menu.showAtMouseEvent(event);
+  private fallback() {
+    this.native.hidden = this.originalHidden;
+    this.el.hidden = true;
+    this.signature = '';
   }
-  onClose(): void { this.contentEl.empty(); this.plugin.navigatorClosed(this); }
+  destroy() {
+    if (this.dead) return;
+    this.dead = true;
+    if (this.view.onDataUpdated === this.wrapped) this.view.onDataUpdated = this.original;
+    this.native.hidden = this.originalHidden;
+    this.component.unload();
+    this.el.remove();
+    if (this.view._loaded && typeof this.view.updateVirtualDisplay === 'function') this.view.updateVirtualDisplay();
+  }
 }
