@@ -19,6 +19,22 @@ const text=(key,value,type='text')=>`<div class="bases-td" data-property="${key}
 const table=body=>'<div class="bases-view" data-view-type="table" data-view-name="发布记录">'+body+'</div>';
 const metadata=(key,value)=>`<div class="metadata-property" data-property-key="${key}"><div class="metadata-property-key"><input class="metadata-property-key-input" value="${key}"></div><div class="metadata-property-value" data-property-type="text"><div class="metadata-input-longtext" contenteditable="true" tabindex="0">${value}</div></div></div>`;
 
+test('scoped viewport decoration includes the root table and retains other tables and note properties',()=>{
+  const f=fixture(table(text('note.类型','技术'))+table(text('note.类型','流程'))+metadata('状态','进行中'));
+  try {
+    f.refresh();
+    const [one,two]=f.doc.querySelectorAll('.bases-view');
+    const other=two.querySelector('.bui-semantic-tag'),note=f.doc.querySelector('.metadata-property .bui-semantic-tag');
+    one.innerHTML=text('note.类型','内容选题');
+    f.tags.refresh(one,true);
+    assert.equal(one.querySelector('.bui-semantic-tag').dataset.buiTone,'yellow');
+    assert.equal(two.querySelector('.bui-semantic-tag'),other);assert.equal(other.dataset.buiTone,'blue');
+    assert.ok(note.classList.contains('bui-semantic-tag'));
+    assert.equal(f.tags.decorated.size,3);
+    f.tags.clear();assert.equal(f.doc.querySelector('.bui-semantic-tag'),null);
+  }finally{f.close();}
+});
+
 test('semantic field registry is explicit; titles, prose, dates, numbers and formula fields are not inferred as tags',()=>{
   for(const key of ['note.发布平台','内容类型','领域','类型','状态','重要性','优先级','category','Status'])
     assert.equal(semanticProperty(key),'classification',key);

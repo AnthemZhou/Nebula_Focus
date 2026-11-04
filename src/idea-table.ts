@@ -15,6 +15,7 @@ export function semanticProperty(raw: string): 'classification' | 'relation' | n
   return CLASSIFICATIONS.has(key) ? 'classification' : RELATIONS.has(key) ? 'relation' : null;
 }
 type Decoration = {tone: string | null; className: string | null; added: Set<string>};
+type TableFooter = {el: HTMLElement; observer: MutationObserver; focused: boolean};
 
 /** Style native Bases controls without replacing their contents or input handlers. */
 export function ideaTone(text: string, property: string): string {
@@ -37,13 +38,15 @@ export class IdeaTables {
   private decorated = new Map<HTMLElement, Decoration>();
   private semanticContainers = new Map<HTMLElement, boolean>();
   private views = new Set<HTMLElement>();
-  private footers = new Map<HTMLElement, HTMLElement>();
+  private footers = new Map<HTMLElement, TableFooter>();
 
-  refresh(root: ParentNode) {
+  refresh(root: ParentNode, scoped = false) {
     const current = new Set<HTMLElement>();
     const views = new Set<HTMLElement>();
     const containers = new Set<HTMLElement>();
-    for (const view of root.querySelectorAll<HTMLElement>('.bases-view[data-view-type]')) {
+    const roots = Array.from(root.querySelectorAll<HTMLElement>('.bases-view[data-view-type]'));
+    if ((root as Node).nodeType === 1 && (root as HTMLElement).matches('.bases-view[data-view-type]')) roots.unshift(root as HTMLElement);
+    for (const view of roots) {
       if (view.dataset.viewType === 'table' && view.dataset.viewName === '想法收集箱') {
         views.add(view); view.classList.add('bui-ideas-base'); this.refreshFooter(view);
       }
@@ -75,13 +78,12 @@ export class IdeaTables {
         }
       }
     }
-    for (const [el, original] of this.decorated) if (!current.has(el)) this.restore(el, original);
-    for (const [el, present] of this.semanticContainers) if (!containers.has(el)) this.restoreContainer(el, present);
-    for (const view of this.views) if (!views.has(view)) view.classList.remove('bui-ideas-base');
-    for (const [view, footer] of this.footers) if (!views.has(view)) {
-      footer.remove(); this.footers.delete(view);
-    }
-    this.views = views;
+    const within = (el: HTMLElement) => !scoped || !el.isConnected || (root as Node).contains(el);
+    for (const [el, original] of this.decorated) if (within(el) && !current.has(el)) this.restore(el, original);
+    for (const [el, present] of this.semanticContainers) if (within(el) && !containers.has(el)) this.restoreContainer(el, present);
+    for (const view of this.views) if (within(view) && !views.has(view)) {view.classList.remove('bui-ideas-base'); this.views.delete(view);}
+    for (const view of this.footers.keys()) if (within(view) && !views.has(view)) this.removeFooter(view);
+    for (const view of views) this.views.add(view);
   }
 
   private markContainer(el: HTMLElement, current: Set<HTMLElement>) {
@@ -157,14 +159,19 @@ export class IdeaTables {
   }
 
   private refreshFooter(view: HTMLElement) {
-    let footer = this.footers.get(view);
-    if (!this.nativeCreateButton(view)) {
-      footer?.remove(); this.footers.delete(view);
+    const container = view.querySelector<HTMLElement>(':scope > .bases-table-container');
+    let state = this.footers.get(view);
+    if (!container || !this.nativeCreateButton(view)) {
+      this.removeFooter(view);
       return;
     }
-    if (!footer) {
-      footer = view.ownerDocument.createElement('div');
+    if (!state) {
+      const footer = view.ownerDocument.createElement('div');
       footer.className = 'bui-ideas-new-row';
+      // Grid selection starts on press and can detach the footer before click.
+      // Keep native button focus/default activation; isolate only propagation.
+      for (const type of ['pointerdown', 'mousedown'])
+        footer.addEventListener(type, event => event.stopPropagation(), true);
       const button = view.ownerDocument.createElement('button');
       button.type = 'button';
       button.className = 'bui-ideas-new-button';
@@ -177,13 +184,38 @@ export class IdeaTables {
         event.preventDefault(); event.stopPropagation();
         // Resolve the current native control at action time; native filtering,
         // permissions and file creation remain owned by Obsidian.
-        if (footer?.isConnected && this.footers.get(view) === footer) this.nativeCreateButton(view)?.click();
+        if (footer.isConnected && this.footers.get(view)?.el === footer) this.nativeCreateButton(view)?.click();
       });
       footer.append(button);
-      this.footers.set(view, footer);
+      const observer = new view.ownerDocument.defaultView!.MutationObserver(() => {
+        if (this.footers.get(view) === state) this.refreshFooter(view);
+      });
+      state = {el: footer, observer, focused: false};
+      footer.addEventListener('focusin', () => {state!.focused = true;});
+      footer.addEventListener('focusout', () => {if (footer.isConnected) state!.focused = false;});
+      this.footers.set(view, state);
     }
-    // A sibling footer cannot alter virtual-row positions or selection geometry.
-    if (view.nextElementSibling !== footer) view.after(footer);
+    // Native virtual rendering owns the data container, tbody and their row
+    // indexes. Match the native summary footer: a final child of the framed,
+    // horizontally scrolling grid, after the data and any summary row.
+    // Native setChildrenInPlace may detach this node during a render. Restore
+    // it in the mutation microtask, without observing or modifying data rows.
+    state.observer.disconnect();
+    const width = container.style.width || '100%';
+    if (state.el.style.width !== width) state.el.style.width = width;
+    if (view.lastElementChild !== state.el) view.append(state.el);
+    // Scrolling a focused footer into view can itself invoke native rendering.
+    // Restore only a focus lost by detachment, never focus taken by an editor.
+    if (state.focused && view.ownerDocument.activeElement === view.ownerDocument.body)
+      state.el.querySelector('button')?.focus({preventScroll: true});
+    state.observer.observe(view, {childList: true, attributes: true, attributeFilter: ['data-view-type', 'data-view-name']});
+    state.observer.observe(container, {attributes: true, attributeFilter: ['style']});
+  }
+
+  private removeFooter(view: HTMLElement) {
+    const state = this.footers.get(view);
+    if (!state) return;
+    state.observer.disconnect(); state.el.remove(); this.footers.delete(view);
   }
 
   private restore(el: HTMLElement, original: Decoration) {
@@ -198,7 +230,6 @@ export class IdeaTables {
     for (const [el, present] of this.semanticContainers) this.restoreContainer(el, present);
     for (const view of this.views) view.classList.remove('bui-ideas-base');
     this.views.clear();
-    for (const footer of this.footers.values()) footer.remove();
-    this.footers.clear();
+    for (const view of this.footers.keys()) this.removeFooter(view);
   }
 }

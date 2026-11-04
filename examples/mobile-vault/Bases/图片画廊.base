@@ -1,0 +1,23 @@
+filters:
+  and:
+    - file.ext == "md"
+    - file.folder == "Assets"
+properties:
+  file.name:
+    displayName: 资产名称
+views:
+  - type: cards
+    name: 图片画廊
+    order:
+      - file.name
+      - 类型
+      - 状态
+    imageFit: contain
+    imageAspectRatio: 1.7777777778
+    cardSize: 220
+  - type: table
+    name: 资产表格
+    order:
+      - file.name
+      - 类型
+      - 状态

@@ -1,3 +1,5 @@
+import {supportsIdeaTagCell} from './idea-tag-support';
+
 /** Minimum widths for the three editable classification columns in native Bases.
  * Wrap the native column-width accessor, which is shared by rendering, hit testing
  * and selection. Never change customWidth, configuration, or persisted note data.
@@ -36,6 +38,17 @@ function values(value: Native): string[] {
   return typeof text === 'string' && text && text !== '[object Object]' ? [text] : [];
 }
 
+function nativeCell(view: Native, property: string): Native | null {
+  // Horizontal virtualization removes cells from the document, but keeps the
+  // native row's full cell list. Sample the same schema even when scrolled away.
+  for (const row of view.rows ?? []) {
+    const cell = row.cells?.find((cell: Native) => cell.prop === property);
+    if (cell?.el instanceof HTMLElement) return cell;
+  }
+  const el = view.containerEl.querySelector(`.bases-td[data-property="${property}"]`);
+  return el ? {el} : null;
+}
+
 class TextMeasure {
   private span?: HTMLSpanElement;
   private fonts = new Map<Element, string[]>();
@@ -54,7 +67,7 @@ class TextMeasure {
     if (!this.span) {
       this.span = this.doc.createElement('span');
       this.span.setAttribute('aria-hidden', 'true');
-      this.span.style.cssText = 'position:fixed;left:-100000px;top:0;visibility:hidden;pointer-events:none;display:inline-block;width:max-content;max-width:none;min-width:0;height:auto;padding:0;margin:0;border:0;white-space:pre;transform:none;';
+      this.span.className = 'bui-text-width-measure';
       this.doc.body.append(this.span);
     }
     FONT_PROPERTIES.forEach((name, index) => this.span!.style.setProperty(name, font[index]));
@@ -104,13 +117,15 @@ export class IdeaColumnWidths {
         if (!info || typeof info.getWidth !== 'function') continue;
         const labels = new Set<string>();
         for (const entry of view.data.data) {
-          try {for (const text of values(entry.getValue(property))) labels.add(text);} catch {}
+          try {for (const text of values(entry.getValue(property))) labels.add(text);} catch { /* Unsupported native values do not contribute to the column minimum. */ }
         }
         const header = view.header.cells.find((cell: Native) => cell.prop === property);
         const label = header?.el?.querySelector('.bases-table-header-name')?.textContent ?? '';
-        const cell = view.containerEl.querySelector(`.bases-td[data-property="${property}"]`);
+        const sample = nativeCell(view, property), cell = sample?.el as HTMLElement | undefined;
         const kind = cell?.querySelector('.bases-table-cell')?.getAttribute('data-property-type') ?? '';
-        const key = JSON.stringify([fontKey, label, kind, [...labels].sort()]);
+        const picker = !!cell && supportsIdeaTagCell(view, sample, property.slice(5), cell);
+        const key = JSON.stringify([fontKey, label, kind, picker,
+          host.classList.contains('bui-ideas-base'), [...labels].sort()]);
         let patch = state.patches.get(property);
         if (patch?.info === info && state.keys.get(property) === key) {present.add(property); continue;}
         if (!host.getBoundingClientRect().width) {if (patch) present.add(property); continue;}
@@ -162,7 +177,43 @@ export class IdeaColumnWidths {
       Math.max(horizontal(style(headerName)), sortSpace) + horizontal(labelStyle) + iconWidth +
       (iconWidth ? pixels(labelStyle.columnGap) : 0) + 2;
 
-    const cell = view.containerEl.querySelector(`.bases-td[data-property="${property}"]`) as HTMLElement | null;
+    const sample = nativeCell(view, property);
+    const cell = sample?.el?.cloneNode(true) as HTMLElement | undefined;
+    // A stable inert sample avoids minimum widths depending on whether the
+    // first visible row currently happens to have a tag. Use the native editor
+    // structure and the same table/style ancestry without touching live inputs.
+    if (cell) {
+      // Paint may not yet have marked this native cell (or it may be a recycled
+      // offscreen cell). Derive its geometry from the renderer/value guard, as
+      // the row-height probe does, rather than the decoration's arrival time.
+      // Otherwise the first clamp reserves a native remove button and a later
+      // scan shrinks the column when the picker hides it, rewrapping tag rows.
+      cell.classList.toggle('bui-tag-picker-cell',
+        supportsIdeaTagCell(view, sample, property.slice(5), sample.el));
+      cell.setAttribute('aria-hidden', 'true'); cell.inert = true;
+      cell.removeAttribute('style');
+      cell.classList.add('bui-tag-width-measure');
+      const list = cell.querySelector('.multi-select-container');
+      if (list && !list.querySelector('.multi-select-pill')) {
+        const pill = cell.ownerDocument.createElement('div');
+        pill.className = 'multi-select-pill bui-native-tag bui-semantic-tag';
+        const content = pill.appendChild(cell.ownerDocument.createElement('div'));
+        content.className = 'multi-select-pill-content'; content.textContent = labels[0] ?? ' ';
+        const remove = pill.appendChild(cell.ownerDocument.createElement('div'));
+        remove.className = 'multi-select-pill-remove-button';
+        const icon = remove.appendChild(cell.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'svg'));
+        icon.classList.add('svg-icon'); icon.setAttribute('width', '24'); icon.setAttribute('height', '24');
+        list.prepend(pill);
+      }
+      for (const pill of cell.querySelectorAll('.multi-select-pill'))
+        pill.classList.add('bui-native-tag', 'bui-semantic-tag');
+      if (labels.length) for (const input of cell.querySelectorAll('.metadata-input-longtext')) {
+        input.classList.add('bui-native-tag', 'bui-semantic-tag');
+        if (!input.textContent) input.textContent = labels[0];
+      }
+      view.containerEl.append(cell);
+    }
+    try {
     const list = cell?.querySelector<HTMLElement>('.multi-select-container');
     const pill = list?.querySelector<HTMLElement>('.multi-select-pill');
     const content = pill?.querySelector<HTMLElement>('.multi-select-pill-content');
@@ -172,8 +223,7 @@ export class IdeaColumnWidths {
     if (list) {
       const listStyle = style(list);
       const remove = pill?.querySelector<HTMLElement>('.multi-select-pill-remove-button');
-      const removeWidth = remove && style(remove).display !== 'none' ? remove.getBoundingClientRect().width :
-        pixels(style(reference).fontSize);
+      const removeWidth = remove && style(remove).display !== 'none' ? remove.getBoundingClientRect().width : 0;
       const inputWidth = Math.max(pixels(style(reference).fontSize) * .65,
         input ? pixels(style(input).minWidth) : 0);
       const pillExtra = (pill ? horizontal(style(pill)) : 0) +
@@ -189,6 +239,7 @@ export class IdeaColumnWidths {
       for (const text of labels) widest = Math.max(widest, measure.width(text, reference) + extra);
     }
     return Math.ceil(Math.max(headerWidth, widest + 2));
+    } finally {cell?.remove();}
   }
 
   /** Invalidate after font loading or css-change; values and computed font

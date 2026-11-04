@@ -1,3 +1,5 @@
+import {supportsIdeaTagCell} from './idea-tag-support';
+
 /** Content-sized native Bases rows. Native row/cell objects and editors remain
  * intact; rendering, selection and hit testing use the same vertical index.
  * No database configuration or note content is written.
@@ -74,6 +76,7 @@ function valueKey(entry: Native, properties: string[]): string {
 export class IdeaRowHeights {
   private states = new Map<Native, State>();
   private failed = new WeakSet<object>();
+  constructor(private afterRender?: (view: Native) => void) {}
 
   /** Attach after presentation classes and column-width clamps. True requests
    * one updateVirtualDisplay call; unchanged periodic scans return false.
@@ -213,15 +216,19 @@ export class IdeaRowHeights {
     const cells = Array.from(row.children) as HTMLElement[];
     for (const cell of cells) {
       const index = state.view.data.properties.indexOf(cell.dataset.property);
+      const nativeCell = state.measureRow.cells?.find((candidate: Native) => candidate.prop === cell.dataset.property);
+      cell.classList.toggle('bui-tag-picker-cell', supportsIdeaTagCell(state.view, nativeCell,
+        (cell.dataset.property ?? '').replace(/^note\./, ''), cell));
       styles(cell, {position: 'relative', 'inset-inline-start': 'auto', width: `${widths[index]}px`,
         height: 'auto', 'min-height': '0', 'max-height': 'none', 'flex-shrink': '0'});
       if (['note.领域', 'note.类型', 'note.重要性'].includes(cell.dataset.property ?? ''))
         cell.querySelectorAll('.multi-select-pill, .metadata-input-longtext').forEach(el => el.classList.add('bui-native-tag'));
       for (const el of cell.querySelectorAll<HTMLElement>('.bases-table-cell, .multi-select-container, .metadata-input-longtext')) {
-        el.style.setProperty('height', 'auto', 'important');
-        el.style.setProperty('min-height', '0', 'important');
-        el.style.setProperty('max-height', 'none', 'important');
-        el.style.setProperty('overflow', 'visible', 'important');
+        el.classList.add('bui-natural-height-measure');
+        // Keep native overflow: hidden on flex items. Replacing it with visible
+        // changes their automatic minimum width to min-content, so a long tag
+        // can widen the measuring list and wrap fewer times than the live cell.
+        // Auto height above already lets the natural vertical content expand.
       }
     }
     return row;
@@ -277,7 +284,10 @@ export class IdeaRowHeights {
     } finally {
       state.perf.lastLayoutMs = state.host.ownerDocument.defaultView!.performance.now() - started;
       if (state.resizing) state.perf.maxPreviewLayoutMs = Math.max(state.perf.maxPreviewLayoutMs, state.perf.lastLayoutMs);
-      state.busy = false; if (this.states.has(view)) this.observe(state);
+      // Decorate newly virtualized cells in the same render while our observer
+      // is disconnected, so our own icons/classes cannot invalidate heights.
+      try {if (this.states.has(view)) this.afterRender?.(view);}
+      finally {state.busy = false; if (this.states.has(view)) this.observe(state);}
     }
   }
   private layout(state: State) {

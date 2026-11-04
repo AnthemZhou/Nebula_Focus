@@ -1,6 +1,6 @@
 # Third-party notices
 
-Nebula Focus 1.0.0 does not bundle a UI framework or third-party runtime library.
+Nebula Focus does not bundle a UI framework or third-party runtime library.
 The host supplies the Obsidian API and its native icons through the external
 `obsidian` module. Obsidian itself is not distributed with this plugin.
 

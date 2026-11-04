@@ -1,0 +1,31 @@
+filters:
+  and:
+    - file.ext == "md"
+    - file.folder == "Projects"
+properties:
+  file.name:
+    displayName: 项目名称
+views:
+  - type: kanban
+    name: 项目看板
+    groupBy:
+      property: 状态
+      direction: ASC
+    groupOrder:
+      - 制作中
+      - 发布 / 运营中
+      - 未开始
+    order:
+      - file.name
+      - 截止日期
+      - 项目下一步
+      - 项目摘要
+    columnWidth: 250
+  - type: table
+    name: 项目表格
+    order:
+      - file.name
+      - 状态
+      - 截止日期
+      - 项目下一步
+      - 项目摘要

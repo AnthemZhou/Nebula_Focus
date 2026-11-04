@@ -6,9 +6,9 @@ const TITLE_PROPERTY = '这里写想法';
 const READ_ONLY = '[disabled], [aria-disabled="true"], [aria-readonly="true"], [data-readonly="true"], .is-read-only, .is-readonly, .mod-readonly';
 type Binding = {
   view: Native; row: Native; file: Native; path: string; query: Native;
-  cell: HTMLElement; link: HTMLElement; icon: HTMLButtonElement; open: HTMLButtonElement;
+  cell: HTMLElement; outer: HTMLElement; link: HTMLElement; icon: HTMLButtonElement;
   attributes: Map<string, string | null>; hadTitleClass: boolean; hadCellClass: boolean;
-  cleanup: () => void; forwarding: boolean; down?: {x: number; y: number};
+  cleanup: () => void; forwarding: boolean; down?: {x: number; y: number; moved: boolean}; stopGesture?: () => void;
 };
 type Edit = {
   binding: Binding; original: string; lastText: string; raw: string | undefined;
@@ -38,7 +38,8 @@ export class IdeaTitleEditors {
       seen.add(link);
       let binding = this.bindings.get(link);
       if (binding && (binding.view !== view || binding.row !== row || binding.file !== row.entry.file ||
-          binding.path !== row.entry.file.path || binding.query !== view.config.query)) {
+          binding.path !== row.entry.file.path || binding.query !== view.config.query ||
+          binding.outer !== (cell.closest('.bases-td') ?? cell))) {
         this.release(binding); binding = undefined;
       }
       // Bases can replace a formula link inside the same reused cell. Release
@@ -50,34 +51,68 @@ export class IdeaTitleEditors {
   }
 
   private attach(view: Native, row: Native, cell: HTMLElement, link: HTMLElement) {
-    const doc = link.ownerDocument, icon = doc.createElement('button'), open = doc.createElement('button');
-    icon.type = open.type = 'button';
+    const doc = link.ownerDocument, icon = doc.createElement('button');
+    icon.type = 'button';
     icon.className = 'bui-idea-page-button'; icon.setAttribute('aria-label', '打开想法笔记');
     setIcon(icon, 'file-text');
-    open.className = 'bui-idea-open-button'; open.textContent = '打开'; open.setAttribute('aria-label', '打开想法笔记');
     const attributes = this.snapshot(link, ['tabindex', 'role']);
+    const outer = cell.closest<HTMLElement>('.bases-td') ?? cell;
     const binding: Binding = {view, row, file: row.entry.file, path: row.entry.file.path, query: view.config.query,
-      cell, link, icon, open, attributes, hadTitleClass: link.classList.contains('bui-idea-title'),
+      cell, outer, link, icon, attributes, hadTitleClass: link.classList.contains('bui-idea-title'),
       hadCellClass: cell.classList.contains('bui-idea-title-cell'), cleanup: () => {}, forwarding: false};
     this.bindings.set(link, binding);
     link.classList.add('bui-idea-title'); cell.classList.add('bui-idea-title-cell');
     link.tabIndex = 0; link.setAttribute('role', 'button');
-    link.before(icon); link.after(open);
+    link.before(icon);
     const listeners: [HTMLElement, string, EventListener, boolean][] = [];
     const listen = <K extends keyof HTMLElementEventMap>(el: HTMLElement, name: K,
       callback: (event: HTMLElementEventMap[K]) => void, capture = false) => {
       el.addEventListener(name, callback, capture); listeners.push([el, name, callback as EventListener, capture]);
     };
-    binding.cleanup = () => {for (const [el, name, fn, capture] of listeners) el.removeEventListener(name, fn, capture);};
-    listen(link, 'pointerdown', event => {
-      if (event.button === 0) binding.down = {x: event.clientX, y: event.clientY};
+    binding.cleanup = () => {
+      binding.stopGesture?.();
+      for (const [el, name, fn, capture] of listeners) el.removeEventListener(name, fn, capture);
+    };
+    const blank = (target: EventTarget | null, point?: MouseEvent) => {
+      if (!(target instanceof Element) || !outer.contains(target)) return false;
+      // The native link is a block in multiline tables, so an empty area can
+      // still hit that span. Distinguish its real text lines from its box.
+      if (link.contains(target)) return !!point && this.hitsText(link, point) === false;
+      if (target.closest('.bases-td') !== outer && outer !== cell) return false;
+      return !target.closest('button, a, input, textarea, select, [contenteditable]');
+    };
+    listen(outer, 'pointerdown', event => {
+      if (event.button !== 0 || (!(event.target instanceof Element)) ||
+          (!link.contains(event.target) && !blank(event.target))) return;
+      this.trackGesture(binding, event);
+    }, true);
+    listen(outer, 'mousedown', event => {
+      // Clicking the same cell's padding is a caret move, not a blur commit.
+      // Keep the live editor (including an IME candidate) mounted and focused.
+      if (this.edit?.binding === binding && blank(event.target, event) && event.button === 0 &&
+          !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) event.preventDefault();
+    }, true);
+    listen(outer, 'click', event => {
+      if (!blank(event.target, event) || binding.forwarding || event.button !== 0 ||
+          event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      // Capture on the outer native td before renderer click handlers can
+      // consume a padding click. Link and button targets never take this path.
+      event.preventDefault(); event.stopImmediatePropagation();
+      const down = binding.down; binding.down = undefined; binding.stopGesture?.();
+      if (down?.moved || (down && Math.hypot(event.clientX - down.x, event.clientY - down.y) > 5) ||
+          (view.selection && !down)) return;
+      if (this.edit?.binding === binding) {
+        if (!this.edit.composing && !this.edit.imeEnded && this.writable(binding)) {
+          link.focus({preventScroll: true}); this.placeCaret(link);
+        }
+      } else this.start(binding);
     }, true);
     listen(link, 'click', event => {
       if (binding.forwarding || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey) return;
       if (this.edit?.binding === binding) {event.stopImmediatePropagation(); return;}
       event.preventDefault(); event.stopImmediatePropagation();
-      const down = binding.down; binding.down = undefined;
-      const moved = down && Math.hypot(event.clientX - down.x, event.clientY - down.y) > 5;
+      const down = binding.down; binding.down = undefined; binding.stopGesture?.();
+      const moved = down && (down.moved || Math.hypot(event.clientX - down.x, event.clientY - down.y) > 5);
       // Range selection and dragging must never accidentally open a note or
       // start replacing the selected range with a title editor.
       if (event.shiftKey || moved || (view.selection && !down)) return;
@@ -97,20 +132,49 @@ export class IdeaTitleEditors {
         event.preventDefault(); event.stopImmediatePropagation(); this.start(binding);
       }
     }, true);
-    for (const button of [icon, open]) {
-      listen(button, 'click', event => {
-        event.preventDefault(); event.stopPropagation(); this.navigate(binding, event);
-      });
-      listen(button, 'auxclick', event => {
-        if (event.button !== 1) return;
-        event.preventDefault(); event.stopPropagation(); this.navigate(binding, event);
-      });
-    }
+    listen(icon, 'click', event => {
+      event.preventDefault(); event.stopPropagation(); this.navigate(binding, event);
+    });
+    listen(icon, 'auxclick', event => {
+      if (event.button !== 1) return;
+      event.preventDefault(); event.stopPropagation(); this.navigate(binding, event);
+    });
+  }
+
+  private hitsText(link: HTMLElement, point: MouseEvent): boolean | undefined {
+    const range = link.ownerDocument.createRange(); range.selectNodeContents(link);
+    if (typeof range.getClientRects !== 'function') return undefined;
+    const rects = Array.from(range.getClientRects()).filter(rect => rect.width > 0 && rect.height > 0);
+    if (!rects.length) return undefined;
+    return rects.some(rect => point.clientX >= rect.left - 1 && point.clientX <= rect.right + 1 &&
+      point.clientY >= rect.top - 1 && point.clientY <= rect.bottom + 1);
+  }
+
+  private trackGesture(binding: Binding, event: PointerEvent) {
+    binding.stopGesture?.();
+    const win = binding.link.ownerDocument.defaultView!;
+    const down: {x: number; y: number; moved: boolean} = {x: event.clientX, y: event.clientY, moved: false};
+    binding.down = down;
+    const move = (next: PointerEvent) => {
+      if (next.pointerId === event.pointerId && Math.hypot(next.clientX - down.x, next.clientY - down.y) > 5) down.moved = true;
+    };
+    const finish = (next: PointerEvent) => {if (next.pointerId === event.pointerId) stop();};
+    const cancel = (next: PointerEvent) => {if (next.pointerId === event.pointerId) {down.moved = true; stop();}};
+    const stop = () => {
+      win.removeEventListener('pointermove', move, true);
+      win.removeEventListener('pointerup', finish, true);
+      win.removeEventListener('pointercancel', cancel, true);
+      if (binding.stopGesture === stop) binding.stopGesture = undefined;
+    };
+    binding.stopGesture = stop;
+    win.addEventListener('pointermove', move, true);
+    win.addEventListener('pointerup', finish, true);
+    win.addEventListener('pointercancel', cancel, true);
   }
 
   private current(binding: Binding): boolean {
     return this.bindings.get(binding.link) === binding && binding.link.isConnected &&
-      binding.cell.contains(binding.link) && binding.view._loaded !== false &&
+      binding.cell.contains(binding.link) && binding.outer.contains(binding.cell) && binding.view._loaded !== false &&
       binding.view.type === 'table' && binding.view.config?.name === '想法收集箱' &&
       binding.view.config.query === binding.query && binding.row.entry?.file === binding.file &&
       binding.file.path === binding.path && Array.isArray(binding.view.rows) && binding.view.rows.includes(binding.row);
@@ -247,7 +311,7 @@ export class IdeaTitleEditors {
   }
   private release(binding: Binding) {
     if (this.edit?.binding === binding) this.close(this.edit);
-    binding.cleanup(); binding.icon.remove(); binding.open.remove(); this.restore(binding.link, binding.attributes);
+    binding.cleanup(); binding.icon.remove(); this.restore(binding.link, binding.attributes);
     if (!binding.hadTitleClass) binding.link.classList.remove('bui-idea-title');
     if (!binding.hadCellClass) binding.cell.classList.remove('bui-idea-title-cell');
     this.bindings.delete(binding.link);

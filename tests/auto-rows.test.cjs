@@ -1,10 +1,11 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
 const vm = require('node:vm');
-const {transformSync} = require('esbuild');
+const {buildSync} = require('esbuild');
 const {JSDOM} = require('jsdom');
-const source = transformSync(fs.readFileSync('src/idea-row-heights.ts', 'utf8'), {loader:'ts', format:'cjs'}).code;
+const loadGeometryStyles = require('./load-geometry-styles.cjs');
+const source = buildSync({entryPoints:['src/idea-row-heights.ts'],bundle:true,write:false,platform:'node',format:'cjs'}).outputFiles[0].text;
+const widthsSource = buildSync({entryPoints:['src/idea-widths.ts'],bundle:true,write:false,platform:'node',format:'cjs'}).outputFiles[0].text;
 function load(extra={}) {
   const module = {exports:{}};
   new vm.Script(source).runInContext(vm.createContext({module,exports:module.exports,console,...extra}));
@@ -23,6 +24,7 @@ test('variable-height boundaries agree for hit testing, clipped viewports and em
 function fixture() {
   const dom = new JSDOM('<!doctype html><body><div class="bases-view"><div class="bases-thead"></div><div class="bases-table-container"></div></div></body>', {pretendToBeVisual:true});
   const win=dom.window, doc=win.document;
+  loadGeometryStyles(doc);
   win.ResizeObserver=class {observe(){}disconnect(){}};
   win.HTMLElement.prototype.setChildrenInPlace=function(nodes) {
     for (const child of [...this.children]) if (!nodes.includes(child)) child.remove();
@@ -79,6 +81,55 @@ function fixture() {
   adapter.readHeight=row=>entries.find(entry=>row.querySelector('.bases-table-cell').textContent===entry.file.path)?.height??32;
   return {dom,doc,view,adapter,entries,original,nativeCalls,tbody,container,host,box,close(){adapter.clear();dom.window.close();}};
 }
+
+test('inert row measurements compact only the same supported tag cells as the live picker',()=>{
+  const f=fixture();try{
+    f.view.queryController.view=f.view;f.view.updateProperty=()=>{};
+    for(const entry of f.entries){entry.file.extension='md';entry.getRawProperty=()=>['Blender'];}
+    const prototype=f.view.rows[0].constructor.prototype,render=prototype.render;
+    prototype.render=function(entry,properties){render.call(this,entry,properties);for(const cell of this.cells)cell.renderer={entry,propertyEditor:{}};};
+    const observed=[];
+    f.adapter.readHeight=row=>{observed.push([...row.querySelectorAll('.bui-tag-picker-cell')].map(el=>el.dataset.property));return 32;};
+    f.adapter.refresh(f.view);f.view.updateVirtualDisplay();
+    assert.equal(observed.length,f.entries.length);assert.ok(observed.every(values=>values.length===1&&values[0]==='note.领域'));
+    observed.length=0;f.view.isReadOnly=true;f.adapter.invalidate();f.view.updateVirtualDisplay();
+    assert.equal(observed.length,f.entries.length);assert.ok(observed.every(values=>values.length===0));
+  }finally{f.close();}
+});
+
+test('inert height probes retain native flex overflow so long tags wrap at the live column width',()=>{
+  const f=fixture();try{
+    const style=f.doc.head.appendChild(f.doc.createElement('style'));
+    // Relevant native rules: hidden overflow makes the flex item's automatic
+    // minimum inline size zero; visible overflow would use tag min-content.
+    style.textContent='.bases-table-cell,.multi-select-container{overflow:hidden}.multi-select-container{display:flex;flex:1 1 auto;flex-wrap:wrap}';
+    const prototype=f.view.rows[0].constructor.prototype,render=prototype.render;
+    prototype.render=function(entry,properties){
+      render.call(this,entry,properties);
+      const inner=this.cells[1].inner;
+      inner.innerHTML='<div class="multi-select-container"><div class="multi-select-pill">Blender</div><div class="multi-select-pill">很长的自定义标签名称</div></div>';
+    };
+    let reads=0;
+    f.adapter.readHeight=row=>{
+      reads++;
+      const cell=row.querySelector('[data-property="note.领域"]');
+      assert.equal(cell.style.width,'200px');
+      for(const item of cell.querySelectorAll('.bases-table-cell,.multi-select-container')){
+        assert.equal(f.dom.window.getComputedStyle(item).overflow,'hidden');
+        assert.equal(f.dom.window.getComputedStyle(item).height,'auto');
+        assert.equal(f.dom.window.getComputedStyle(item).maxHeight,'none');
+      }
+      return 76;
+    };
+    f.adapter.refresh(f.view);f.view.updateVirtualDisplay();
+    const first=f.tbody.style.height;
+    // Native metadata/query updates can replace entries while retaining files.
+    f.view.data.groupedData[0].entries=f.entries.map(entry=>({...entry}));
+    f.adapter.invalidate();f.view.updateVirtualDisplay();
+    assert.equal(f.tbody.style.height,first);assert.equal(reads,f.entries.length*2);
+    assert.equal(f.container.querySelector('[aria-hidden="true"]'),null);
+  }finally{f.close();}
+});
 
 test('native rows keep their editor nodes while layout, hit testing and selection share measured heights',()=>{
   const f=fixture();
@@ -255,12 +306,13 @@ test('pointer resize cancel and unload remove transient preview state and pendin
 test('classification minima reuse unchanged fonts and unique labels; native resizing performs no measurement',()=>{
   const dom=new JSDOM('<!doctype html><body><div class="bases-view"><div class="bases-thead"><div class="bases-td"><div class="header-inner" style="padding:0 8px;gap:4px"><span class="bases-table-header-name" style="font-size:14px">领域</span></div></div></div><div class="bases-table-container"><div class="bases-td" data-property="note.领域"><div class="bases-table-cell" data-property-type="multitext"><div class="multi-select-container" style="padding:6px 8px;gap:2px"><div class="multi-select-pill" style="gap:2px"><span class="multi-select-pill-content" style="font-size:14px;padding:1px 6px">AI</span><span class="multi-select-pill-remove-button" style="width:14px"></span></div><div class="multi-select-input" style="font-size:14px;min-width:8px"></div></div></div></div></div></div></body>');
   const win=dom.window,doc=win.document;
+  loadGeometryStyles(doc);
   let rectangles=0,textReads=0,styleReads=0;
   const nativeStyle=win.getComputedStyle.bind(win);win.getComputedStyle=el=>{styleReads++;return nativeStyle(el);};
   win.HTMLElement.prototype.getBoundingClientRect=function(){
     rectangles++;
     if(this.classList.contains('bases-view'))return {width:800,height:300};
-    if(this.style.position==='fixed'){textReads++;return {width:[...this.textContent].length*8,height:18};}
+    if(nativeStyle(this).position==='fixed'){textReads++;return {width:[...this.textContent].length*8,height:18};}
     return {width:this.classList.contains('multi-select-pill-remove-button')?14:0,height:14};
   };
   const host=doc.querySelector('.bases-view'),container=doc.querySelector('.bases-table-container'),header=doc.querySelector('.bases-thead .bases-td');
@@ -271,7 +323,7 @@ test('classification minima reuse unchanged fonts and unique labels; native resi
     data:{properties:['note.领域'],data:values.map(tags=>({getValue:()=>({data:tags})}))},columnInfo:{'note.领域':info},
     header:{cells:[{prop:'note.领域',el:header,innerEl:header.firstElementChild}]},updateVirtualDisplay(){}};
   const module={exports:{}};
-  new vm.Script(transformSync(fs.readFileSync('src/idea-widths.ts','utf8'),{loader:'ts',format:'cjs'}).code)
+  new vm.Script(widthsSource)
     .runInContext(vm.createContext({module,exports:module.exports,HTMLElement:win.HTMLElement}));
   const widths=new module.exports.IdeaColumnWidths();
   try {
@@ -294,4 +346,53 @@ test('classification minima reuse unchanged fonts and unique labels; native resi
     assert.equal(info.customWidth,94);
     widths.clear();assert.equal(info.getWidth,original);assert.equal(info.customWidth,94);
   } finally {widths.clear();dom.window.close();}
+});
+
+test('classification width is stable across empty first rows, metadata refresh and virtualized tag cells',()=>{
+  const dom=new JSDOM(`<!doctype html><body><style>
+    .multi-select-pill-content,.multi-select-input{font-size:16px}
+    .multi-select-container{padding:5px 8px 6px;gap:4px 6px}
+    .multi-select-pill{padding:0;gap:0}
+    .multi-select-pill-content{padding:1px 6px}
+    .bui-tag-picker-cell .multi-select-pill-remove-button{display:none}
+  </style><div class="bases-view bui-ideas-base"><div class="bases-thead"><div class="bases-td"><div class="header-inner"><span class="bases-table-header-name" style="font-size:16px">领域</span></div></div></div><div class="bases-table-container"><div class="bases-td" data-property="note.领域"><div class="bases-table-cell" data-property-type="multitext"><div class="multi-select-container"><div class="multi-select-input"></div></div></div></div></div></div></body>`);
+  const win=dom.window,doc=win.document;
+  loadGeometryStyles(doc);
+  win.HTMLElement.prototype.getBoundingClientRect=function(){
+    if(this.classList.contains('bases-view'))return {width:430,height:300};
+    if(win.getComputedStyle(this).position==='fixed')return {width:[...this.textContent].length*16,height:20};
+    return {width:this.classList.contains('multi-select-pill-remove-button')?12:0,height:20};
+  };
+  const host=doc.querySelector('.bases-view'),container=doc.querySelector('.bases-table-container'),cell=container.firstElementChild,header=doc.querySelector('.bases-thead .bases-td');
+  const info={customWidth:130,getWidth(){return this.customWidth;}};
+  const labels=['Blender','编程','C4D','很长的自定义标签名称'];
+  const entries=[[],labels].map((value,index)=>({file:{path:`${index}.md`,extension:'md'},getValue:()=>({data:value}),getRawProperty:()=>value}));
+  const view={type:'table',_loaded:true,queryController:{viewContainerEl:host},containerEl:container,config:{name:'想法收集箱'},
+    data:{properties:['note.领域'],data:entries},rows:[{cells:[{prop:'note.领域',el:cell,renderer:{entry:entries[0],propertyEditor:{}}}]}],columnInfo:{'note.领域':info},
+    header:{cells:[{prop:'note.领域',el:header,innerEl:header.firstElementChild}]},updateVirtualDisplay(){}};
+  const module={exports:{}};
+  new vm.Script(widthsSource)
+    .runInContext(vm.createContext({module,exports:module.exports,HTMLElement:win.HTMLElement}));
+  const widths=new module.exports.IdeaColumnWidths();
+  view.queryController.view=view;view.updateProperty=()=>{};
+  try{
+    widths.refresh(view);const initial=info.getWidth(40,300);
+    assert.equal(cell.classList.contains('bui-tag-picker-cell'),false,'measurement does not mark live cells');
+    cell.classList.add('bui-tag-picker-cell');
+    assert.equal(widths.refresh(view),false,'later picker decoration must not change the cached clamp');
+    assert.equal(info.getWidth(40,300),initial,'first frame and decorated frame use identical widths');
+    const list=cell.querySelector('.multi-select-container');
+    list.insertAdjacentHTML('afterbegin','<div class="multi-select-pill"><div class="multi-select-pill-content">Blender</div><div class="multi-select-pill-remove-button"></div></div>');
+    widths.invalidate();widths.refresh(view);
+    assert.equal(info.getWidth(40,300),initial,'populated first row uses the same tag box as an empty row');
+    // A new empty entry/query identity does not change the same label-set width.
+    view.data.data=[...entries,{getValue:()=>({data:[]})}];
+    info.customWidth=130;widths.invalidate();widths.refresh(view);
+    assert.equal(info.getWidth(40,300),initial);
+    cell.remove();widths.invalidate();widths.refresh(view);
+    assert.equal(info.getWidth(40,300),initial,'offscreen native cells retain the same schema and styles');
+    container.append(cell);view.isReadOnly=true;widths.refresh(view);
+    assert.equal(info.getWidth(40,300),initial+12,'a native fallback reserves its visible remove control even before stale picker decoration is removed');
+    assert.equal(container.querySelector('[aria-hidden="true"]'),null);assert.equal(info.customWidth,130);
+  }finally{widths.clear();dom.window.close();}
 });

@@ -44,7 +44,7 @@ test('plain title clicks edit the original link at the clicked caret; only nativ
     const original=f.link.firstChild;
     f.doc.caretRangeFromPoint=()=>{const range=f.doc.createRange();range.setStart(original,2);return range;};
     f.titles.refresh(f.view);f.titles.refresh(f.view);
-    assert.equal(f.cell.querySelectorAll('button').length,2);assert.deepEqual(f.writes,[]);
+    assert.equal(f.cell.querySelectorAll('button').length,1);assert.deepEqual(f.writes,[]);
     f.click(f.link,{clientX:40,clientY:10});assert.deepEqual(f.opens,[]);
     assert.equal(f.link.firstChild,original);assert.equal(f.link.getAttribute('contenteditable'),'plaintext-only');
     assert.equal(f.doc.getSelection().isCollapsed,true);assert.equal(f.doc.getSelection().anchorOffset,2);
@@ -57,13 +57,97 @@ test('plain title clicks edit the original link at the clicked caret; only nativ
   } finally {f.close();}
 });
 
-test('both real buttons and modified link clicks delegate navigation, while native context menus and hover remain attached',()=>{
+test('renderer whitespace and outer cell padding start the same frameless editor at the end before native click handlers consume them',()=>{
+  const f=fixture();try {
+    let nativeClicks=0;
+    f.cell.addEventListener('click',event=>{nativeClicks++;event.stopImmediatePropagation();},true);
+    f.doc.caretRangeFromPoint=()=>{throw new Error('Whitespace must place the caret at the end without a coordinate lookup');};
+    f.titles.refresh(f.view);
+    for (const target of [f.cell,f.cell.parentElement]) {
+      f.click(target,{clientX:280,clientY:12});
+      assert.equal(f.link.getAttribute('contenteditable'),'plaintext-only');assert.equal(f.doc.activeElement,f.link);
+      assert.equal(f.doc.querySelector('input'),null);assert.equal(f.doc.querySelector('[role="dialog"]'),null);
+      const expected=f.doc.createRange();expected.selectNodeContents(f.link);expected.collapse(false);
+      const actual=f.doc.getSelection().getRangeAt(0);
+      assert.equal(actual.collapsed,true);assert.equal(actual.compareBoundaryPoints(0,expected),0);
+      f.key(f.link,'Escape');
+    }
+    assert.equal(nativeClicks,0);assert.deepEqual(f.opens,[]);assert.deepEqual(f.writes,[]);
+    f.titles.clear();f.click(f.cell);assert.equal(nativeClicks,1);assert.equal(f.link.hasAttribute('contenteditable'),false);
+  } finally {f.close();}
+});
+
+test('blank padding preserves modifier selection, entire drag gestures, cancelled gestures and read-only cells',()=>{
   const f=fixture();try {
     f.titles.refresh(f.view);
-    const icon=f.cell.querySelector('.bui-idea-page-button'),open=f.cell.querySelector('.bui-idea-open-button');
+    const outer=f.cell.parentElement;
+    for (const modifiers of [{metaKey:true},{ctrlKey:true},{altKey:true},{shiftKey:true},{button:2}]) {
+      assert.equal(f.click(outer,modifiers),true);assert.equal(f.link.hasAttribute('contenteditable'),false);
+    }
+    // Moving away and back still counts as a drag, even when the final click
+    // has the same position as pointerdown.
+    outer.dispatchEvent(new f.win.MouseEvent('pointerdown',{bubbles:true,button:0,clientX:200,clientY:12}));
+    f.win.dispatchEvent(new f.win.MouseEvent('pointermove',{clientX:240,clientY:12}));
+    f.win.dispatchEvent(new f.win.MouseEvent('pointerup',{button:0,clientX:200,clientY:12}));
+    f.click(outer,{clientX:200,clientY:12});assert.equal(f.link.hasAttribute('contenteditable'),false);
+    outer.dispatchEvent(new f.win.MouseEvent('pointerdown',{bubbles:true,button:0,clientX:200,clientY:12}));
+    f.win.dispatchEvent(new f.win.MouseEvent('pointercancel',{clientX:200,clientY:12}));
+    f.click(outer,{clientX:200,clientY:12});assert.equal(f.link.hasAttribute('contenteditable'),false);
+    f.view.selection={top:0,bottom:2};f.click(outer);assert.equal(f.link.hasAttribute('contenteditable'),false);
+    f.view.selection=null;f.view.isReadOnly=true;f.click(outer);assert.equal(f.link.hasAttribute('contenteditable'),false);
+    assert.deepEqual(f.writes,[]);assert.deepEqual(f.opens,[]);
+  } finally {f.close();}
+});
+
+test('empty space inside a block-width title link goes to the end while actual text still uses the click location',()=>{
+  const f=fixture();try {
+    f.win.Range.prototype.getClientRects=()=>[
+      {left:20,right:220,top:10,bottom:30,width:200,height:20},
+      {left:20,right:120,top:30,bottom:50,width:100,height:20},
+    ];
+    let hitTests=0;
+    f.doc.caretRangeFromPoint=()=>{hitTests++;const range=f.doc.createRange();range.setStart(f.link.firstChild,2);return range;};
+    f.titles.refresh(f.view);
+    f.click(f.link,{clientX:280,clientY:12});
+    const end=f.doc.createRange();end.selectNodeContents(f.link);end.collapse(false);
+    assert.equal(f.doc.getSelection().getRangeAt(0).compareBoundaryPoints(0,end),0);assert.equal(hitTests,0);
+    f.key(f.link,'Escape');
+    f.click(f.link,{clientX:80,clientY:40});assert.equal(f.doc.getSelection().anchorOffset,2);assert.equal(hitTests,1);
+    assert.deepEqual(f.writes,[]);assert.deepEqual(f.opens,[]);
+  } finally {f.close();}
+});
+
+test('clicking blank space while editing moves the caret without blur-saving, and does not disturb IME composition',()=>{
+  const f=fixture();try {
+    f.titles.refresh(f.view);f.click(f.link);f.edit('正在编辑的想法');
+    const atStart=f.doc.createRange();atStart.setStart(f.link.firstChild,1);atStart.collapse(true);
+    f.doc.getSelection().removeAllRanges();f.doc.getSelection().addRange(atStart);
+    const down=new f.win.MouseEvent('mousedown',{bubbles:true,cancelable:true,button:0});f.cell.dispatchEvent(down);
+    assert.equal(down.defaultPrevented,true);f.click(f.cell);
+    assert.equal(f.doc.activeElement,f.link);assert.equal(f.link.textContent,'正在编辑的想法');assert.deepEqual(f.writes,[]);
+    const end=f.doc.createRange();end.selectNodeContents(f.link);end.collapse(false);
+    assert.equal(f.doc.getSelection().getRangeAt(0).compareBoundaryPoints(0,end),0);
+    f.doc.getSelection().removeAllRanges();f.doc.getSelection().addRange(atStart);
+    f.link.dispatchEvent(new f.win.CompositionEvent('compositionstart'));
+    f.click(f.cell.parentElement);
+    assert.equal(f.doc.getSelection().anchorOffset,1);assert.equal(f.doc.activeElement,f.link);assert.deepEqual(f.writes,[]);
+    f.link.dispatchEvent(new f.win.CompositionEvent('compositionend'));f.key(f.link,'Escape');
+    assert.equal(f.link.textContent,'原来的想法');assert.deepEqual(f.writes,[]);assert.deepEqual(f.opens,[]);
+  } finally {f.close();}
+});
+
+test('the sole page icon and modified link clicks delegate navigation, while native context menus and hover remain attached',()=>{
+  const f=fixture();try {
+    f.titles.refresh(f.view);
+    const icon=f.cell.querySelector('.bui-idea-page-button');
+    assert.equal(f.cell.querySelector('.bui-idea-open-button'),null);
+    assert.equal(f.cell.lastElementChild,f.link);
+    assert.equal(f.cell.querySelectorAll('button').length,1);
     assert.equal(icon.tagName,'BUTTON');assert.equal(icon.type,'button');assert.equal(icon.getAttribute('aria-label'),'打开想法笔记');
-    f.click(icon);f.click(open,{metaKey:true});f.click(f.link,{metaKey:true});
-    open.dispatchEvent(new f.win.MouseEvent('auxclick',{bubbles:true,cancelable:true,button:1}));
+    icon.focus();assert.equal(f.doc.activeElement,icon);
+    // A native button's Enter/Space activation dispatches a click; preserve its zero-detail navigation.
+    f.click(icon,{detail:0});f.click(icon,{metaKey:true});f.click(f.link,{metaKey:true});
+    icon.dispatchEvent(new f.win.MouseEvent('auxclick',{bubbles:true,cancelable:true,button:1}));
     assert.deepEqual(f.opens.map(x=>[x.type,x.button,!!x.metaKey]),[['click',0,false],['click',0,true],['click',0,true],['auxclick',1,false]]);
     f.link.dispatchEvent(new f.win.Event('contextmenu',{bubbles:true,cancelable:true}));
     f.link.dispatchEvent(new f.win.MouseEvent('mouseover',{bubbles:true}));
@@ -89,11 +173,11 @@ test('non-Markdown entries cannot edit or write title properties, while their na
   const f=fixture();try {
     f.file.extension='png';f.file.path='Ideas/a.png';f.link.dataset.href=f.file.path;
     f.titles.refresh(f.view);
-    f.click(f.link);f.key(f.link,'Enter');
+    f.click(f.link);f.key(f.link,'Enter');f.click(f.cell);f.click(f.cell.parentElement);
     assert.equal(f.link.hasAttribute('contenteditable'),false);assert.deepEqual(f.writes,[]);
     assert.equal(f.link.textContent,'原来的想法');assert.deepEqual(f.opens,[]);
     f.click(f.cell.querySelector('.bui-idea-page-button'));
-    f.click(f.cell.querySelector('.bui-idea-open-button'),{metaKey:true});
+    f.click(f.cell.querySelector('.bui-idea-page-button'),{metaKey:true});
     f.click(f.link,{metaKey:true});
     assert.equal(f.opens.length,3);assert.equal(f.opens[1].metaKey,true);assert.equal(f.opens[2].metaKey,true);
     assert.deepEqual(f.writes,[]);assert.equal(f.file.path,'Ideas/a.png');
@@ -142,7 +226,7 @@ test('native formula rerenders replace decorations once and unloading leaves the
     f.titles.refresh(f.view);f.click(f.link);f.edit('草稿');
     const replacement=f.doc.createElement('span');replacement.className='internal-link';replacement.textContent='原生更新';replacement.dataset.href=f.file.path;
     f.addNative(replacement);f.cell.replaceChildren(replacement);f.titles.refresh(f.view);
-    assert.deepEqual(f.writes,[]);assert.equal(f.cell.querySelectorAll('button').length,2);
+    assert.deepEqual(f.writes,[]);assert.equal(f.cell.querySelectorAll('button').length,1);
     assert.equal(f.cell.classList.contains('bui-idea-title-cell'),true);assert.equal(replacement.textContent,'原生更新');
     f.titles.clear();assert.equal(f.cell.querySelectorAll('button').length,0);assert.equal(f.cell.classList.contains('bui-idea-title-cell'),false);
     f.click(replacement);assert.equal(f.opens.length,1);

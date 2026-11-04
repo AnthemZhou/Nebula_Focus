@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const {transformSync} = require('esbuild');
 const {JSDOM} = require('jsdom');
+const loadGeometryStyles = require('./load-geometry-styles.cjs');
 const moduleValue = {exports: {}};
 new Function('module', 'exports', transformSync(fs.readFileSync('src/model.ts', 'utf8'), {loader:'ts',format:'cjs'}).code)(moduleValue,moduleValue.exports);
 const {overdue, firstImage, isEmpty, compactLink, isDueProperty} = moduleValue.exports;
@@ -64,7 +65,14 @@ function fixture() {
     open(){doc.body.append(this.modalEl);}
     close(){this.onClose?.();this.modalEl.remove();}
   }
-  const api = {Plugin, TFile, MarkdownView, Component, Modal, Notice:class{}, Menu:class{}, setIcon(){}};
+  const menus=[];
+  class Menu {
+    constructor(){this.items=[];menus.push(this);}
+    addItem(callback){const item={setTitle(title){this.title=title;return this;},setIcon(){return this;},onClick(run){this.run=run;return this;}};callback(item);this.items.push(item);return this;}
+    showAtPosition(position){this.position=position;}
+    showAtMouseEvent(){}
+  }
+  const api = {Plugin, TFile, TFolder: class {}, ItemView: class extends Component {}, MarkdownView, Component, Modal, Notice:class{}, Menu, setIcon(){}};
   const mod = {exports:{}};
   new vm.Script(fs.readFileSync('main.js','utf8')).runInContext(vm.createContext({
     module:mod,exports:mod.exports,require:name => {assert.equal(name,'obsidian'); return api;},
@@ -94,8 +102,44 @@ function fixture() {
     onDataUpdated(){},moveCardToColumn(){throw Error('Unexpected automatic status write');},canMoveCard:()=>true,
     updateVirtualDisplay(){},register(){},
   };
-  return {dom,doc,plugin,view,entry,fm,file,writes,app,native,originalText,close:()=>dom.window.close()};
+  view.queryController.view=view;
+  return {dom,doc,plugin,view,entry,fm,file,writes,app,native,originalText,menus,close:()=>dom.window.close()};
 }
+
+test('touch card menu moves only through an explicit native action and never opens the note on menu tap',()=>{
+  const f=fixture();try{
+    const target={key:{toString:()=> '完成'},entries:[]};f.view.orderedGroups.push(target);
+    const moves=[],opens=[];f.app.vault.getFileByPath=path=>path===f.file.path?f.file:{path};
+    f.view.moveCardToColumn=(...args)=>moves.push(args);f.app.workspace.openLinkText=(...args)=>opens.push(args);
+    f.plugin.attach(f.view);f.doc.querySelector('.bui-card-action').click();
+    assert.equal(opens.length,0);assert.equal(moves.length,0);
+    const menu=f.menus.at(-1);assert(menu.position);assert.equal(menu.items.filter(i=>i.title.startsWith('移至：')).length,1);
+    menu.items.find(i=>i.title==='移至：完成').run();assert.deepEqual(moves,[[f.file,target.key]]);assert.deepEqual(f.writes,[]);
+  }finally{f.close();}
+});
+test('touch move menus recheck stale files, disposed views and read-only state at execution',()=>{
+  for(const kind of ['read-only','query-read-only','disposed','replaced-file','removed-group']){
+    const f=fixture();try{
+      const target={key:{toString:()=> '完成'},entries:[]};f.view.orderedGroups.push(target);const moves=[];
+      f.app.vault.getFileByPath=()=>f.file;f.view.moveCardToColumn=(...args)=>moves.push(args);
+      f.plugin.attach(f.view);f.doc.querySelector('.bui-card-action').click();const run=f.menus.at(-1).items.find(i=>i.title==='移至：完成').run;
+      if(kind==='read-only')f.view.isReadOnly=true;
+      if(kind==='query-read-only')f.view.queryController.isReadOnly=true;
+      if(kind==='disposed')f.plugin.adapters.get(f.view).destroy();
+      if(kind==='replaced-file')f.app.vault.getFileByPath=()=>({...f.file});
+      if(kind==='removed-group')f.view.orderedGroups.pop();
+      run();assert.deepEqual(moves,[],kind);assert.deepEqual(f.writes,[]);
+    }finally{f.close();}
+  }
+});
+test('touch column ordering respects endpoints and calls the native ordering API only on selection',()=>{
+  const f=fixture();try{
+    const group=f.view.orderedGroups[0];f.view.orderedGroups.push({key:{toString:()=> '完成'},entries:[]});const moves=[];
+    f.view.moveColumn=(...args)=>moves.push(args);f.plugin.attach(f.view);f.doc.querySelector('.bui-column-action').click();
+    assert.deepEqual(moves,[]);const menu=f.menus.at(-1);assert.deepEqual(menu.items.map(i=>i.title),['向后移动']);
+    menu.items[0].run();assert.deepEqual(moves,[[group,1]]);
+  }finally{f.close();}
+});
 test('presentation uses first image and original fields; no automatic Markdown or base writes', async() => {
   const f = fixture();
   try {
@@ -116,6 +160,45 @@ test('presentation uses first image and original fields; no automatic Markdown o
     assert.equal(f.native.hidden,false);
     assert.deepEqual(f.writes,[]);
   } finally {f.close();}
+});
+
+test('unchanged card notifications preserve image and control nodes; changed data still updates',()=>{
+  const f=fixture();try{
+    f.plugin.attach(f.view);
+    const card=f.doc.querySelector('.bui-card'), image=card.querySelector('img');
+    for(let i=0;i<5;i++)f.view.onDataUpdated();
+    assert.equal(f.doc.querySelector('.bui-card'),card);
+    assert.equal(f.doc.querySelector('.bui-cover'),image);
+    f.fm.项目下一步='Updated';f.view.onDataUpdated();
+    assert.notEqual(f.doc.querySelector('.bui-card'),card);
+    assert.match(f.doc.querySelector('.bui-next-step').textContent,/Updated/);
+    assert.deepEqual(f.writes,[]);
+  }finally{f.close();}
+});
+
+test('temporarily detached live phone embeds keep their presentation; actual unload cleans it',()=>{
+  const f=fixture();try{
+    const host=f.doc.querySelector('.bases-view'), parent=host.parentElement;
+    f.app.workspace.iterateAllLeaves=run=>run({view:{containerEl:host,_children:[f.view]}});
+    f.plugin.attach(f.view);const adapter=f.plugin.adapters.get(f.view),card=host.querySelector('.bui-card');
+    host.remove();f.plugin.scan();
+    assert.equal(f.plugin.adapters.get(f.view),adapter);assert.equal(host.querySelector('.bui-card'),card);
+    parent.append(host);f.plugin.scan();
+    assert.equal(host.querySelector('.bui-card'),card);assert.equal(f.native.hidden,true);
+    f.view._loaded=false;f.plugin.scan();
+    assert.equal(f.plugin.adapters.has(f.view),false);assert.equal(host.querySelector('.bui-card'),null);
+    assert.equal(f.native.hidden,false);
+  }finally{f.close();}
+});
+
+test('navigation discovery is coalesced before paint and does not run after disposal',async()=>{
+  const f=fixture();try{
+    let scans=0;f.plugin.scan=()=>scans++;
+    f.plugin.schedule();f.plugin.scheduleNavigation();f.plugin.scheduleNavigation();
+    await Promise.resolve();assert.equal(scans,1);assert.equal(f.plugin.timer,0);
+    f.plugin.scheduleNavigation();f.plugin.disposed=true;
+    await Promise.resolve();assert.equal(scans,1);
+  }finally{f.close();}
 });
 test('unknown group configuration and oversized datasets keep native view', () => {
   const f=fixture();
@@ -238,11 +321,14 @@ test('table image preview uses the original source and restores attributes witho
 
 function nativeIdeaMarkup(name='想法收集箱') {
   return '<div class="bases-view" data-view-type="table" data-view-name="'+name+'">' +
+    '<div class="bases-thead"></div><div class="bases-table-container" style="width:900px;height:128px">' +
+    '<div class="bases-table" style="top:0px;width:900px"><div class="bases-tbody" style="height:128px"><div class="bases-tr" style="top:0px">' +
     '<div class="bases-td" data-property="note.领域"><span class="multi-select-pill native-pill" data-bui-tone="existing-tone">' +
     '<span class="multi-select-pill-content">Blender</span><button class="multi-select-pill-remove">×</button></span></div>' +
     '<div class="bases-td" data-property="note.类型"><div class="metadata-input-longtext" contenteditable="true" tabindex="0">技术</div></div>' +
     '<div class="bases-td" data-property="重要性"><div class="metadata-input-longtext" contenteditable="true" tabindex="0">! !</div></div>' +
-    '<div class="bases-td" data-property="note.备注"><div class="metadata-input-longtext" contenteditable="true">技术</div></div></div>';
+    '<div class="bases-td" data-property="note.备注"><div class="metadata-input-longtext" contenteditable="true">技术</div></div>' +
+    '</div></div></div></div></div>';
 }
 test('idea styling preserves native editable nodes, text, handlers and focus; cleanup retains user edits', () => {
   const f=fixture();
@@ -417,8 +503,11 @@ test('idea footer delegates only user clicks to the current native create contro
     input.focus();
     f.plugin.ideaTables.refresh(f.doc);
     const footer=root.querySelector('.bui-ideas-new-row'), button=footer.querySelector('button');
-    assert.equal(footer.previousElementSibling,view);
-    assert.equal(view.querySelector('.bui-ideas-new-row'),null);
+    assert.equal(footer.parentElement,view);
+    assert.equal(footer.previousElementSibling,view.querySelector('.bases-table-container'));
+    assert.equal(view.lastElementChild,footer);
+    assert.equal(footer.style.width,'900px');
+    assert.equal(footer.querySelector('.bases-tr, .bases-td'),null);
     assert.equal(button.textContent,'新建条目');
     assert.equal(button.type,'button');
     assert.equal(view.querySelector('[contenteditable="true"]'),input);
@@ -445,6 +534,44 @@ test('idea footer delegates only user clicks to the current native create contro
     assert.deepEqual(f.writes,[]);
   }finally{f.close();}
 });
+test('idea footer press cannot trigger native grid selection before click and retains keyboard activation', () => {
+  const f=fixture();
+  try {
+    const root=f.doc.body.createDiv('workspace-leaf-content');root.innerHTML=nativeIdeaWithToolbar();
+    const view=root.querySelector('.bases-view'), native=root.querySelector('.text-icon-button');
+    let creates=0, selections=0;
+    native.addEventListener('click',()=>creates++);
+    f.plugin.ideaTables.refresh(f.doc);
+    const footer=view.querySelector('.bui-ideas-new-row'), button=footer.querySelector('button');
+    // Native Bases selection is delegated on the surrounding grid. Detaching
+    // its pressed target would prevent a real browser from delivering click.
+    for (const type of ['pointerdown','mousedown']) view.addEventListener(type,event=>{
+      selections++;event.preventDefault();footer.remove();
+    });
+    for (const target of [button,button.querySelector('.bui-ideas-new-icon')]) {
+      for (const type of ['pointerdown','mousedown']) {
+        const event=new f.dom.window.MouseEvent(type,{bubbles:true,cancelable:true,button:0});
+        assert.equal(target.dispatchEvent(event),true);
+        assert.equal(event.defaultPrevented,false);
+        assert.equal(footer.isConnected,true);
+      }
+      button.focus();assert.equal(f.doc.activeElement,button);
+      button.click();
+    }
+    assert.equal(selections,0);
+    assert.equal(creates,2);
+    for (const key of ['Enter',' ']) {
+      const event=new f.dom.window.KeyboardEvent('keydown',{key,bubbles:true,cancelable:true});
+      assert.equal(button.dispatchEvent(event),true);
+      assert.equal(event.defaultPrevented,false);
+      // JSDOM does not synthesize the browser's keyboard activation click.
+      button.dispatchEvent(new f.dom.window.MouseEvent('click',{bubbles:true,cancelable:true,detail:0}));
+    }
+    assert.equal(creates,4);
+    assert.equal(selections,0);
+    assert.deepEqual(f.writes,[]);
+  }finally{f.close();}
+});
 test('idea footer is absent for missing, hidden and read-only native creation; rerenders and view changes remove it', () => {
   const f=fixture();
   try {
@@ -464,11 +591,59 @@ test('idea footer is absent for missing, hidden and read-only native creation; r
     f.plugin.ideaTables.refresh(f.doc);
     assert.equal(oldFooter.isConnected,false);
     assert.equal(root.querySelectorAll('.bui-ideas-new-row').length,1);
-    assert.equal(view.nextElementSibling.className,'bui-ideas-new-row');
+    assert.equal(view.lastElementChild.className,'bui-ideas-new-row');
     view.dataset.viewName='发布记录';f.plugin.ideaTables.refresh(f.doc);
     assert.equal(root.querySelector('.bui-ideas-new-row'),null);
     view.dataset.viewName='想法收集箱';header.remove();f.plugin.ideaTables.refresh(f.doc);
     assert.equal(root.querySelector('.bui-ideas-new-row'),null);
+    assert.deepEqual(f.writes,[]);
+  }finally{f.close();}
+});
+
+test('idea grid footer survives native virtual renders and follows column widths without changing data-row geometry', async () => {
+  const f=fixture();
+  try {
+    const root=f.doc.body.createDiv('workspace-leaf-content');root.innerHTML=nativeIdeaWithToolbar();
+    const view=root.querySelector('.bases-view'), container=view.querySelector('.bases-table-container');
+    const thead=view.querySelector('.bases-thead'), tbody=view.querySelector('.bases-tbody');
+    const row=tbody.querySelector('.bases-tr');
+    const originalHeight=container.style.height, originalBodyHeight=tbody.style.height, originalTop=row.style.top;
+    f.plugin.ideaTables.refresh(f.doc);
+    const footer=view.querySelector('.bui-ideas-new-row'), button=footer.querySelector('button');
+    button.focus();
+    const summary=f.doc.createElement('div');summary.className='bases-tr bases-table-footer';
+    // The native renderer retains only its own header, data container and summary.
+    view.replaceChildren(thead,container,summary);
+    assert.equal(footer.isConnected,false);
+    await new Promise(resolve=>f.dom.window.setTimeout(resolve,0));
+    assert.equal(view.lastElementChild,footer);
+    assert.equal(footer.previousElementSibling,summary);
+    assert.equal(footer.querySelector('button'),button);
+    assert.equal(f.doc.activeElement,button);
+    assert.equal(container.contains(footer),false);
+    assert.equal(container.querySelectorAll('.bases-tr').length,1);
+    assert.equal(container.querySelector('.bases-tr'),row);
+    assert.equal(container.style.height,originalHeight);
+    assert.equal(tbody.style.height,originalBodyHeight);
+    assert.equal(row.style.top,originalTop);
+    const editor=row.querySelector('[contenteditable="true"]');
+    editor.focus();footer.remove();
+    await new Promise(resolve=>f.dom.window.setTimeout(resolve,0));
+    assert.equal(f.doc.activeElement,editor);
+    container.style.width='1240px';
+    await new Promise(resolve=>f.dom.window.setTimeout(resolve,0));
+    assert.equal(footer.style.width,'1240px');
+    // Empty result sets keep the final create row without fabricating data rows.
+    container.replaceChildren();container.style.height='0px';
+    view.replaceChildren(thead,container);
+    await new Promise(resolve=>f.dom.window.setTimeout(resolve,0));
+    assert.equal(view.lastElementChild,footer);
+    assert.equal(container.children.length,0);
+    assert.equal(container.style.height,'0px');
+    f.plugin.ideaTables.clear();
+    container.style.width='880px';view.append(summary);
+    await new Promise(resolve=>f.dom.window.setTimeout(resolve,0));
+    assert.equal(view.querySelector('.bui-ideas-new-row'),null);
     assert.deepEqual(f.writes,[]);
   }finally{f.close();}
 });
@@ -534,13 +709,14 @@ test('native tag suggestions share stable colors with new values while preservin
 test('classification widths use native geometry, include unseen new labels, preserve wider choices and restore accessors', () => {
   const f=fixture();
   try {
+    loadGeometryStyles(f.doc);
     const host=f.view.queryController.viewContainerEl;
     host.dataset.viewName='想法收集箱';host.dataset.viewType='table';
     host.getBoundingClientRect=()=>({width:800,height:300});
     f.native.innerHTML='<div class="bases-td" data-property="note.领域"><div class="multi-select-container" style="padding:2px 8px;gap:2px"><div class="multi-select-pill" style="gap:2px"><span class="multi-select-pill-content" style="font-size:14px">AI</span><span class="multi-select-pill-remove-button" style="width:14px"></span></div><div class="multi-select-input" style="font-size:14px;min-width:8px"></div></div></div>';
     const originalRect=f.dom.window.HTMLElement.prototype.getBoundingClientRect;
     f.dom.window.HTMLElement.prototype.getBoundingClientRect=function() {
-      if (this.tagName==='SPAN' && this.style.position==='fixed') return {width:[...this.textContent].reduce((sum,c)=>sum+(c.charCodeAt(0)>127?14:8),0),height:18};
+      if (this.tagName==='SPAN' && f.dom.window.getComputedStyle(this).position==='fixed') return {width:[...this.textContent].reduce((sum,c)=>sum+(c.charCodeAt(0)>127?14:8),0),height:18};
       if (this.classList.contains('multi-select-pill-remove-button')) return {width:14,height:14};
       return originalRect.call(this);
     };
@@ -620,4 +796,40 @@ test('unloading during settings load cannot resurrect decorations or listeners',
   assert.equal(f.doc.body.classList.contains('bui-enabled'), false);
   assert.equal(f.plugin.adapters.size, 0);
   assert.equal(f.plugin.disposed, true);
+});
+
+test('tag option additions/removals save atomically with order and retain concurrent preferences', async () => {
+  const f=fixture();try{
+    const saved=[];f.plugin.uiSettings={other:true,tagOptionOrder:{old:['kept']},tagOptions:{old:{added:['existing'],hidden:[]}}};
+    f.plugin.saveData=async value=>saved.push(JSON.parse(JSON.stringify(value)));
+    await Promise.all([
+      f.plugin.saveTagOptions('domain',{order:['Blender','新标签'],added:['新标签'],hidden:['AI']}),
+      f.plugin.saveTagOrder('type',['流程','技术']),
+    ]);
+    const final=saved.at(-1);
+    assert.deepEqual(final.tagOptions.domain,{added:['新标签'],hidden:['AI']});
+    assert.deepEqual(final.tagOptionOrder.domain,['Blender','新标签']);
+    assert.deepEqual(final.tagOptionOrder.type,['流程','技术']);
+    assert.deepEqual(final.tagOptions.old,{added:['existing'],hidden:[]});assert.equal(final.other,true);
+    f.plugin.saveData=async()=>{throw Error('disk unavailable');};
+    await assert.rejects(f.plugin.saveTagOptions('domain',{order:[],added:[],hidden:[]}),/disk unavailable/);
+    assert.deepEqual(JSON.parse(JSON.stringify(f.plugin.uiSettings)),final);
+  }finally{f.close();}
+});
+
+test('page sidebar preferences share the settings queue with tag edits and preserve unrelated data', async () => {
+  const f = fixture();
+  try {
+    const writes = [];
+    f.plugin.uiSettings = {other: {keep: true}, tagOptionOrder: {old: ['A']}};
+    f.plugin.saveData = async value => {await Promise.resolve(); writes.push(JSON.parse(JSON.stringify(value)));};
+    const sidebar = {expanded: ['Home'], favorites: ['Home'], order: {'/': ['Home', 'People']}, sort: 'manual', showAttachments: false};
+    await Promise.all([f.plugin.savePageSidebar(sidebar), f.plugin.saveTagOrder('new', ['B'])]);
+    assert.deepEqual(writes.at(-1).pageSidebar, sidebar);
+    assert.deepEqual(writes.at(-1).tagOptionOrder, {old: ['A'], new: ['B']});
+    assert.deepEqual(writes.at(-1).other, {keep: true});
+    f.plugin.settingsAvailable = false;
+    await assert.rejects(f.plugin.savePageSidebar({...sidebar, favorites: []}), /unavailable/);
+    assert.equal(writes.length, 2);
+  } finally {f.close();}
 });

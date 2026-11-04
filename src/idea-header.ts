@@ -1,25 +1,25 @@
-import {App, Notice} from 'obsidian';
+import {App, setIcon} from 'obsidian';
+import {positionAnchoredPopover, preferPopoverInputFocus, watchPopoverViewport} from './mobile-popover';
 
 type Native = any;
 type HeaderBinding = {
-  view: Native;
-  head: HTMLElement;
+  view: Native; head: HTMLElement;
   click: (event: MouseEvent) => void;
   keydown: (event: KeyboardEvent) => void;
   labels: Map<HTMLElement, Map<string, string | null>>;
 };
 type HeaderEditor = {
-  binding: HeaderBinding; property: string; query: Native; label: HTMLElement; originalText: string; lastText: string;
-  attributes: Map<string, string | null>; cell: HTMLElement | null; draggable: string | null;
-  composing: boolean; pendingBlur: boolean; imeEnded: boolean; cleanup: () => void;
+  binding: HeaderBinding; property: string; query: Native; label: HTMLElement; originalText: string;
+  anchor: HTMLElement; popup: HTMLElement; input: HTMLInputElement; status: HTMLElement;
+  composing: boolean; imeEnded: boolean; busy: boolean; clean: (() => void)[];
 };
 
-/** Rename a column's display label through Bases, without changing its property key. */
+/** Rename only this Base's display label in the same anchored panel as tag columns. */
 export class IdeaHeaders {
   private bindings = new Map<Native, HeaderBinding>();
   private editor?: HeaderEditor;
 
-  constructor(_app: App) {}
+  constructor(_app: App, private readonly manage?: (view: Native, property: string, anchor: HTMLElement, keyboard?: boolean) => boolean) {}
 
   attach(view: Native) {
     this.pruneEditor();
@@ -30,43 +30,35 @@ export class IdeaHeaders {
     if (binding && binding.head !== view.theadEl) {this.detach(binding); binding = undefined;}
     if (!binding) {
       const head = view.theadEl as HTMLElement;
-      const propertyAt = (target: EventTarget | null): string | null => {
-        if (!(target instanceof Element) || !head.contains(target) || target.closest('.bases-table-header-resizer')) return null;
-        const cell = view.getCellFromDom(target);
-        return typeof cell?.prop === 'string' ? cell.prop : null;
+      const activate = (target: EventTarget | null, keyboard: boolean): boolean => {
+        if (!(target instanceof Element) || !head.contains(target) || target.closest('.bases-table-header-resizer')) return false;
+        const property = view.getCellFromDom(target)?.prop;
+        const anchor = target.closest<HTMLElement>('.bases-td');
+        const label = anchor?.querySelector<HTMLElement>('.bases-table-header-name');
+        if (typeof property !== 'string' || !anchor || !label) return false;
+        if (!this.manage?.(view, property, anchor, keyboard)) this.open(view, property, label, anchor, keyboard);
+        return true;
       };
       const click = (event: MouseEvent) => {
-        if (event.defaultPrevented || event.button !== 0) return;
-        const property = propertyAt(event.target);
-        if (!property) return;
-        if (this.editor?.label.contains(event.target as Node)) {event.stopPropagation(); return;}
-        // The toolbar owns sorting. Capture before the native header toggle;
-        // resize handles, right-click menus and dragstart stay native.
-        event.preventDefault(); event.stopPropagation();
-        const label = (event.target as Element).closest<HTMLElement>('.bases-table-header-name');
-        if (label && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) this.open(view, property, label, event);
+        if (event.defaultPrevented || event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        // Sorting stays in the toolbar; resize handles, drag and context menus remain native.
+        if (activate(event.target, false)) {event.preventDefault(); event.stopPropagation();}
       };
       const keydown = (event: KeyboardEvent) => {
-        if (event.isComposing || event.defaultPrevented || (event.key !== 'Enter' && event.key !== ' ') ||
+        if (event.isComposing || event.defaultPrevented || !['Enter', ' '].includes(event.key) ||
             event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-        const target = event.target;
-        if (target && this.editor?.label.contains(target as Node)) return;
-        if (!(target instanceof Element) || !target.closest('.bases-table-header-name')) return;
-        const property = propertyAt(target);
-        if (!property) return;
-        const label = target.closest<HTMLElement>('.bases-table-header-name')!;
-        event.preventDefault(); event.stopPropagation(); this.open(view, property, label);
+        if (activate(event.target, true)) {event.preventDefault(); event.stopPropagation();}
       };
       binding = {view, head, click, keydown, labels: new Map()};
-      head.addEventListener('click', click, true);
-      head.addEventListener('keydown', keydown, true);
+      head.addEventListener('click', click, true); head.addEventListener('keydown', keydown, true);
       this.bindings.set(view, binding);
     }
     this.refreshLabels(binding);
   }
 
   private editable(view: Native): boolean {
-    return view?._loaded !== false && view?.isReadOnly !== true &&
+    return view?._loaded !== false && !view?.isReadOnly && !view?.readOnly && !view?.queryController?.isReadOnly &&
+      (!view?.queryController || view.queryController.view === view) &&
       view?.type === 'table' && view.config?.name === '想法收集箱' &&
       view.theadEl?.isConnected && typeof view.config.query?.saveFn === 'function';
   }
@@ -77,10 +69,7 @@ export class IdeaHeaders {
       current.add(label);
       if (!binding.labels.has(label)) binding.labels.set(label,
         new Map(['tabindex', 'role', 'aria-label', 'title'].map(name => [name, label.getAttribute(name)])));
-      if (this.editor?.label === label) continue;
       label.tabIndex = 0; label.setAttribute('role', 'button');
-      // The visible text already names the control. Obsidian also turns
-      // aria-label into a hover tooltip, so do not add a second visual prompt.
       label.removeAttribute('aria-label'); label.removeAttribute('title');
     }
     for (const [label, original] of binding.labels) if (!current.has(label)) {
@@ -88,153 +77,111 @@ export class IdeaHeaders {
     }
   }
 
-  private open(view: Native, property: string, label: HTMLElement, point?: MouseEvent) {
-    if (!this.editable(view)) return;
-    const binding = this.bindings.get(view);
-    if (!binding) return;
-    if (this.editor?.label === label) return;
-    if (this.editor) {this.save(this.editor, true); if (this.editor) return;}
-    const original = view.config.getPropertyConfig(property);
-    if (typeof original?.getDisplayName !== 'function' || typeof original.setDisplayName !== 'function') return;
-    this.refreshLabels(binding);
-    const originalText = String(original.getDisplayName());
-    const attributes = new Map(['contenteditable', 'spellcheck', 'aria-multiline', 'aria-invalid']
-      .map(name => [name, label.getAttribute(name)]));
-    const cell = label.closest<HTMLElement>('.bases-td');
-    const edit: HeaderEditor = {binding, property, query: view.config.query, label, originalText, lastText: originalText,
-      attributes, cell, draggable: cell?.getAttribute('draggable') ?? null,
-      composing: false, pendingBlur: false, imeEnded: false, cleanup: () => {}};
-    this.editor = edit;
-    if (label.textContent !== originalText) label.textContent = originalText;
-    label.classList.add('bui-header-name-editing'); label.setAttribute('contenteditable', 'plaintext-only');
-    label.setAttribute('role', 'textbox'); label.setAttribute('aria-multiline', 'false'); label.setAttribute('spellcheck', 'false');
-    label.removeAttribute('title'); label.removeAttribute('aria-label');
-    // Text selection belongs to the editable label while it has focus. The
-    // separate native resize handle remains draggable and fully functional.
-    cell?.setAttribute('draggable', 'false');
-    const listeners: [string, EventListener][] = [];
-    const listen = <K extends keyof HTMLElementEventMap>(name: K, handler: (event: HTMLElementEventMap[K]) => void) => {
-      label.addEventListener(name, handler); listeners.push([name, handler as EventListener]);
+  private open(view: Native, property: string, label: HTMLElement, anchor: HTMLElement, keyboard: boolean) {
+    if (!this.editable(view) || anchor.closest('[aria-readonly="true"], [aria-disabled="true"], .is-read-only, .is-disabled')) return;
+    const binding = this.bindings.get(view), config = view.config.getPropertyConfig(property);
+    if (!binding || typeof config?.getDisplayName !== 'function' || typeof config.setDisplayName !== 'function') return;
+    if (this.editor?.label === label) {this.editor.input.focus({preventScroll: true}); return;}
+    if (this.editor) this.close(this.editor);
+    const doc = label.ownerDocument;
+    const make = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string) => {
+      const el = doc.createElement(tag); el.className = cls; if (text !== undefined) el.textContent = text; return el;
     };
+    const popup = make('div', 'bui-tag-manager bui-header-editor');
+    popup.tabIndex = -1; popup.setAttribute('role', 'dialog'); popup.setAttribute('aria-label', '修改列名称');
+    const heading = make('div', 'bui-tag-manager-heading');
+    heading.append(make('span', 'bui-tag-manager-title', '修改列名称'));
+    const close = make('button', 'clickable-icon bui-tag-manager-close');
+    close.type = 'button'; close.setAttribute('aria-label', '关闭列名称设置'); setIcon(close, 'x'); heading.append(close);
+    const row = make('div', 'bui-tag-manager-name');
+    const input = make('input', 'bui-tag-manager-name-input');
+    input.type = 'text'; input.value = String(config.getDisplayName()); input.autocomplete = 'off';
+    input.setAttribute('aria-label', '列显示名称');
+    const save = make('button', 'clickable-icon bui-tag-manager-save-name');
+    save.type = 'button'; save.setAttribute('aria-label', '保存列显示名称'); setIcon(save, 'check'); row.append(input, save);
+    const status = make('div', 'bui-tag-manager-status'); status.hidden = true; status.setAttribute('role', 'status');
+    popup.append(heading, row, status);
+    const edit: HeaderEditor = {binding, property, query: view.config.query, label, originalText: label.textContent ?? '',
+      anchor, popup, input, status, composing: false, imeEnded: false, busy: false, clean: []};
+    this.editor = edit; doc.body.append(popup);
+    close.addEventListener('click', () => this.close(edit, true)); save.addEventListener('click', () => {void this.save(edit);});
     let compositionTimer = 0;
-    edit.cleanup = () => {
-      for (const [name, handler] of listeners) label.removeEventListener(name, handler);
-      if (compositionTimer) label.ownerDocument.defaultView!.clearTimeout(compositionTimer);
-    };
-    listen('input', () => {edit.lastText = label.textContent ?? ''; label.removeAttribute('aria-invalid');});
-    listen('compositionstart', () => {edit.composing = true; edit.imeEnded = false;});
-    listen('compositionend', () => {
+    input.addEventListener('compositionstart', () => {edit.composing = true; edit.imeEnded = false;});
+    input.addEventListener('compositionend', () => {
       edit.composing = false; edit.imeEnded = true;
-      compositionTimer = label.ownerDocument.defaultView!.setTimeout(() => {edit.imeEnded = false;}, 0);
-      // The final input event can follow compositionend. Wait for it before a
-      // blur commit, rather than persisting an intermediate IME candidate.
-      if (edit.pendingBlur) label.ownerDocument.defaultView!.queueMicrotask(() => this.save(edit, true));
+      compositionTimer = doc.defaultView!.setTimeout(() => {edit.imeEnded = false;}, 0);
     });
-    listen('keydown', event => {
+    input.addEventListener('input', () => {input.removeAttribute('aria-invalid'); status.hidden = true;});
+    popup.addEventListener('keydown', event => {
       if (event.isComposing || edit.composing || event.keyCode === 229) return;
-      if (event.key === 'Enter') {
-        event.preventDefault(); event.stopPropagation();
-        if (!edit.imeEnded) this.save(edit, false, true);
-      }
       if (event.key === 'Escape') {event.preventDefault(); event.stopPropagation(); this.close(edit, true);}
-    });
-    listen('blur', () => this.save(edit, true));
-    listen('dragstart', event => event.stopPropagation());
-    label.focus({preventScroll: true}); this.placeCaret(label, point);
-  }
-
-  /** Keep the click's character offset; never select the entire header. */
-  private placeCaret(label: HTMLElement, point?: MouseEvent) {
-    const doc = label.ownerDocument, selection = doc.getSelection();
-    if (!selection) return;
-    let range: Range | null = null;
-    if (point) {
-      const position = (doc as Native).caretPositionFromPoint?.(point.clientX, point.clientY);
-      if (position && label.contains(position.offsetNode)) {
-        range = doc.createRange(); range.setStart(position.offsetNode, position.offset);
-      } else {
-        const atPoint = (doc as Native).caretRangeFromPoint?.(point.clientX, point.clientY) as Range | undefined;
-        if (atPoint && label.contains(atPoint.startContainer)) range = atPoint;
+      if (event.key === 'Enter' && event.target === input) {
+        event.preventDefault(); event.stopPropagation(); if (!edit.imeEnded) void this.save(edit);
       }
+    });
+    const outside = (event: Event) => {if (!popup.contains(event.target as Node)) this.close(edit);};
+    for (const name of ['pointerdown', 'mousedown', 'focusin']) {
+      doc.addEventListener(name, outside, true); edit.clean.push(() => doc.removeEventListener(name, outside, true));
     }
-    if (!range) {range = doc.createRange(); range.selectNodeContents(label); range.collapse(false);}
-    else range.collapse(true);
-    selection.removeAllRanges(); selection.addRange(range);
-  }
-
-  private save(edit: HeaderEditor, blur: boolean, focusLabel = false) {
+    edit.clean.push(() => {if (compositionTimer) doc.defaultView!.clearTimeout(compositionTimer);},
+      watchPopoverViewport(popup, () => this.position(edit)));
+    this.position(edit);
     if (this.editor !== edit) return;
-    if (edit.composing) {edit.pendingBlur ||= blur; return;}
-    const {view} = edit.binding, {property, label} = edit;
-    if (!label.isConnected || !this.bindings.has(view) || !this.editable(view) || view.config.query !== edit.query ||
-        label.textContent !== edit.lastText ||
-        (typeof view.config.getOrder === 'function' && !view.config.getOrder().includes(property))) {
-      this.close(edit); return;
-    }
-    const value = (label.textContent ?? '').replace(/[\r\n]+/g, ' ').trim();
-    if (!value) {
-      if (blur) this.close(edit);
-      else label.setAttribute('aria-invalid', 'true');
-      return;
-    }
-    const config = view.config.getPropertyConfig(property);
-    if (typeof config?.setDisplayName !== 'function' || typeof config.getDisplayName !== 'function') {this.close(edit); return;}
-    try {
-      // The native setter saves only this base's display label, never a key or
-      // the underlying notes. Clear edit state first to prevent blur re-entry.
-      this.close(edit);
-      if (value !== config.getDisplayName()) config.setDisplayName(value);
-      if (edit.label.isConnected && view.config.query === edit.query) edit.label.textContent = value;
-      this.refreshLabels(edit.binding);
-      if (focusLabel && edit.label.isConnected) edit.label.focus({preventScroll: true});
-    } catch {new Notice('列名称未能保存，请重试');}
+    (preferPopoverInputFocus(anchor, keyboard) ? input : popup).focus({preventScroll: true});
   }
 
+  private current(edit: HeaderEditor): boolean {
+    const {view} = edit.binding;
+    return this.editor === edit && this.bindings.has(view) && this.editable(view) &&
+      edit.label.isConnected && view.theadEl.contains(edit.anchor) && view.config.query === edit.query &&
+      edit.label.textContent === edit.originalText &&
+      !edit.anchor.closest('[aria-readonly="true"], [aria-disabled="true"], .is-read-only, .is-disabled') &&
+      (typeof view.config.getOrder !== 'function' || view.config.getOrder().includes(edit.property));
+  }
+
+  private async save(edit: HeaderEditor) {
+    if (!this.current(edit)) {this.close(edit); return;}
+    if (edit.composing || edit.imeEnded || edit.busy) return;
+    const value = edit.input.value.replace(/[\r\n]+/g, ' ').trim();
+    if (!value) {edit.input.setAttribute('aria-invalid', 'true'); edit.status.textContent = '列名称不能为空'; edit.status.hidden = false; return;}
+    const config = edit.binding.view.config.getPropertyConfig(edit.property);
+    if (typeof config?.setDisplayName !== 'function' || typeof config.getDisplayName !== 'function') {this.close(edit); return;}
+    edit.busy = true; edit.popup.setAttribute('aria-busy', 'true');
+    try {
+      // Native configuration owns persistence; this never renames the property key or touches notes.
+      if (value !== config.getDisplayName()) await config.setDisplayName(value);
+      if (this.editor !== edit) return;
+      if (edit.label.isConnected && edit.binding.view.config.query === edit.query && edit.label.textContent === edit.originalText)
+        edit.label.textContent = value;
+      this.close(edit, true);
+    } catch {
+      if (this.editor === edit) {edit.status.textContent = '列名称未能保存，请重试'; edit.status.hidden = false;}
+    } finally {edit.busy = false; edit.popup.removeAttribute('aria-busy');}
+  }
+
+  private position(edit: HeaderEditor) {
+    if (!this.current(edit) || !positionAnchoredPopover(edit.anchor, edit.popup, 320)) this.close(edit);
+  }
   private close(edit: HeaderEditor, focusLabel = false) {
     if (this.editor !== edit) return;
-    this.editor = undefined; edit.cleanup(); edit.label.classList.remove('bui-header-name-editing');
-    this.restoreLabel(edit.label, edit.attributes);
-    if (edit.cell) edit.draggable === null ? edit.cell.removeAttribute('draggable') : edit.cell.setAttribute('draggable', edit.draggable);
-    // A native rerender may already have replaced the label. Never overwrite
-    // that newer text with the cancelled draft or the previous base's name.
-    if (edit.label.textContent === edit.lastText) {
-      const view = edit.binding.view;
-      const stillPresent = typeof view.config?.getOrder !== 'function' || view.config.getOrder().includes(edit.property);
-      const config = view.config?.query === edit.query && stillPresent ? view.config?.getPropertyConfig?.(edit.property) : null;
-      const current = typeof config?.getDisplayName === 'function' ? config.getDisplayName() : edit.originalText;
-      edit.label.textContent = current;
-    }
-    this.refreshLabels(edit.binding);
+    this.editor = undefined; for (const clean of edit.clean) clean(); edit.popup.remove();
     if (focusLabel && edit.label.isConnected) edit.label.focus({preventScroll: true});
   }
+  private pruneEditor() {if (this.editor && !this.current(this.editor)) this.close(this.editor);}
 
-  private pruneEditor() {
-    const edit = this.editor;
-    if (edit && (!edit.label.isConnected || !this.editable(edit.binding.view) || edit.binding.view.config.query !== edit.query ||
-        edit.label.textContent !== edit.lastText)) this.close(edit);
-  }
-
-  /** Call during the normal scan to release native views replaced by Bases. */
   prune() {
     this.pruneEditor();
     for (const binding of this.bindings.values()) if (!binding.head.isConnected ||
         binding.view._loaded === false || binding.view.config?.name !== '想法收集箱') this.detach(binding);
   }
-
   private restoreLabel(label: HTMLElement, original: Map<string, string | null>) {
     for (const [name, value] of original) value === null ? label.removeAttribute(name) : label.setAttribute(name, value);
   }
-
   private detach(binding: HeaderBinding) {
     if (this.editor?.binding === binding) this.close(this.editor);
-    binding.head.removeEventListener('click', binding.click, true);
-    binding.head.removeEventListener('keydown', binding.keydown, true);
+    binding.head.removeEventListener('click', binding.click, true); binding.head.removeEventListener('keydown', binding.keydown, true);
     for (const [label, original] of binding.labels) this.restoreLabel(label, original);
     binding.labels.clear(); this.bindings.delete(binding.view);
   }
-
-  clear() {
-    if (this.editor) this.close(this.editor);
-    for (const binding of this.bindings.values()) this.detach(binding);
-  }
+  clear() {if (this.editor) this.close(this.editor); for (const binding of this.bindings.values()) this.detach(binding);}
 }

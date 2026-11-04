@@ -2,7 +2,10 @@
 export interface IdeaTagOrderStore {
   read(key: string): readonly string[] | undefined;
   write(key: string, values: string[]): void | Promise<void>;
+  readOptions?(key: string): {added?: unknown; hidden?: unknown} | undefined;
+  writeOptions?(key: string, options: IdeaTagOptions): void | Promise<void>;
 }
+export type IdeaTagOptions = {order: string[]; added: string[]; hidden: string[]};
 
 export function cleanTagOrder(values: unknown): string[] {
   return Array.isArray(values) ? [...new Set(values.filter((value): value is string =>
