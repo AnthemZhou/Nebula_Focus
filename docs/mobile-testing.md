@@ -2,15 +2,17 @@
 
 ## 中文
 
+2026-11-04 最终真机镜像检查：同一 iCloud 库更名为 `Nebula-Focus-iPhone` 并重载更新后，单行标题与页面图标在首行触摸区域内居中；点击进入原位编辑后文字高度不跳变，紫色选中轮廓完整。长标题仍自然换行，多标签扩高的行保留顶部对齐。库列表只保留一个测试库；桌面也移除了旧 R9 的入口。13 篇原始虚构 Markdown 完整内容逐字节未变。
+
 ### 当前状态：1.1.0 发布准备（2026-11-04）
 
 1.1.0 正在准备发布，最低 Obsidian **1.14.5**，已允许移动端加载；构建与 **295/295** 自动测试通过。iPhone 核心流程已有用户直接确认，包括标签字号一致及「新建→加标签→撤销两次→重做两次」正常。手机隐藏撤销/重做额外行已通过 R10 真机镜像检查。
 
-最新的单行标题垂直偏移已修复：原先 32px 链接文字在 44px 点击行内贴顶，现用基于 `1lh` 的平衡内边距居中。本次真机视觉检查仍待完成。
+最新的单行标题垂直偏移已修复：原先 32px 链接文字在 44px 点击行内贴顶，现用基于 `1lh` 的平衡内边距居中。本次真机镜像中的显示与原位编辑视觉检查通过。
 
 iCloud 当前只保留 **Nebula-Focus-iPhone** 一个测试库（原 R10），后续原处更新插件文件。9 个旧测试库的数据已保留归档到本地忽略的 `dist`，不再每次创建新的编号库。
 
-官方目录**尚未提交**；开发者页面最后的开发者政策同意与持续维护承诺须由用户确认。Android、iPad、第三方主题及未测生命周期边界继续明确披露，不把所有历史待测场景作为当前发布阻断。下方 R2–R10 记录保留各轮当时的结果与决定；它们不是当前发布状态。镜像观察、直接触摸和自动测试仍分别记录，不互相替代。
+官方目录**尚未提交**；用户已确认同意开发者政策和持续维护承诺，待提交后记录官方扫描结果。Android、iPad、第三方主题及未测生命周期边界继续明确披露，不把所有历史待测场景作为当前发布阻断。下方 R2–R10 记录保留各轮当时的结果与决定；它们不是当前发布状态。镜像观察、直接触摸和自动测试仍分别记录，不互相替代。
 
 ### 历史记录：R2 起始测试（2026-11-01 至 2026-11-04）
 
@@ -140,21 +142,23 @@ R10 候选 SHA-256：`main.js` 为 `e7e838dcc333bf9249516445f6c635dee505d5920b0b
 
 ### 上架与后续更新
 
-当前准备 1.1.0，核心手机流程的通过结果和剩余覆盖限制已分别记录。最新标题对齐的真机视觉检查待完成；官方提交尚待用户同意开发者政策和持续维护承诺。`manifest.json`、`package.json`、`versions.json` 和 Release tag 保持一致；正式 Release 附 `main.js`、`manifest.json` 和 `styles.css`。仅推送源码不构成可安装更新。首次提交使用 Obsidian Community 开发者页面，处理实际自动审核结果；尚未完成的测试不能写成已通过。[官方提交流程](https://docs.obsidian.md/Plugins/Releasing/Submit%20your%20plugin)
+当前准备 1.1.0，核心手机流程的通过结果和剩余覆盖限制已分别记录。最新标题对齐已通过真机镜像视觉检查；用户已同意开发者政策和持续维护承诺，官方提交待执行。`manifest.json`、`package.json`、`versions.json` 和 Release tag 保持一致；正式 Release 附 `main.js`、`manifest.json` 和 `styles.css`。仅推送源码不构成可安装更新。首次提交使用 Obsidian Community 开发者页面，处理实际自动审核结果；尚未完成的测试不能写成已通过。[官方提交流程](https://docs.obsidian.md/Plugins/Releasing/Submit%20your%20plugin)
 
 首次上架后，后续版本不需要重复填写初次提交表单，但每个新版本仍会接受自动扫描。用户通过 Obsidian 的“检查更新”安装，插件自身不实现下载或替换自身代码的更新器。[官方 FAQ](https://docs.obsidian.md/community-directory/faq) · [官方更新机制说明](https://obsidian.md/blog/future-of-plugins/) · [开发者政策](https://docs.obsidian.md/community-directory/developer-policies)
 
 ## English
 
+Final actual-iPhone Mirroring check, 2026-11-04: after reloading the same iCloud vault renamed `Nebula-Focus-iPhone`, single-line titles and page icons are centered within the first-line touch target. Entering inline edit preserves text position and the complete selection outline. Long titles still wrap naturally; tag-expanded rows remain top-aligned. The vault list contains one test vault, and the old desktop R9 entry was removed. All 13 original fictional Markdown files are byte-for-byte unchanged.
+
 ### Current status: 1.1.0 release preparation (2026-11-04)
 
 Version 1.1.0 is in release preparation, with Obsidian **1.14.5** as its minimum and mobile loading enabled. The build and **295/295** automated tests pass. Core iPhone workflows have direct user confirmation, including consistent tag font sizes and creation → tag edit → two undos → two redos. R10's removal of the extra phone history row passed scoped actual-device Mirroring checks.
 
-The latest single-line title alignment fix is implemented: the 32px link text previously sat at the top of a 44px touch row; balanced padding based on `1lh` centers it vertically. The actual-phone visual check of this latest fix is still pending.
+The latest single-line title alignment fix is implemented: the 32px link text previously sat at the top of a 44px touch row; balanced padding based on `1lh` centers it vertically. Actual-phone display and inline-edit visual checks passed through Mirroring.
 
 Only **Nebula-Focus-iPhone** remains as the persistent iCloud test vault (formerly R10). Future builds update its plugin files in place. Nine older iCloud test vaults were archived locally under ignored `dist` storage with their data retained; no new numbered iCloud vault is created for each build.
 
-The official directory submission has **not** been sent. The developer page's final policy agreement and ongoing-maintenance commitment require the user's consent. Android, iPad, third-party themes and untested lifecycle boundaries remain disclosed coverage limits, not a collective new release-blocking checklist. R2–R10 entries below preserve each round's historical observations and decisions rather than the current release status. Mirroring, direct touch and automated results remain separate evidence levels.
+The official directory submission has **not** been sent. The user has confirmed the developer-policy agreement and ongoing-maintenance commitment. Android, iPad, third-party themes and untested lifecycle boundaries remain disclosed coverage limits, not a collective new release-blocking checklist. R2–R10 entries below preserve each round's historical observations and decisions rather than the current release status. Mirroring, direct touch and automated results remain separate evidence levels.
 
 ### Historical record: initial R2 testing (2026-11-01 to 2026-11-04)
 
@@ -284,4 +288,4 @@ Compare note and `.base` changes after testing. Presentation must not rewrite Ma
 
 ### Release preparation and directory submission
 
-Version 1.1.0 is being prepared with core phone passes and remaining coverage limits recorded separately. The latest title-alignment visual check remains pending; the directory submission awaits the user’s developer-policy agreement and ongoing-maintenance commitment. Keep version metadata and the release tag consistent, and attach the three runtime files to the GitHub Release. A source push alone is not an installable update. Subsequent releases do not require a new initial submission, but each version is still scanned. The plugin does not update its own executable code; users update through Obsidian. The official sources linked above define the current process.
+Version 1.1.0 is being prepared with core phone passes and remaining coverage limits recorded separately. The latest title-alignment visual check passed on the actual iPhone through Mirroring; the user has agreed to the developer policies and ongoing-maintenance commitment, and directory submission is the next step. Keep version metadata and the release tag consistent, and attach the three runtime files to the GitHub Release. A source push alone is not an installable update. Subsequent releases do not require a new initial submission, but each version is still scanned. The plugin does not update its own executable code; users update through Obsidian. The official sources linked above define the current process.

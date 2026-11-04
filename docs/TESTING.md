@@ -10,23 +10,26 @@ visible phone history row passed scoped actual-device Mirroring checks.
 
 The latest single-line phone-title alignment fix balances vertical padding using
 `1lh`: the 32px link text previously sat at the top of a 44px touch row. The CSS
-fix is complete; its latest actual-phone visual check is still pending.
+fix is complete; its actual-phone display and inline-edit visual checks passed through Mirroring.
 
 Testing now reuses **one** persistent iCloud vault, `Nebula-Focus-iPhone` (formerly
 R10), and updates plugin files in place. Nine older iCloud test vaults were
 archived locally under ignored `dist` storage with their data retained. No more
 numbered iCloud vaults are created for each build.
 
-The official directory submission has **not** been sent. Its final developer-policy
-agreement and ongoing-maintenance commitment require the user's consent. Android,
+The official directory submission has **not** been sent. The user has confirmed the developer-policy agreement and ongoing-maintenance commitment. Android,
 iPad, third-party themes and untested lifecycle edge cases remain stated coverage
 limits; they are not collectively treated as a new release-blocking checklist.
 The dated R2–R10 sections below preserve historical observations and decisions,
 not the current submission status. The published 1.0.0 baseline is also retained.
 
-**1.1.0 正在准备发布**，最低 Obsidian **1.14.5**，允许移动端加载；当前构建与 **295/295** 测试通过。核心 iPhone 流程已有用户直接确认，R10 隐藏手机撤销行已有有限真机镜像证据。最新单行标题垂直偏移已用基于 `1lh` 的平衡内边距修复：原先 32px 链接文字在 44px 点击行中贴顶；本次真机视觉检查仍待完成。
+**1.1.0 正在准备发布**，最低 Obsidian **1.14.5**，允许移动端加载；当前构建与 **295/295** 测试通过。核心 iPhone 流程已有用户直接确认，R10 隐藏手机撤销行已有有限真机镜像证据。最新单行标题垂直偏移已用基于 `1lh` 的平衡内边距修复：原先 32px 链接文字在 44px 点击行中贴顶；本次真机镜像中的显示与原位编辑视觉检查通过。
 
-当前只保留一个 iCloud 测试库 **Nebula-Focus-iPhone**（原 R10），今后原处升级。9 个旧库的数据已保留归档到本地忽略的 `dist`，不再逐轮新建编号库。官方目录尚未提交，最后的开发者政策与持续维护承诺须由用户同意。下方 R2–R10 是历史记录；Android、iPad、第三方主题及其他未测边界是明确的覆盖限制，不把所有历史待测项重新列为当前发布阻断。
+当前只保留一个 iCloud 测试库 **Nebula-Focus-iPhone**（原 R10），今后原处升级。9 个旧库的数据已保留归档到本地忽略的 `dist`，不再逐轮新建编号库。官方目录尚未提交，用户已同意开发者政策与持续维护承诺。下方 R2–R10 是历史记录；Android、iPad、第三方主题及其他未测边界是明确的覆盖限制，不把所有历史待测项重新列为当前发布阻断。
+
+## Final iPhone title alignment check
+
+On 2026-11-04, the updated persistent iCloud vault was reloaded on the actual iPhone. Single-line text and its page icon are centered within the first-line touch area in both display and inline edit. The full purple selection outline remains visible; multiline text keeps natural wrapping and tag-expanded rows remain top-aligned. The 13 original fictional Markdown files remain byte-for-byte unchanged.
 
 ## Automated checks
 
