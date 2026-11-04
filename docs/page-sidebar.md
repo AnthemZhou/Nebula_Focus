@@ -2,7 +2,7 @@
 
 ## 中文
 
-在命令面板运行「Nebula Focus: 打开页面侧栏」，或点击左侧功能区的侧栏图标。侧栏作为独立的「页面」标签显示，原生文件列表仍可使用。
+页面侧栏是 Nebula Focus 的内置功能。1.1.3 在「设置 → Nebula Focus → 页面侧栏」提供打开入口、启动时打开、排序方式和附件显示；启动时打开默认关闭。也可在命令面板运行「Nebula Focus: 打开页面侧栏」，或点击左侧功能区的侧栏图标。侧栏作为独立的「页面」标签显示，原生文件列表仍可使用。
 
 ### 浏览与整理
 
@@ -25,7 +25,7 @@
 
 ## English
 
-Run `Nebula Focus: 打开页面侧栏` (Open page sidebar) from the command palette, or use the sidebar ribbon icon. The Pages tab is independent of the native file explorer.
+The page sidebar is built into Nebula Focus. Version 1.1.3 adds Settings → Nebula Focus → Page sidebar, with opening, opt-in automatic opening, sort mode and attachment controls. You can also run `Nebula Focus: 打开页面侧栏` (Open page sidebar) from the command palette, or use the sidebar ribbon icon. The Pages tab is independent of the native file explorer.
 
 ### Browsing and organization
 

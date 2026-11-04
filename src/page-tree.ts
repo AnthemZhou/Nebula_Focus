@@ -22,6 +22,7 @@ export interface PageTreeSettings {
   order: Record<string, string[]>;
   sort: 'manual' | 'name';
   showAttachments: boolean;
+  openOnStartup: boolean;
 }
 
 const strings = (value: unknown): string[] => Array.isArray(value)
@@ -34,6 +35,7 @@ export function readPageTreeSettings(value: unknown): PageTreeSettings {
     order: Object.fromEntries(Object.entries(raw.order && typeof raw.order === 'object' ? raw.order : {})
       .filter(([, values]) => Array.isArray(values)).map(([key, values]) => [key, strings(values)])),
     sort: raw.sort === 'name' ? 'name' : 'manual', showAttachments: raw.showAttachments === true,
+    openOnStartup: raw.openOnStartup === true,
   };
 }
 

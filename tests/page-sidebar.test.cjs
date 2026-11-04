@@ -21,25 +21,25 @@ function fixture(initial) {
   class TFolder {constructor(path, children) {this.path = path; this.name = path.split('/').pop(); this.children = children;}}
   const root = new TFolder('/', [new TFile('Home.md'), new TFolder('Home', [new TFile('Home/Child.md')]), new TFile('Alpha.md'), new TFile('Zebra.md')]);
   let active = 'Home.md', failSave = false;
-  const writes = [], opens = [], notices = [], menus = [], commands = [], created = [], modals = [];
+  const writes = [], opens = [], notices = [], menus = [], commands = [], created = [], modals = [], settingTabs = [], layoutReady = [];
   const find = (path, node = root) => node.path === path ? node : node.children?.map(child => find(path, child)).find(Boolean);
   const app = {vault: {getRoot: () => root, getName: () => '测试库', getAbstractFileByPath: path => find(path), on() {},
     async createFolder(path) {created.push({folder: path}); const parent = find(path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '/'); parent.children.push(new TFolder(path, []));},
     async create(path, content) {created.push({file: path, content}); const file = new TFile(path); const parent = find(path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '/'); parent.children.push(file); return file;}},
-    workspace: {on() {}, getActiveFile: () => find(active), getLeaf: mode => ({async openFile(file) {opens.push({path: file.path, mode}); active = file.path;}})}};
+    workspace: {on() {}, onLayoutReady(fn) {layoutReady.push(fn);}, getActiveFile: () => find(active), getLeaf: mode => ({async openFile(file) {opens.push({path: file.path, mode}); active = file.path;}})}};
   class ItemView extends Component {constructor(leaf) {super(); this.leaf = leaf; this.app = app; this.contentEl = doc.createElement('div'); doc.body.append(this.contentEl);}}
   class Modal {constructor() {this.contentEl = doc.createElement('div'); doc.body.append(this.contentEl); modals.push(this);} setTitle() {} open() {this.onOpen();} close() {this.onClose();}}
   class Menu {constructor() {menus.push(this); this.items = [];} setUseNativeMenu() {return this;} addItem(fn) {const item = {setTitle(title) {this.title = title; return this;}, setIcon() {return this;}, setChecked() {return this;}, setDisabled(disabled) {this.disabled = disabled; return this;}, onClick(fn) {this.click = fn; return this;}}; fn(item); this.items.push(item); return this;} addSeparator() {} showAtPosition() {}}
-  const obsidian = {Component, ItemView, TFile, TFolder, Modal, Menu, Notice: class {constructor(value) {notices.push(value);}}, setIcon: (el, icon) => {el.dataset.icon = icon;}};
+  const obsidian = {PluginSettingTab: class {constructor(app) {this.app = app;} update() {}}, Component, ItemView, TFile, TFolder, Modal, Menu, Notice: class {constructor(value) {notices.push(value);}}, setIcon: (el, icon) => {el.dataset.icon = icon;}};
   const module = {exports: {}};
   new Function('module', 'exports', 'require', 'window', 'console', code)(module, module.exports, name => {assert.equal(name, 'obsidian'); return obsidian;}, win, {error() {}});
-  const plugin = {app, registerView() {}, addCommand(command) {commands.push(command);}, addRibbonIcon() {}};
+  const plugin = {app, registerView() {}, addCommand(command) {commands.push(command);}, addRibbonIcon() {}, addSettingTab(tab) {settingTabs.push(tab);}};
   const sidebar = new module.exports.PageSidebar(plugin, initial, async value => {if (failSave) throw new Error('disk full'); writes.push(JSON.parse(JSON.stringify(value)));});
   const view = new module.exports.PageSidebarView({}, sidebar);
   const click = (el, options = {}) => el.dispatchEvent(new win.MouseEvent('click', {bubbles: true, cancelable: true, ...options}));
   const key = (el, name, options = {}) => el.dispatchEvent(new win.KeyboardEvent('keydown', {key: name, bubbles: true, cancelable: true, ...options}));
   const settle = () => new Promise(resolve => setImmediate(resolve));
-  return {dom, doc, win, root, sidebar, view, writes, opens, notices, menus, commands, created, modals, find, click, key, settle,
+  return {dom, doc, win, root, sidebar, view, writes, opens, notices, menus, commands, created, modals, settingTabs, layoutReady, find, click, key, settle,
     row: id => [...doc.querySelectorAll('.bui-page-row')].find(row => row.dataset.id === id),
     failSave() {failSave = true;}, restoreSave() {failSave = false;}, close() {view.onClose(); sidebar.onunload(); win.close();}};
 }
@@ -141,4 +141,38 @@ test('closing removes the view and ignores later renders; a disabled controller 
     f.view.render(); assert.equal(f.view.contentEl.children.length, 0);
     f.sidebar.onunload(); assert.equal(await f.sidebar.update(state => ({...state, favorites: ['Home']})), false); assert.deepEqual(f.writes, []);
   } finally {f.close();}
+});
+
+
+test('Nebula Focus registers sidebar settings; controls persist through the shared store and keep the tree preferences', async () => {
+  const f = fixture({favorites: ['Home'], order: {'/': ['Home', 'Zebra.md']}});
+  try {
+    f.sidebar.onload(); assert.equal(f.settingTabs.length, 1);
+    const tab = f.settingTabs[0];
+    assert.equal(tab.getControlValue('openOnStartup'), false);
+    await Promise.all([tab.setControlValue('openOnStartup', true), tab.setControlValue('showAttachments', true), tab.setControlValue('sort', 'name')]);
+    assert.equal(tab.getControlValue('openOnStartup'), true);
+    assert.equal(tab.getControlValue('showAttachments'), true);
+    assert.equal(tab.getControlValue('sort'), 'name');
+    assert.deepEqual(f.sidebar.settings.favorites, ['Home']);
+    assert.deepEqual(f.sidebar.settings.order, {'/': ['Home', 'Zebra.md']});
+    const count = f.writes.length;
+    await tab.setControlValue('sort', 'invalid'); await tab.setControlValue('favorites', []);
+    assert.equal(f.writes.length, count);
+    f.failSave(); await tab.setControlValue('showAttachments', false);
+    assert.equal(tab.getControlValue('showAttachments'), true);
+  } finally {f.close();}
+});
+
+test('automatic opening waits for layout, is opt-in and cannot resurrect an unloaded plugin', async () => {
+  for (const [enabled, stopped, expected] of [[false, false, 0], [true, false, 1], [true, true, 0]]) {
+    const f = fixture({openOnStartup: enabled});
+    try {
+      let opened = 0; f.sidebar.open = async () => {opened++;};
+      f.sidebar.onload(); assert.equal(opened, 0);
+      if (stopped) f.sidebar.onunload();
+      f.layoutReady.forEach(fn => fn()); assert.equal(opened, 0); await new Promise(resolve => f.win.setTimeout(resolve, 5));
+      assert.equal(opened, expected);
+    } finally {f.close();}
+  }
 });

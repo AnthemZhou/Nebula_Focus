@@ -73,7 +73,7 @@ test('folder rename migrates favorites, expanded paths and per-folder order with
 });
 
 test('settings tolerate partial/malformed values and filesystem-like special names', () => {
-  assert.deepEqual(state(null), {expanded: [], favorites: [], order: {}, sort: 'manual', showAttachments: false});
+  assert.deepEqual(state(null), {expanded: [], favorites: [], order: {}, sort: 'manual', showAttachments: false, openOnStartup: false});
   const settings = state({expanded: ['a', 3, 'a'], favorites: false, order: JSON.parse('{"__proto__":["A"],"/":true}'), sort: 'unknown'});
   assert.deepEqual(settings.expanded, ['a']); assert.deepEqual(settings.order.__proto__, ['A']);
   assert.equal(Object.hasOwn(settings.order, '/'), false);

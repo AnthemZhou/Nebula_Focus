@@ -1,14 +1,14 @@
 # Nebula Focus
 
-为 Obsidian Bases 提供 Notion-like 的表格、卡片和原位编辑。
+为 Obsidian 提供 Notion-like 的页面侧栏、Bases 表格、卡片和原位编辑。
 
 [中文](#中文) · [English](#english) · [下载 / Downloads](https://github.com/AnthemZhou/Nebula_Focus/releases) · [反馈 / Issues](https://github.com/AnthemZhou/Nebula_Focus/issues)
 
-**1.1.2** · Obsidian **1.14.5+** · Desktop + iPhone · GPL-3.0-only
+**1.1.3** · Obsidian **1.14.5+** · Desktop + iPhone · GPL-3.0-only
 
 ## 中文
 
-Nebula Focus 为 Obsidian 原生数据库（Bases）提供 Notion-like 的阅读与编辑体验。紧凑的表格、彩色标签和图片封面，让资料更容易浏览；笔记仍是普通 Markdown，便于直接阅读、备份和交给 AI 处理。
+Nebula Focus 内置 Notion-like 页面侧栏，并为原生数据库（Bases）提供阅读与编辑优化。紧凑的表格、彩色标签和图片封面，让资料更容易浏览；笔记仍是普通 Markdown，便于直接阅读、备份和交给 AI 处理。
 
 它面向已经整理为 Markdown 与 Bases 的资料。Notion 数据迁移完成后，可以继续使用原生文件和属性管理内容。
 
@@ -26,9 +26,9 @@ Nebula Focus 为 Obsidian 原生数据库（Bases）提供 Notion-like 的阅读
 
 需要 Obsidian 1.14.5 或更新版本，并启用「数据库 / Bases」核心插件。支持桌面与 iPhone；已验证范围见下方兼容说明。
 
-**1.1.2** 已发布到 [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases/tag/1.1.2)，发布 CI 通过；1.1.2 的[官方目录扫描](https://community.obsidian.md/plugins/nebula-focus)已 Completed、无 Error，构建复现与来源证明通过。截至 2026-11-04，客户端搜索与商店安装仍未确认；可先使用下面的手动安装方式。
+**1.1.3** 的安装文件见 [GitHub Release](https://github.com/AnthemZhou/Nebula_Focus/releases/tag/1.1.3)。此版本增加统一的页面侧栏设置入口；社区目录的扫描与客户端同步状态需单独确认。
 
-1. 从 [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases) 下载 `nebula-focus-1.1.2.zip`。
+1. 从 [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases) 下载 `nebula-focus-1.1.3.zip`。
 2. 解压到库的 `.obsidian/plugins/nebula-focus/`。
 3. 确认目录内有 `main.js`、`manifest.json` 和 `styles.css`。
 4. 在 Obsidian 的第三方插件设置中启用 **Nebula Focus**。
@@ -42,7 +42,7 @@ iPhone 使用 iCloud 库时，可先在电脑上把三个插件文件放入同�
 
 | 操作 | 方法 |
 | --- | --- |
-| 打开页面侧栏 | 命令面板运行「Nebula Focus: 打开页面侧栏」，或点击功能区的侧栏图标 |
+| 打开页面侧栏 | 在「设置 → Nebula Focus → 页面侧栏」点击「打开侧栏」；也可使用命令面板或功能区图标 |
 | 整理页面 | 拖动调整同级顺序；也可用 Alt + ↑ / ↓ 或行菜单的「上移 / 下移」。行菜单提供收藏，＋ 新建子页面 |
 | 编辑想法标题 | 点击标题文字；点击右侧空白会把光标放在末尾。Enter 或失焦保存，Escape 取消 |
 | 打开笔记 | 点击标题前的页面图标 |
@@ -51,6 +51,8 @@ iPhone 使用 iCloud 库时，可先在电脑上把三个插件文件放入同�
 | 修改标题列名称 | 点击列名称，在同款小面板中修改并点击勾号保存；排序仍使用工具栏 |
 | 新建条目 | 点击网格最后一行的「新建条目」，或看板中的「新建」 |
 | 查看图片 | 点击表格缩略图放大；项目看板封面使用 16:9 区域 |
+
+1.1.3 增加「设置 → Nebula Focus → 页面侧栏」，统一管理启动时打开、排序方式和附件显示；启动时打开默认关闭。
 
 页面侧栏默认显示笔记、数据库和白板；右上角「⋯」可显示附件、切换名称排序或打开原生文件列表。排序、收藏与展开状态保存在插件设置中，合并显示不会移动或改名现有文件。操作范围见[页面侧栏说明](docs/page-sidebar.md)。
 
@@ -91,7 +93,7 @@ iPhone 使用 iCloud 库时，可先在电脑上把三个插件文件放入同�
 
 最低要求 Obsidian 1.14.5。1.1.0 / 1.1.1 的运行代码与样式相同，已有 macOS 桌面与 iPhone 16 Pro Max 的测试记录。iPhone 核心操作有直接触摸验证，包括连续中文输入、标签编辑、横向滚动与旋转、卡片移动、图片放大，以及新建→加标签→撤销两次→重做两次；用户也确认了单元格与标签面板的字号一致。手机隐藏额外撤销按钮行，保留命令入口；表格单行标题在触摸区域内纵向居中，多行内容自然展开。
 
-1.1.2 的本地构建与 **308 项自动测试通过**；它增加原生结构校验，并收敛类型与样式警告。[同规则本地检查](docs/review-warnings.md)从 1,570 项降到 **38 项警告、0 项错误**，本地计数不等同于官方完整扫描结果。本版尚无新增真机测试结论。本版桌面浅色、深色主题与看板新建、撤销、重做已检查；Android、iPad、第三方主题及所有手机生命周期边界尚未逐项实测。这些结果说明已验证的核心流程，不代表所有移动设备、主题和交互都完成验收。详细记录见 [iPhone 测试记录](docs/mobile-testing.md) 与 [TESTING.md](docs/TESTING.md)。
+1.1.3 的严格构建与 **310 项自动测试通过**。桌面已检查插件设置页、附件显示、侧栏打开与连续重载；重载后只保留一个侧栏标签，原有 310 个库内文件逐字节未变。[同规则本地检查](docs/review-warnings.md)保留 **38 项警告、0 项错误**。本版设置入口没有新增 iPhone 真机验证，Android、iPad、第三方主题及全部移动端生命周期边界也未逐项实测。详细记录见 [iPhone 测试记录](docs/mobile-testing.md) 与 [TESTING.md](docs/TESTING.md)。
 
 彩色标签按明确的语义字段名识别，包括领域、类型、重要性、状态、优先级、分类、发布平台、内容类型、项目和关联项目等。普通标题、摘要、日期和媒体仍按原有方式处理。这是呈现层优化，不会把文本属性转换成 Notion 的 select 或 relation 类型，也不还原 Notion 的完整数据库规则。
 
@@ -118,7 +120,7 @@ npm test
 
 ## English
 
-Nebula Focus brings a Notion-like reading and editing experience to Obsidian Bases. Compact tables, colored tags and image covers make notes easier to scan. Your notes remain ordinary Markdown, ready to read, back up or use with AI tools.
+Nebula Focus includes a Notion-like page sidebar and improves reading and editing in native Bases. Compact tables, colored tags and image covers make notes easier to scan. Your notes remain ordinary Markdown, ready to read, back up or use with AI tools.
 
 It works with content already organized as Markdown and native Bases. After a Notion migration, you can continue managing the underlying files and properties in Obsidian.
 
@@ -136,9 +138,9 @@ It works with content already organized as Markdown and native Bases. After a No
 
 Use Obsidian 1.14.5 or later with the **Bases** core plugin enabled. Desktop and iPhone are supported; see the tested scope below.
 
-**1.1.2** is available on [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases/tag/1.1.2), with passing release CI. Its [official directory scan](https://community.obsidian.md/plugins/nebula-focus) is Completed without Errors, with successful build reproduction and artifact attestations. In-app search and marketplace installation remain unverified as of 2026-11-04; manual installation is available below.
+Installation files for **1.1.3** are on its [GitHub Release](https://github.com/AnthemZhou/Nebula_Focus/releases/tag/1.1.3). This version adds unified page-sidebar settings. Community-directory review and in-app synchronization are separate states and have not been confirmed for this version.
 
-1. Download `nebula-focus-1.1.2.zip` from [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases).
+1. Download `nebula-focus-1.1.3.zip` from [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases).
 2. Extract it into `.obsidian/plugins/nebula-focus/` inside your vault.
 3. Check that the folder contains `main.js`, `manifest.json` and `styles.css`.
 4. Enable **Nebula Focus** in Obsidian's community plugin settings.
@@ -152,7 +154,7 @@ For an iPhone using an iCloud vault, copy the three plugin files into that synce
 
 | Action | How |
 | --- | --- |
-| Open the page sidebar | Run `Nebula Focus: 打开页面侧栏` (Open page sidebar) in the command palette, or use the ribbon sidebar icon |
+| Open the page sidebar | Use Settings → Nebula Focus → 页面侧栏 (Page sidebar), the command palette or the sidebar ribbon icon |
 | Organize pages | Drag to reorder siblings, use Alt + ↑ / ↓, or use the row menu. Favorite pages from the menu; use ＋ to create a child page |
 | Edit an idea title | Click its text, or click trailing blank space to place the caret at the end. Enter or blur saves; Escape cancels |
 | Open a note | Click the page icon before its title |
@@ -161,6 +163,8 @@ For an iPhone using an iCloud vault, copy the three plugin files into that synce
 | Rename the title column | Click the column name, edit it in the anchored panel and confirm with the check mark; sorting stays in the toolbar |
 | Create an item | Use the grid's last-row New item button, or New on a board |
 | View an image | Click a table thumbnail to enlarge it; project board covers use a 16:9 area |
+
+Version 1.1.3 adds a Page sidebar section under Settings → Nebula Focus for automatic opening, ordering and attachment visibility. Automatic opening is opt-in.
 
 The sidebar shows notes, Bases and canvases by default. Its top-right menu shows attachments, switches to name sorting or opens the native file explorer. Ordering, favorites and expanded state are stored in plugin settings; merged entries never move or rename existing files. See the [page sidebar guide](docs/page-sidebar.md).
 
@@ -201,7 +205,7 @@ Covers use images referenced in your notes. Local attachments are read from the 
 
 Obsidian 1.14.5 is required. Versions 1.1.0 and 1.1.1 have identical runtime code and styles, with recorded testing on macOS desktop and iPhone 16 Pro Max. Core iPhone operations have direct-touch evidence: continuous Chinese input, tag editing, horizontal scrolling and rotation, card moves, image enlargement, and creation → tag edit → two undos → two redos. The user also confirmed matching tag font sizes between cells and the popup. The phone hides the extra undo-button row while retaining commands; single-line table titles are vertically centered within the touch target, while multiline content keeps its natural height.
 
-The 1.1.2 local build and **308 automated tests pass**. This version adds native-structure validation and reduces type and style findings. A [local comparison using the same rules](docs/review-warnings.md) reduces 1,570 findings to **38 warnings and zero errors**; local counts are separate from the full official scan. There is no new actual-phone result for this version. This version passed desktop light/dark checks and board creation with undo/redo. Android, iPad, third-party themes and all phone lifecycle edge cases have not been individually tested. These results cover the verified core workflows, not every mobile device, theme or interaction. See the [iPhone test record](docs/mobile-testing.md) and [TESTING.md](docs/TESTING.md).
+The 1.1.3 strict build and **310 automated tests pass**. Desktop checks cover the plugin settings page, attachment visibility, sidebar opening and repeated reloads, retaining one sidebar tab. All 310 existing vault files remain byte-identical. [Local lint](docs/review-warnings.md) retains **38 warnings and zero errors**. This settings entry has no new actual-iPhone validation; Android, iPad, third-party themes and all mobile lifecycle boundaries have not been individually tested. See the [iPhone test record](docs/mobile-testing.md) and [TESTING.md](docs/TESTING.md).
 
 Colored tags recognize explicit semantic field names for areas, types, importance, status, priority, categories, publishing platforms, content types and projects. Ordinary titles, summaries, dates and media retain their usual handling. This presentation layer does not convert text properties into Notion select or relation types, or recreate Notion's full database behavior.
 

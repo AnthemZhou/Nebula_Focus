@@ -1,31 +1,33 @@
-# Nebula Focus 1.1.2 — Notion-like Bases, safer native integration
+# Nebula Focus 1.1.3 — Unified page sidebar settings
 
 [中文](#中文) · [English](#english)
 
 ## 中文
 
-1.1.2 改进原生 Bases 的结构校验与发布检查，保留现有 Notion-like 表格、标签、看板和页面侧栏。最低要求 Obsidian **1.14.5**，并启用「数据库 / Bases」核心插件。
+1.1.3 将已有的页面侧栏纳入 Nebula Focus 的统一设置。在「设置 → Nebula Focus → 页面侧栏」即可打开页面树，选择排序方式和附件显示，并设置是否启动时自动打开。最低要求 Obsidian **1.14.5**；表格与看板功能需要启用「数据库 / Bases」核心插件。
 
-- **减少类型风险。** 用明确的结构类型和运行时校验替换宽泛的 `any`。遇到不识别的原生布局、属性或编辑器时，保留原生处理；增加不完整结构的回归测试。
-- **收敛样式。** 删除废弃表头编辑规则，用限定作用域的选择器替换部分强制覆盖。去掉注释后，`!important` 从 24 处减至 15 处，`:has()` 从 13 处减至 11 处。
-- **把检查纳入发布。** 发布工作流增加官方 ESLint 规则检查，并配置三个运行文件的 GitHub 构建证明。保留的警告及原因见[检查说明](https://github.com/AnthemZhou/Nebula_Focus/blob/main/docs/review-warnings.md)。
+- **统一入口。** 同名文件夹与笔记合并显示、搜索、收藏、同级拖动排序和新建子页面，继续作为 Nebula Focus 的内置功能使用。
+- **按需自动打开。** 新增启动时打开选项，默认关闭。已有收藏、顺序和展开状态继续保留。
+- **避免重复侧栏。** 自动打开等待原有视图恢复完成；连续重载后只保留一个侧栏标签。停用插件会取消尚未执行的打开操作。
+- **偏好安全保存。** 侧栏与标签偏好共用写入队列，保存失败时保留原状态，不改写已有笔记内容或文件路径。
 
-本地使用同一版本 `eslint-plugin-obsidianmd@0.4.2` 比较，诊断从 **1,570 项降为 38 项警告、0 项错误**；不安全类型系列已清除，没有用 `eslint-disable` 隐藏警告。严格构建与 **308/308 自动测试通过**。桌面实测看板新建、撤销、重做及明暗主题通过；14 份原有测试笔记逐字节未变。官方扫描与客户端可用性以目录状态为准。
+严格构建与 **310/310 自动测试通过**。本地 ESLint 为 **38 项既有警告、0 项错误**，本次未增加警告。桌面实测设置页、附件显示、打开侧栏和连续重载通过；原有 310 个库内文件逐字节未变。本版设置入口尚未新增 iPhone 真机验证，具体范围见 [TESTING.md](https://github.com/AnthemZhou/Nebula_Focus/blob/1.1.3/docs/TESTING.md)。
 
-本次不改变 Markdown 的存储方式：外观不写入正文或末尾格式标记；主动编辑仍使用原生属性事务，视图配置保存在 `.base`，偏好保存在插件设置。既有 iPhone 直接触摸记录属于 1.1.0 / 1.1.1；本次没有新增手机全流程通过结论。详细范围见 [TESTING.md](https://github.com/AnthemZhou/Nebula_Focus/blob/main/docs/TESTING.md) 与 [iPhone 记录](https://github.com/AnthemZhou/Nebula_Focus/blob/main/docs/mobile-testing.md)。
+安装可使用社区插件更新功能（目录同步后），或将附件中的 `main.js`、`manifest.json`、`styles.css` 更新到 `.obsidian/plugins/nebula-focus/`。保留原来的 `data.json`，然后重载插件。也提供包含这三个文件的安装 ZIP、公开源码 ZIP 和示例库 ZIP。
 
-运行包可从 [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases) 获取。后续版本不重复提交首次申请，但仍会自动扫描；客户端可用时间还受扫描和目录同步影响。见[官方 FAQ](https://docs.obsidian.md/community-directory/faq)。
+GitHub Release 发布与社区目录扫描、客户端更新同步是独立阶段；本说明不代表目录审核已经完成。
 
 ## English
 
-Version 1.1.2 strengthens native Bases validation and release checks while preserving the existing Notion-like tables, tags, boards and page sidebar. It requires Obsidian **1.14.5** with the **Bases** core plugin enabled.
+Version 1.1.3 brings the existing page sidebar into Nebula Focus's settings. Open Settings → Nebula Focus → Page sidebar to open the tree, choose ordering and attachment visibility, and opt into automatic opening. It requires Obsidian **1.14.5**; table and board features also require the **Bases** core plugin.
 
-- **Safer native integration.** Explicit structural types and runtime guards replace broad `any` usage. Unrecognized native layouts, properties and editors retain native handling; regression tests cover incomplete structures.
-- **More focused styles.** Obsolete header-editing rules are removed, and scoped selectors replace some forced overrides. Excluding comments, `!important` occurrences fall from 24 to 15 and `:has()` selectors from 13 to 11.
-- **Checks in the release workflow.** Publishing now includes official ESLint rules and configured GitHub attestations for the three runtime files. Retained findings and their reasons are listed in the [review guide](https://github.com/AnthemZhou/Nebula_Focus/blob/main/docs/review-warnings.md).
+- **One settings entry.** Merged folder notes, search, favorites, sibling drag reordering and child-page creation remain built into Nebula Focus.
+- **Optional automatic opening.** The new startup option is off by default. Existing favorites, ordering and expanded state are preserved.
+- **No duplicate sidebar on reload.** Automatic opening waits for existing views to finish restoring. Repeated reloads retain one sidebar tab, and unloading cancels pending automatic opening.
+- **Serialized preference writes.** Sidebar and tag preferences share a write queue. Failed saves retain the previous state; preference changes never alter existing note contents or file paths.
 
-A local comparison using the same `eslint-plugin-obsidianmd@0.4.2` rules reduces **1,570 findings to 38 warnings and zero errors**. Unsafe-type findings are cleared, with no `eslint-disable` suppression. The strict build and **308/308 automated tests pass**. Desktop board creation, undo/redo and light/dark checks pass; all 14 pre-existing test notes remain byte-identical. Official review and client availability are separate directory stages.
+The strict build and **310/310 automated tests pass**. Local ESLint retains **38 existing warnings and zero errors**, with no new findings. Desktop checks cover settings, attachment visibility, opening and repeated reloads; all 310 existing vault files remain byte-identical. The new settings entry has no additional actual-iPhone validation. See [TESTING.md](https://github.com/AnthemZhou/Nebula_Focus/blob/1.1.3/docs/TESTING.md) for scope.
 
-Markdown storage is unchanged: presentation does not modify bodies or append formatting markers. Explicit edits still use native property transactions; views live in `.base` files and preferences in plugin settings. Existing direct-touch iPhone evidence belongs to 1.1.0 / 1.1.1; this version has no new full phone-test pass. See [TESTING.md](https://github.com/AnthemZhou/Nebula_Focus/blob/main/docs/TESTING.md) and the [iPhone record](https://github.com/AnthemZhou/Nebula_Focus/blob/main/docs/mobile-testing.md) for scope.
+Update through community plugins once the directory synchronizes, or replace `main.js`, `manifest.json` and `styles.css` in `.obsidian/plugins/nebula-focus/`. Keep your existing `data.json`, then reload the plugin. Installation, public-source and example-vault ZIPs are also included.
 
-The runtime package is available from [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases). Later versions do not require another initial submission, but remain subject to automatic scans; availability also depends on directory synchronization. See the [official FAQ](https://docs.obsidian.md/community-directory/faq).
+Publishing a GitHub Release is separate from directory review and in-app synchronization. These notes do not claim that directory review has completed.

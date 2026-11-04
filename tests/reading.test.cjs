@@ -72,7 +72,7 @@ function fixture() {
     showAtPosition(position){this.position=position;}
     showAtMouseEvent(){}
   }
-  const api = {Plugin, TFile, TFolder: class {}, ItemView: class extends Component {}, MarkdownView, Component, Modal, Notice:class{constructor(message){notices.push(message);}}, Menu, setIcon(){}};
+  const api = {Plugin, PluginSettingTab: class {}, TFile, TFolder: class {}, ItemView: class extends Component {}, MarkdownView, Component, Modal, Notice:class{constructor(message){notices.push(message);}}, Menu, setIcon(){}};
   const mod = {exports:{}};
   new vm.Script(fs.readFileSync('main.js','utf8')).runInContext(vm.createContext({
     module:mod,exports:mod.exports,require:name => {assert.equal(name,'obsidian'); return api;},

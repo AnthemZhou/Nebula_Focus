@@ -1,4 +1,5 @@
 import {App, Component, ItemView, Menu, Modal, Notice, Plugin, TFile, TFolder, WorkspaceLeaf, setIcon} from 'obsidian';
+import {NebulaFocusSettings} from './settings';
 import {PageNode, PageTreeSettings, buildPageTree, filterPages, flattenPages, readPageTreeSettings,
   remapPageSettings, reorderPages, validPageName} from './page-tree';
 
@@ -10,6 +11,7 @@ export class PageSidebar extends Component {
   readonly views = new Set<PageSidebarView>();
   private writes: Promise<unknown> = Promise.resolve();
   private timer = 0;
+  private startupTimer = 0;
   private stopped = false;
 
   constructor(readonly plugin: Plugin, initial: unknown, private save: (settings: PageTreeSettings) => Promise<void>) {
@@ -25,6 +27,16 @@ export class PageSidebar extends Component {
     this.plugin.addCommand({id: 'open-page-sidebar', name: '打开页面侧栏', callback: () => {void this.open();}});
     this.plugin.addCommand({id: 'open-native-files', name: '打开原生文件列表', callback: () => {void this.openNative();}});
     this.plugin.addRibbonIcon('panel-left', '页面侧栏', () => {void this.open();});
+    this.plugin.addSettingTab(new NebulaFocusSettings(this.plugin, this));
+    this.app.workspace.onLayoutReady(() => {
+      if (this.stopped) return;
+      // On plugin reload the layout is already ready, but the host is still
+      // restoring registered views. Let that finish before looking for a leaf.
+      this.startupTimer = window.setTimeout(() => {
+        this.startupTimer = 0;
+        if (!this.stopped && this.settings.openOnStartup) void this.open();
+      }, 0);
+    });
     this.registerEvent(this.app.vault.on('create', () => this.schedule()));
     this.registerEvent(this.app.vault.on('delete', () => this.schedule()));
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
@@ -37,6 +49,7 @@ export class PageSidebar extends Component {
   }
 
   async open() {
+    if (this.stopped) return;
     try {
       const leaf = this.app.workspace.getLeavesOfType(PAGE_SIDEBAR_TYPE)[0] ?? this.app.workspace.getLeftLeaf(false);
       if (!leaf) return;
@@ -75,7 +88,7 @@ export class PageSidebar extends Component {
     console.error('[Nebula Focus] ' + message, error);
     new Notice(message + '：' + (error instanceof Error ? error.message : String(error)));
   }
-  onunload() {this.stopped = true; window.clearTimeout(this.timer); this.views.clear();}
+  onunload() {this.stopped = true; window.clearTimeout(this.timer); window.clearTimeout(this.startupTimer); this.views.clear();}
 
   createPage(parent?: PageNode) {
     // A sibling folder note can gain children without moving its existing file.

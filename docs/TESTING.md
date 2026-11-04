@@ -383,3 +383,19 @@ submission has occurred. Runtime and ZIP hashes are recorded in
 ### 中文记录
 
 R10 构建与 **295/295** 自动测试通过。原始 ZIP 解压到 iCloud 同名新测试库，未覆盖旧库；实际 iPhone 镜像已确认 R10 加载。独立想法表格显示 6 个结果，原生工具栏紧邻列头，不再出现撤销/重做额外一行；Home 嵌入看板显示 3 个结果，同样无该行，卡片及分组触摸菜单仍保留。观察后的只读逐字节比较确认 iCloud R10 的 13 篇原始虚构 Markdown 与示例源文件完全一致。这仅是本次显示调整的有限真机检查，不代表完整触摸验收或正式发布。桌面入口、手机内部历史与命令回退保留，原生文本撤销不变。
+
+## 1.1.3 sidebar settings integration — 2026-11-04
+
+Version 1.1.3 adds a Page sidebar section to Nebula Focus's own settings tab.
+The checks below cover the local build; release CI and directory review are separate stages.
+
+- Strict build and 310 automated tests pass. Lint retains the existing 38 warnings
+  with no errors; the settings tab adds no warnings.
+- Real-app settings navigation, opening the sidebar and attachment toggles passed.
+  Startup opening is opt-in and is enabled in the preview vault.
+- Startup opening is deferred until the host restores views. After fixing a reload
+  race, two consecutive reloads each retained exactly one sidebar and one settings tab.
+- Existing favorites and sibling order survive settings writes. Tests cover invalid
+  setting values, concurrent updates, failed saves and unloading before layout readiness.
+- The 1.1.3 installation ZIP matches all three installed runtime files and
+  excludes vault preferences. All 310 pre-existing vault content files remain byte-identical.
