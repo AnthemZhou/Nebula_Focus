@@ -26,9 +26,9 @@ Nebula Focus 为 Obsidian 原生数据库（Bases）提供 Notion-like 的阅读
 
 需要 Obsidian 1.14.5 或更新版本，并启用「数据库 / Bases」核心插件。支持桌面与 iPhone；已验证范围见下方兼容说明。
 
-官方插件目录尚未批准收录。目前请从 GitHub Releases 安装；目录审核通过后，才可在 Obsidian 社区插件市场搜索 **Nebula Focus**。
+已提交[官方插件目录](https://community.obsidian.md/plugins/nebula-focus)，审核进行中。目前可从 GitHub Releases 安装；审核通过后可在社区插件市场搜索 **Nebula Focus**。
 
-1. 从 [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases) 下载 `nebula-focus-1.1.0.zip`。
+1. 从 [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases) 下载 `nebula-focus-1.1.1.zip`。
 2. 解压到库的 `.obsidian/plugins/nebula-focus/`。
 3. 确认目录内有 `main.js`、`manifest.json` 和 `styles.css`。
 4. 在 Obsidian 的第三方插件设置中启用 **Nebula Focus**。
@@ -133,9 +133,9 @@ It works with content already organized as Markdown and native Bases. After a No
 
 Use Obsidian 1.14.5 or later with the **Bases** core plugin enabled. Desktop and iPhone are supported; see the tested scope below.
 
-The official plugin directory has not yet approved this plugin. Install from GitHub Releases for now. After approval, **Nebula Focus** will be searchable in Obsidian Community plugins.
+The [official directory listing](https://community.obsidian.md/plugins/nebula-focus) has been submitted and review is in progress. Install from GitHub Releases for now; community installation becomes available after approval.
 
-1. Download `nebula-focus-1.1.0.zip` from [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases).
+1. Download `nebula-focus-1.1.1.zip` from [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases).
 2. Extract it into `.obsidian/plugins/nebula-focus/` inside your vault.
 3. Check that the folder contains `main.js`, `manifest.json` and `styles.css`.
 4. Enable **Nebula Focus** in Obsidian's community plugin settings.

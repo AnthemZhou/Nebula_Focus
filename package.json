@@ -1,7 +1,7 @@
 {
   "name": "nebula-focus",
-  "version": "1.1.0",
-  "description": "Notion-like native Bases UI for Obsidian: compact tables, colored tags, covers and inline editing.",
+  "version": "1.1.1",
+  "description": "Notion-like native Bases UI: compact tables, colored tags, covers and inline editing.",
   "main": "main.js",
   "license": "GPL-3.0-only",
   "author": "Shengyu Zhou",

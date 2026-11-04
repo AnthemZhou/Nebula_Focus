@@ -1,8 +1,10 @@
-# Nebula Focus 1.1.0 — Notion-like Bases on desktop and iPhone
+# Nebula Focus 1.1.1 — Notion-like Bases on desktop and iPhone
 
 [中文](#中文) · [English](#english)
 
 ## 中文
+
+1.1.1 根据官方目录检查移除简介中重复的产品名称，仅调整发布元数据；运行代码和样式与 1.1.0 相同。下文为 1.1 系列的功能与验证范围。
 
 1.1.0 将 Notion-like 的原生 Bases 表格、看板和原位编辑带到 iPhone，并加入页面侧栏。最低要求 Obsidian **1.14.5**，启用「数据库 / Bases」核心插件。
 
@@ -21,6 +23,8 @@
 从 [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases) 下载运行包，在库的 `.obsidian/plugins/nebula-focus/` 放置 `main.js`、`manifest.json` 和 `styles.css`。官方插件目录尚未批准收录；批准后才能在社区插件市场直接搜索安装。后续手机验证复用一个独立 iCloud 测试库，原处更新插件文件并保留测试内容。
 
 ## English
+
+Version 1.1.1 removes the redundant host-product name from the description to satisfy the directory check. Runtime code and styles are unchanged from 1.1.0; the 1.1 feature and verification notes follow.
 
 Version 1.1.0 brings Notion-like native Bases tables, boards and inline editing to iPhone and adds a page sidebar. It requires Obsidian **1.14.5** with the **Bases** core plugin enabled.
 
