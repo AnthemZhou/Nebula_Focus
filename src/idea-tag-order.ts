@@ -1,3 +1,4 @@
+import {object} from './idea-native';
 /** Optional plugin-data adapter. This never reads or writes a note or Base. */
 export interface IdeaTagOrderStore {
   read(key: string): readonly string[] | undefined;
@@ -14,16 +15,19 @@ export function cleanTagOrder(values: unknown): string[] {
 
 /** An actual .base file identifies all its embedded and independent views.
  * Inline Bases fall back to their containing note plus view name. */
-export function ideaTagOrderKey(view: any, property: string): string | null {
-  const file = view?.config?.query?.file;
-  const path = typeof file === 'string' ? file : file?.path;
+export function ideaTagOrderKey(view: unknown, property: string): string | null {
+  if (!object(view)) return null;
+  const config = object(view.config) ? view.config : undefined;
+  const query = object(config?.query) ? config.query : undefined;
+  const file = query?.file;
+  const path = typeof file === 'string' ? file : object(file) ? file.path : undefined;
   if (typeof path === 'string' && path) return JSON.stringify([path, property]);
-  const controller = view?.queryController;
+  const controller = object(view.queryController) ? view.queryController : undefined;
   let source: unknown;
-  try {source = typeof controller?.sourcePath === 'function' ? controller.sourcePath() : controller?.sourcePath;} catch { /* Unsupported controller. */ }
-  source ||= controller?.currentFile?.path;
+  try {source = typeof controller?.sourcePath === 'function' ? (controller.sourcePath as () => unknown).call(controller) : controller?.sourcePath;} catch { /* Unsupported controller. */ }
+  source ||= object(controller?.currentFile) ? controller.currentFile.path : undefined;
   return typeof source === 'string' && source
-    ? JSON.stringify([source, view?.config?.name ?? '', property]) : null;
+    ? JSON.stringify([source, config?.name ?? '', property]) : null;
 }
 
 export function applyTagOrder(values: readonly string[], order: readonly string[]): string[] {

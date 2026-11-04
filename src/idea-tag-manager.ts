@@ -5,17 +5,26 @@ import {guardTouchScrollClicks, positionAnchoredPopover, preferPopoverInputFocus
 import {TagDragMotion} from './tag-drag-motion';
 import {inheritTagTypography} from './tag-typography';
 
-type Native = any;
+import {IdeaView, IdeaQuery, isHtmlElement, isIdeaView, isIdeaQuery, isIdeaPropertyConfig} from './idea-native';
+type ManagerView = IdeaView & {
+  theadEl: HTMLElement;
+  config: IdeaView['config'] & {query: IdeaQuery; getPropertyConfig(property: string): unknown};
+};
+function managerView(value: unknown): value is ManagerView {
+  return isIdeaView(value) && isHtmlElement(value.theadEl) && isIdeaQuery(value.config.query) &&
+    typeof value.config.getPropertyConfig === 'function';
+}
 export type TagCatalog = IdeaTagOptions & {values: string[]};
 type Source = {
-  view: Native; property: string; anchor: HTMLElement; keyboard?: boolean;
+  view: unknown; property: string; anchor: HTMLElement; keyboard?: boolean;
   read(): TagCatalog;
   save(options: IdeaTagOptions): Promise<void>;
 };
 type Drag = {id: number; row: HTMLElement; value: string; startX: number; startY: number; moved: boolean; order: string[];
   motion: TagDragMotion; activated: boolean; holdTimer?: number; settling?: boolean; clean: (() => void)[]};
 type Panel = Source & {
-  query: Native; popup: HTMLElement; list: HTMLElement; input: HTMLInputElement; nameInput: HTMLInputElement;
+  view: ManagerView;
+  query: IdeaQuery; popup: HTMLElement; list: HTMLElement; input: HTMLInputElement; nameInput: HTMLInputElement;
   status: HTMLElement; busy: boolean; composing: boolean; imeEnded: boolean; drag?: Drag; ignoreClick: boolean;
   autoInputFocus: boolean; clean: (() => void)[];
 };
@@ -103,9 +112,9 @@ export class IdeaTagManager {
     this.render(panel); this.position(panel); (autoInputFocus ? input : popup).focus({preventScroll: true}); return true;
   }
 
-  private available(source: Source): boolean {
+  private available(source: Source): source is Source & {view: ManagerView} {
     const {view, anchor} = source;
-    return view?._loaded !== false && !view.isReadOnly && !view.readOnly && !view.queryController?.isReadOnly &&
+    return managerView(view) && view?._loaded !== false && !view.isReadOnly && !view.readOnly && !view.queryController?.isReadOnly &&
       view.queryController?.view === view &&
       view.type === 'table' && view.config?.name === '想法收集箱' && anchor.isConnected &&
       view.theadEl?.contains(anchor) && typeof view.config?.getPropertyConfig === 'function' &&
@@ -116,7 +125,11 @@ export class IdeaTagManager {
     return this.panel === panel && this.available(panel) && panel.view.config.query === panel.query;
   }
   private displayName(source: Source) {
-    try {return String(source.view.config.getPropertyConfig(`note.${source.property}`).getDisplayName());}
+    try {
+      if (!managerView(source.view)) return source.property;
+      const config = source.view.config.getPropertyConfig(`note.${source.property}`);
+      return isIdeaPropertyConfig(config) ? String(config.getDisplayName()) : source.property;
+    }
     catch {return source.property;}
   }
   private status(panel: Panel, text: string) {panel.status.textContent = text; panel.status.hidden = false;}
@@ -220,12 +233,13 @@ export class IdeaTagManager {
     if (!value) {this.status(panel, '列名称不能为空'); return;}
     if (value === original) return;
     const config = panel.view.config.getPropertyConfig(`note.${panel.property}`);
-    if (typeof config?.setDisplayName !== 'function') return;
+    if (!isIdeaPropertyConfig(config)) return;
     panel.busy = true; panel.status.hidden = true;
     try {
       config.setDisplayName(value);
       await panel.query.saveFn.call(panel.query, panel.query);
-      panel.view.queryController?.requestNotifyView?.();
+      const controller = panel.view.queryController, notify = controller?.requestNotifyView;
+      if (typeof notify === 'function') (notify as () => unknown).call(controller);
     } catch {
       if (config.getDisplayName() === value) config.setDisplayName(original);
       if (this.current(panel)) {panel.nameInput.value = original; this.status(panel, '列名称未能保存，请重试');}

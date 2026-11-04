@@ -4,7 +4,7 @@
 
 [中文](#中文) · [English](#english) · [下载 / Downloads](https://github.com/AnthemZhou/Nebula_Focus/releases) · [反馈 / Issues](https://github.com/AnthemZhou/Nebula_Focus/issues)
 
-**1.1.1** · Obsidian **1.14.5+** · Desktop + iPhone · GPL-3.0-only
+**1.1.2（发布准备中 / release preparation）** · Obsidian **1.14.5+** · Desktop + iPhone · GPL-3.0-only
 
 ## 中文
 
@@ -26,7 +26,7 @@ Nebula Focus 为 Obsidian 原生数据库（Bases）提供 Notion-like 的阅读
 
 需要 Obsidian 1.14.5 或更新版本，并启用「数据库 / Bases」核心插件。支持桌面与 iPhone；已验证范围见下方兼容说明。
 
-[官方插件目录](https://community.obsidian.md/plugins/nebula-focus)已显示 1.1.1；自动检查完成，无 Error。1.1.0 的简介措辞错误已修复。截至 2026-11-04，客户端插件市场搜索尚未找到该条目，商店安装仍未确认；目前可按下列步骤从 GitHub Releases 安装。
+当前源码正在准备 **1.1.2**，运行包尚未发布，官方扫描待发布后核对。现有 GitHub 版本为 **1.1.1**；其[官方目录扫描](https://community.obsidian.md/plugins/nebula-focus)已完成且无 Error，修复了 1.1.0 的简介措辞问题。截至 2026-11-04，客户端搜索与商店安装仍未确认；目前可先安装下列已发布版本。
 
 1. 从 [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases) 下载 `nebula-focus-1.1.1.zip`。
 2. 解压到库的 `.obsidian/plugins/nebula-focus/`。
@@ -89,9 +89,9 @@ iPhone 使用 iCloud 库时，可先在电脑上把三个插件文件放入同�
 
 ### 兼容范围
 
-1.1.0 最低要求 Obsidian 1.14.5，已在 macOS 桌面与 iPhone 16 Pro Max 上测试。iPhone 核心操作有直接触摸验证，包括连续中文输入、标签编辑、横向滚动与旋转、卡片移动、图片放大，以及新建→加标签→撤销两次→重做两次；用户也确认了单元格与标签面板的字号一致。手机隐藏额外撤销按钮行，保留命令入口；表格单行标题在触摸区域内纵向居中，多行内容自然展开。
+最低要求 Obsidian 1.14.5。1.1.0 / 1.1.1 的运行代码与样式相同，已有 macOS 桌面与 iPhone 16 Pro Max 的测试记录。iPhone 核心操作有直接触摸验证，包括连续中文输入、标签编辑、横向滚动与旋转、卡片移动、图片放大，以及新建→加标签→撤销两次→重做两次；用户也确认了单元格与标签面板的字号一致。手机隐藏额外撤销按钮行，保留命令入口；表格单行标题在触摸区域内纵向居中，多行内容自然展开。
 
-构建与 295 项自动测试通过。桌面浅色、深色主题已经检查；Android、iPad、第三方主题及所有手机生命周期边界尚未逐项实测。这些结果说明已验证的核心流程，不代表所有移动设备、主题和交互都完成验收。详细记录见 [iPhone 测试记录](docs/mobile-testing.md) 与 [TESTING.md](docs/TESTING.md)。
+1.1.2 的本地构建与 **308 项自动测试通过**；它增加原生结构校验，并收敛类型与样式警告。[同规则本地检查](docs/review-warnings.md)从 1,570 项降到 **38 项警告、0 项错误**，这不是尚未执行的 1.1.2 官方扫描结果。本版尚无新增真机测试结论。既有桌面浅色、深色主题已检查；Android、iPad、第三方主题及所有手机生命周期边界尚未逐项实测。这些结果说明已验证的核心流程，不代表所有移动设备、主题和交互都完成验收。详细记录见 [iPhone 测试记录](docs/mobile-testing.md) 与 [TESTING.md](docs/TESTING.md)。
 
 彩色标签按明确的语义字段名识别，包括领域、类型、重要性、状态、优先级、分类、发布平台、内容类型、项目和关联项目等。普通标题、摘要、日期和媒体仍按原有方式处理。这是呈现层优化，不会把文本属性转换成 Notion 的 select 或 relation 类型，也不还原 Notion 的完整数据库规则。
 
@@ -103,6 +103,7 @@ Bases 的部分界面能力依赖内部视图结构。不识别的结构会保�
 
 ```sh
 npm ci
+npm run lint
 npm run build
 npm test
 ```
@@ -110,6 +111,8 @@ npm test
 构建生成 `main.js`。把它与 `manifest.json`、`styles.css` 放入测试库的插件目录，再重载插件。手机后续验证复用同一个独立 iCloud 测试库，在原处更新插件文件，保留测试笔记与设置，不再每次创建编号库。验证范围见 [TESTING.md](docs/TESTING.md)。
 
 发布前审阅并暂存公开源码、文档和版本信息，再执行 `npm run package`。源码包读取 Git 暂存区中的文件；不要暂存私人库、截图、备份或插件 `data.json`。
+
+发布检查使用 `eslint-plugin-obsidianmd@0.4.2`；保留的 API 建议和兼容性警告有逐项说明，未使用 `eslint-disable` 屏蔽。参见[检查说明与更新机制](docs/review-warnings.md)。
 
 问题与建议请提交到 [GitHub Issues](https://github.com/AnthemZhou/Nebula_Focus/issues)，附上 Obsidian 版本、主题和复现步骤。文档层次参考 [中文技术文档写作规范](https://github.com/ruanyf/document-style-guide)，沿用 Node Console 的中文在前、英文在后形式。
 
@@ -133,7 +136,7 @@ It works with content already organized as Markdown and native Bases. After a No
 
 Use Obsidian 1.14.5 or later with the **Bases** core plugin enabled. Desktop and iPhone are supported; see the tested scope below.
 
-The [official directory listing](https://community.obsidian.md/plugins/nebula-focus) shows 1.1.1, with its automated scan completed and no Errors. This fixes the description wording rejected in 1.1.0. As of 2026-11-04, the in-app marketplace search has not returned the entry, so store installation is not yet verified. Use GitHub Releases with the steps below for now.
+The source is being prepared for **1.1.2**; its package is not published yet, and its official scan is pending. The available GitHub version is **1.1.1**, whose [directory scan](https://community.obsidian.md/plugins/nebula-focus) completed without Errors after correcting the 1.1.0 description. In-app search and marketplace installation remain unverified as of 2026-11-04. Install the currently published version below for now.
 
 1. Download `nebula-focus-1.1.1.zip` from [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases).
 2. Extract it into `.obsidian/plugins/nebula-focus/` inside your vault.
@@ -196,9 +199,9 @@ Covers use images referenced in your notes. Local attachments are read from the 
 
 ### Compatibility
 
-Version 1.1.0 requires Obsidian 1.14.5 and has been tested on macOS desktop and iPhone 16 Pro Max. Core iPhone operations have direct-touch evidence: continuous Chinese input, tag editing, horizontal scrolling and rotation, card moves, image enlargement, and creation → tag edit → two undos → two redos. The user also confirmed matching tag font sizes between cells and the popup. The phone hides the extra undo-button row while retaining commands; single-line table titles are vertically centered within the touch target, while multiline content keeps its natural height.
+Obsidian 1.14.5 is required. Versions 1.1.0 and 1.1.1 have identical runtime code and styles, with recorded testing on macOS desktop and iPhone 16 Pro Max. Core iPhone operations have direct-touch evidence: continuous Chinese input, tag editing, horizontal scrolling and rotation, card moves, image enlargement, and creation → tag edit → two undos → two redos. The user also confirmed matching tag font sizes between cells and the popup. The phone hides the extra undo-button row while retaining commands; single-line table titles are vertically centered within the touch target, while multiline content keeps its natural height.
 
-The build and 295 automated tests pass. Desktop light and dark themes have been checked. Android, iPad, third-party themes and all phone lifecycle edge cases have not been individually tested. These results cover the verified core workflows, not every mobile device, theme or interaction. See the [iPhone test record](docs/mobile-testing.md) and [TESTING.md](docs/TESTING.md).
+The 1.1.2 local build and **302 automated tests pass**. This version adds native-structure validation and reduces type and style findings. A [local comparison using the same rules](docs/review-warnings.md) reduces 1,570 findings to **38 warnings and zero errors**; this is not the still-pending 1.1.2 official scan. There is no new actual-phone result for this version. Previous desktop checks covered light and dark themes. Android, iPad, third-party themes and all phone lifecycle edge cases have not been individually tested. These results cover the verified core workflows, not every mobile device, theme or interaction. See the [iPhone test record](docs/mobile-testing.md) and [TESTING.md](docs/TESTING.md).
 
 Colored tags recognize explicit semantic field names for areas, types, importance, status, priority, categories, publishing platforms, content types and projects. Ordinary titles, summaries, dates and media retain their usual handling. This presentation layer does not convert text properties into Notion select or relation types, or recreate Notion's full database behavior.
 
@@ -210,6 +213,7 @@ Some Bases enhancements depend on internal view structures. Unrecognized structu
 
 ```sh
 npm ci
+npm run lint
 npm run build
 npm test
 ```
@@ -217,6 +221,8 @@ npm test
 The build creates `main.js`. Copy it with `manifest.json` and `styles.css` into a test vault's plugin folder, then reload the plugin. Future phone testing reuses one separate iCloud test vault: update its plugin files in place while preserving test notes and settings, instead of creating another numbered vault for each build. See [TESTING.md](docs/TESTING.md) for verification scope.
 
 Before publishing, review and stage public source, documentation and version files, then run `npm run package`. Source archives read the Git index. Keep private vaults, screenshots, backups and plugin `data.json` files out of the index.
+
+Release checks use `eslint-plugin-obsidianmd@0.4.2`. Retained API suggestions and compatibility warnings are documented individually; no `eslint-disable` directives suppress them. See [review findings and update behavior](docs/review-warnings.md).
 
 Report issues or suggestions through [GitHub Issues](https://github.com/AnthemZhou/Nebula_Focus/issues), including the Obsidian version, theme and reproduction steps. The document hierarchy follows the [Chinese technical writing guide](https://github.com/ruanyf/document-style-guide) and Node Console's Chinese-first, English-second layout.
 

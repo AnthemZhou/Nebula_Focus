@@ -1,9 +1,10 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const fs=require('node:fs');
 const vm=require('node:vm');
 const {JSDOM}=require('jsdom');
-const {transformSync}=require('esbuild');
+const {buildSync}=require('esbuild');
+const code=buildSync({entryPoints:['src/idea-title-editor.ts'],bundle:true,write:false,
+  platform:'node',format:'cjs',external:['obsidian']}).outputFiles[0].text;
 
 function fixture() {
   const dom=new JSDOM('<!doctype html><body><div class="bases-view"><div class="bases-table-container"><div class="bases-tr"><div class="bases-td" data-property="formula.想法"><div class="bases-table-cell"><span class="internal-link" data-href="Ideas/a.md" draggable="true">原来的想法</span></div></div></div></div></div></body>');
@@ -28,7 +29,7 @@ function fixture() {
   host.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key==='z')view.undoTransaction();});
   host.addEventListener('copy',event=>{gridCopies++;event.preventDefault();});
   const mod={exports:{}};
-  new vm.Script(transformSync(fs.readFileSync('src/idea-title-editor.ts','utf8'),{loader:'ts',format:'cjs'}).code)
+  new vm.Script(code)
     .runInContext(vm.createContext({module:mod,exports:mod.exports,HTMLElement:win.HTMLElement,Element:win.Element,
       require:name=>{assert.equal(name,'obsidian');return {setIcon(el,name){el.dataset.icon=name;},Notice:class{constructor(text){notices.push(text);}}};}}));
   const titles=new mod.exports.IdeaTitleEditors();

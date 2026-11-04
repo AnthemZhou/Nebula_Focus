@@ -1,15 +1,31 @@
 import {setIcon} from 'obsidian';
-type Native = any;
+type HeaderElement = Pick<HTMLElement, 'isConnected' | 'ownerDocument' | 'append'>;
+type MobileView = {_loaded?: unknown; queryController: {viewHeaderEl: HeaderElement; view: unknown}};
+function isMobileView(value: unknown): value is MobileView {
+  if (!value || typeof value !== 'object') return false;
+  const controller = (value as Record<string, unknown>).queryController;
+  if (!controller || typeof controller !== 'object') return false;
+  const header = (controller as Record<string, unknown>).viewHeaderEl;
+  if (!header || typeof header !== 'object') return false;
+  // Only the connected DOM host and its owner document are needed. This shape
+  // check also accepts headers belonging to another window's DOM realm.
+  const element = header as Record<string, unknown>;
+  if (!element.ownerDocument || typeof element.ownerDocument !== 'object') return false;
+  const document = element.ownerDocument as Record<string, unknown>;
+  return element.nodeType === 1 && typeof element.isConnected === 'boolean' &&
+    typeof element.append === 'function' && document.nodeType === 9 && typeof document.createElement === 'function';
+}
 
 /** Explicit, view-scoped actions for phones without a hardware keyboard. */
 export class MobileHistoryActions {
-  private items = new Map<Native, {root: HTMLElement; undo: HTMLButtonElement; redo: HTMLButtonElement; release: () => void}>();
+  private items = new Map<MobileView, {root: HTMLElement; undo: HTMLButtonElement; redo: HTMLButtonElement; release: () => void}>();
   constructor(private history: {
-    forView(view: Native, redo: boolean, checking: boolean): boolean;
-    registerSurface(view: Native, root: HTMLElement): () => void;
+    forView(view: unknown, redo: boolean, checking: boolean): boolean;
+    registerSurface(view: unknown, root: HTMLElement): () => void;
   }) {}
-  refresh(view: Native) {
-    const host = view?.queryController?.viewHeaderEl as HTMLElement | undefined;
+  refresh(view: unknown) {
+    if (!isMobileView(view)) return;
+    const host = view.queryController.viewHeaderEl;
     if (!host?.isConnected || view.queryController.view !== view) return;
     let item = this.items.get(view);
     if (item && item.root.parentElement !== host) {this.remove(view); item = undefined;}
@@ -35,6 +51,6 @@ export class MobileHistoryActions {
     item.redo.disabled = !this.history.forView(view, true, true);
   }
   prune() {for (const [view, item] of this.items) if (!item.root.isConnected || view._loaded === false || view.queryController?.view !== view) this.remove(view);}
-  private remove(view: Native) {const item = this.items.get(view); item?.release(); item?.root.remove(); this.items.delete(view);}
+  private remove(view: MobileView) {const item = this.items.get(view); item?.release(); item?.root.remove(); this.items.delete(view);}
   clear() {for (const view of this.items.keys()) this.remove(view);}
 }

@@ -1,38 +1,50 @@
 import {App, setIcon} from 'obsidian';
 import {positionAnchoredPopover, preferPopoverInputFocus, watchPopoverViewport} from './mobile-popover';
 
-type Native = any;
+import {IdeaView, IdeaQuery, isHtmlElement, isIdeaView, isIdeaCell, isIdeaPropertyConfig, isIdeaQuery} from './idea-native';
+type HeaderView = IdeaView & {
+  theadEl: HTMLElement;
+  getCellFromDom(target: Element): unknown;
+  config: IdeaView['config'] & {query: IdeaQuery; getPropertyConfig(property: string): unknown};
+};
+function headerView(value: unknown): value is HeaderView {
+  return isIdeaView(value) && isHtmlElement(value.theadEl) && typeof value.getCellFromDom === 'function' &&
+    typeof value.config.getPropertyConfig === 'function' && isIdeaQuery(value.config.query);
+}
 type HeaderBinding = {
-  view: Native; head: HTMLElement;
+  view: HeaderView; head: HTMLElement;
   click: (event: MouseEvent) => void;
   keydown: (event: KeyboardEvent) => void;
   labels: Map<HTMLElement, Map<string, string | null>>;
 };
 type HeaderEditor = {
-  binding: HeaderBinding; property: string; query: Native; label: HTMLElement; originalText: string;
+  binding: HeaderBinding; property: string; query: IdeaQuery; label: HTMLElement; originalText: string;
   anchor: HTMLElement; popup: HTMLElement; input: HTMLInputElement; status: HTMLElement;
   composing: boolean; imeEnded: boolean; busy: boolean; clean: (() => void)[];
 };
 
+function includesProperty(value: unknown, property: string): boolean {
+  return Array.isArray(value) && value.includes(property);
+}
+
 /** Rename only this Base's display label in the same anchored panel as tag columns. */
 export class IdeaHeaders {
-  private bindings = new Map<Native, HeaderBinding>();
+  private bindings = new Map<unknown, HeaderBinding>();
   private editor?: HeaderEditor;
 
-  constructor(_app: App, private readonly manage?: (view: Native, property: string, anchor: HTMLElement, keyboard?: boolean) => boolean) {}
+  constructor(_app: App, private readonly manage?: (view: unknown, property: string, anchor: HTMLElement, keyboard?: boolean) => boolean) {}
 
-  attach(view: Native) {
+  attach(view: unknown) {
     this.pruneEditor();
-    if (view?.type !== 'table' || view.config?.name !== '想法收集箱' ||
-        !(view.theadEl instanceof HTMLElement) || typeof view.getCellFromDom !== 'function' ||
-        typeof view.config.getPropertyConfig !== 'function' || typeof view.config.query?.saveFn !== 'function') return;
+    if (!headerView(view)) return;
     let binding = this.bindings.get(view);
     if (binding && binding.head !== view.theadEl) {this.detach(binding); binding = undefined;}
     if (!binding) {
-      const head = view.theadEl as HTMLElement;
+      const head = view.theadEl;
       const activate = (target: EventTarget | null, keyboard: boolean): boolean => {
         if (!(target instanceof Element) || !head.contains(target) || target.closest('.bases-table-header-resizer')) return false;
-        const property = view.getCellFromDom(target)?.prop;
+        const cell = view.getCellFromDom(target);
+        const property = isIdeaCell(cell) ? cell.prop : undefined;
         const anchor = target.closest<HTMLElement>('.bases-td');
         const label = anchor?.querySelector<HTMLElement>('.bases-table-header-name');
         if (typeof property !== 'string' || !anchor || !label) return false;
@@ -56,7 +68,7 @@ export class IdeaHeaders {
     this.refreshLabels(binding);
   }
 
-  private editable(view: Native): boolean {
+  private editable(view: HeaderView): boolean {
     return view?._loaded !== false && !view?.isReadOnly && !view?.readOnly && !view?.queryController?.isReadOnly &&
       (!view?.queryController || view.queryController.view === view) &&
       view?.type === 'table' && view.config?.name === '想法收集箱' &&
@@ -77,10 +89,10 @@ export class IdeaHeaders {
     }
   }
 
-  private open(view: Native, property: string, label: HTMLElement, anchor: HTMLElement, keyboard: boolean) {
+  private open(view: HeaderView, property: string, label: HTMLElement, anchor: HTMLElement, keyboard: boolean) {
     if (!this.editable(view) || anchor.closest('[aria-readonly="true"], [aria-disabled="true"], .is-read-only, .is-disabled')) return;
     const binding = this.bindings.get(view), config = view.config.getPropertyConfig(property);
-    if (!binding || typeof config?.getDisplayName !== 'function' || typeof config.setDisplayName !== 'function') return;
+    if (!binding || !isIdeaPropertyConfig(config)) return;
     if (this.editor?.label === label) {this.editor.input.focus({preventScroll: true}); return;}
     if (this.editor) this.close(this.editor);
     const doc = label.ownerDocument;
@@ -136,7 +148,7 @@ export class IdeaHeaders {
       edit.label.isConnected && view.theadEl.contains(edit.anchor) && view.config.query === edit.query &&
       edit.label.textContent === edit.originalText &&
       !edit.anchor.closest('[aria-readonly="true"], [aria-disabled="true"], .is-read-only, .is-disabled') &&
-      (typeof view.config.getOrder !== 'function' || view.config.getOrder().includes(edit.property));
+      (typeof view.config.getOrder !== 'function' || includesProperty(view.config.getOrder(), edit.property));
   }
 
   private async save(edit: HeaderEditor) {
@@ -145,7 +157,7 @@ export class IdeaHeaders {
     const value = edit.input.value.replace(/[\r\n]+/g, ' ').trim();
     if (!value) {edit.input.setAttribute('aria-invalid', 'true'); edit.status.textContent = '列名称不能为空'; edit.status.hidden = false; return;}
     const config = edit.binding.view.config.getPropertyConfig(edit.property);
-    if (typeof config?.setDisplayName !== 'function' || typeof config.getDisplayName !== 'function') {this.close(edit); return;}
+    if (!isIdeaPropertyConfig(config)) {this.close(edit); return;}
     edit.busy = true; edit.popup.setAttribute('aria-busy', 'true');
     try {
       // Native configuration owns persistence; this never renames the property key or touches notes.

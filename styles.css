@@ -316,33 +316,6 @@ body.bui-enabled .workspace-leaf-content :is(td, th, .bases-table-cell) img:focu
 /* All editing, selection, sorting, and property menus belong to native Bases. */
 body.bui-enabled .bui-ideas-base { --line-height-normal: var(--line-height-tight, 1.3); }
 body.bui-enabled .bui-ideas-base .bases-table-header-name { white-space: nowrap; }
-body.bui-enabled .bui-ideas-base .bases-table-header-name.bui-header-name-editing {
-  width: max-content;
-  min-width: 1ch;
-  max-width: none;
-  flex: 0 0 auto;
-  overflow: visible;
-  white-space: pre;
-  color: var(--text-normal);
-  background: var(--background-primary);
-  border: 0;
-  border-radius: 0;
-  box-shadow: none !important;
-  outline: none !important;
-  cursor: text;
-  caret-color: var(--text-normal);
-}
-body.bui-enabled .bui-ideas-base :is(.bases-table-header, .bases-table-header-label):has(.bui-header-name-editing) {
-  overflow: visible;
-}
-body.bui-enabled .bui-ideas-base .bases-td:has(.bui-header-name-editing) {
-  overflow: visible;
-  z-index: 3;
-  background: var(--background-primary);
-  border-radius: 0;
-  outline: none !important;
-  box-shadow: none !important;
-}
 body.bui-enabled .bui-ideas-base .bases-table-cell { align-items: flex-start; }
 body.bui-enabled .bui-ideas-base .bases-td[data-property="formula.想法"] .bases-table-cell {
   line-height: var(--line-height-tight, 1.3);
@@ -616,7 +589,7 @@ body.bui-enabled :is(.bui-tag-editor, .bui-tag-drag-overlay) .bui-tag-editor-gri
   border-radius: 0;
   background: transparent;
   color: var(--text-faint);
-  box-shadow: none !important;
+  box-shadow: none;
   cursor: grab;
   touch-action: none;
   --icon-size: 14px;
@@ -997,7 +970,6 @@ body.bui-enabled:is(.is-mobile, .bui-touch) :is(.bui-tag-editor-search, .bui-tag
   font-size: var(--bui-mobile-font-size);
 }
 
-.bui-tag-drag-placeholder { visibility: hidden; }
 .bui-tag-drag-overlay {
   position: fixed;
   z-index: calc(var(--layer-popover, 1000) + 1);
@@ -1076,7 +1048,7 @@ body.bui-enabled:is(.is-mobile, .bui-touch) :is(.bui-tag-editor, .bui-tag-manage
 .bui-pages-search:focus-within {border-color: var(--interactive-accent);}
 .bui-pages-scroll {flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable;}
 .bui-pages-section {display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 6px 7px; color: var(--text-faint); font-size: 11px; font-weight: 500;}
-.bui-pages-section > .bui-pages-icon-button {margin-left: auto !important;}
+.bui-page-sidebar .bui-pages-section > button.bui-pages-icon-button {margin-left: auto;}
 .bui-pages-count {font-size: 10px; opacity: .75;}
 .bui-pages-favorites:not(:empty) {padding-bottom: 10px; margin-bottom: 6px; border-bottom: 1px solid var(--background-modifier-border);}
 .bui-page-row {
@@ -1092,7 +1064,7 @@ body.bui-enabled:is(.is-mobile, .bui-touch) :is(.bui-tag-editor, .bui-tag-manage
 .bui-page-row.is-active .bui-page-icon {color: var(--text-muted);}
 .bui-page-title {flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.5;}
 .bui-page-sidebar button.bui-page-disclosure {width: 18px; height: 22px;}
-.bui-page-disclosure svg {transition: transform 100ms ease; width: 12px !important; height: 12px !important;}
+.bui-page-sidebar button.bui-page-disclosure svg {transition: transform 100ms ease; width: 12px; height: 12px;}
 .bui-page-disclosure.is-expanded svg {transform: rotate(90deg);}
 .bui-page-sidebar .bui-page-disclosure:disabled {cursor: default;}
 .bui-page-actions {display: none; align-items: center; gap: 0; flex-shrink: 0;}
@@ -1110,7 +1082,7 @@ body.bui-enabled:is(.is-mobile, .bui-touch) :is(.bui-tag-editor, .bui-tag-manage
   display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; padding: 7px 10px; height: auto;
   box-shadow: none; background: transparent; border: 0; color: var(--text-muted); text-align: left; font-weight: 400;
 }
-.bui-page-favorite > .bui-pages-icon-button {color: var(--text-faint) !important;}
+.bui-page-sidebar .bui-page-favorite > button.bui-pages-icon-button {color: var(--text-faint);}
 .bui-pages-footer {padding: 10px 3px 0; margin-top: 8px; border-top: 1px solid var(--background-modifier-border);}
 .bui-page-sidebar button.bui-pages-create {
   display: flex; justify-content: flex-start; align-items: center; gap: 9px; width: 100%; height: 34px;
@@ -1129,7 +1101,7 @@ body.bui-enabled:is(.is-mobile, .bui-touch) :is(.bui-tag-editor, .bui-tag-manage
   .bui-page-actions {display: inline-flex;}
   .bui-page-row .bui-page-actions button:last-child:not(:first-child) {display: none;}
 }
-@media (prefers-reduced-motion: reduce) {.bui-page-disclosure svg {transition: none;}}
+@media (prefers-reduced-motion: reduce) {.bui-page-sidebar button.bui-page-disclosure svg {transition: none;}}
 
 /* Transient geometry surfaces. Keep measurement and positioning invariants
    separate from the visible table and mobile title typography. */

@@ -2,7 +2,13 @@
 
 ## 中文
 
-### 发布与目录状态（2026-11-04）
+### 1.1.2 更新准备（2026-11-04）
+
+当前源码为 1.1.2 发布候选：本地严格构建与 **308/308** 自动测试通过，同版本官方 ESLint 规则的本地比较从 1,570 项降至 **38 项警告、0 项错误**。本版加强原生结构边界校验并清理样式；保留项见[检查说明](review-warnings.md)。GitHub 发布与官方扫描尚待核对。
+
+这次尚无新增 iPhone 全流程实测结果，不能把类型检查或桌面结果写成手机通过。下方的直接触摸和镜像证据属于 1.1.0 / 1.1.1 及其候选构建。测试继续复用 **Nebula-Focus-iPhone**，原处升级文件、保留数据；没有新建测试库。
+
+### 1.1.1 发布与目录记录（2026-11-04）
 
 1.1.0 的真机对齐检查完成后，已发布到 GitHub 并提交官方目录。2026-11-04 的失败通知明确对应 **1.1.0**：其唯一 Error 是简介不能包含目录语境中重复的“Obsidian”字样。**1.1.1** 已删除该字样并发布到 GitHub，最新复检不再出现这一 Error。两版 `main.js` 与 `styles.css` 逐字节相同，GitHub CI 的构建与 295 项测试通过。唯一测试库已原处更新。
 
@@ -151,11 +157,19 @@ R10 候选 SHA-256：`main.js` 为 `e7e838dcc333bf9249516445f6c635dee505d5920b0b
 
 1.1.1 已发布到 GitHub；官方扫描记录、尚未确认的目录发布状态，以及客户端搜索和手机商店安装的验证状态见本文顶部。核心手机流程的通过结果和剩余覆盖限制已分别记录。最新标题对齐已通过真机镜像视觉检查；开发者政策与持续维护承诺已获用户确认并随首次提交完成。`manifest.json`、`package.json`、`versions.json` 和 Release tag 保持一致；正式 Release 附 `main.js`、`manifest.json` 和 `styles.css`。仅推送源码不构成可安装更新。首次提交使用 Obsidian Community 开发者页面，处理实际自动审核结果；尚未完成的测试不能写成已通过。[官方提交流程](https://docs.obsidian.md/Plugins/Releasing/Submit%20your%20plugin)
 
-首次上架后，后续版本不需要重复填写初次提交表单，但每个新版本仍会接受自动扫描。用户通过 Obsidian 的“检查更新”安装，插件自身不实现下载或替换自身代码的更新器。[官方 FAQ](https://docs.obsidian.md/community-directory/faq) · [官方更新机制说明](https://obsidian.md/blog/future-of-plugins/) · [开发者政策](https://docs.obsidian.md/community-directory/developer-policies)
+首次上架后，后续版本不需要重复填写初次提交表单，但每个新版本仍会接受自动扫描。官方周期性检查 GitHub Releases，开发者页面也可执行 **Check for new releases**；上传源码本身不会成为安装包。用户通过 Obsidian 的“检查更新”安装，插件自身不下载或替换代码。[官方 FAQ](https://docs.obsidian.md/community-directory/faq)
+
+官方说明自动审核通常为几分钟，通过后可在 24 小时内搜索和下载。这是目录流程说明，不是每次更新固定等待时长的承诺；扫描和目录同步仍要实际确认。1.1.2 当前发布状态见本文顶部。[官方更新机制说明](https://obsidian.md/blog/future-of-plugins/) · [检查说明](review-warnings.md)
 
 ## English
 
-### Release and directory status (2026-11-04)
+### 1.1.2 update preparation (2026-11-04)
+
+The source is a 1.1.2 release candidate. The local strict build and **308/308** automated tests pass; a comparison with the same official ESLint rule version reduces 1,570 findings to **38 warnings and zero errors**. This version strengthens native-structure boundaries and cleans up styles; retained findings are documented in the [review guide](review-warnings.md). GitHub publication and the official scan remain to be checked.
+
+There is no new full iPhone-device result for this version. Type checks and desktop results must not be reported as a phone pass. The direct-touch and Mirroring evidence below belongs to 1.1.0 / 1.1.1 and their candidate builds. Continue updating **Nebula-Focus-iPhone** in place, preserving its data; no new test vault was created.
+
+### 1.1.1 release and directory record (2026-11-04)
 
 After the final actual-iPhone alignment check, version 1.1.0 was published on GitHub and submitted to the directory. The failure notification dated 2026-11-04 explicitly refers to **1.1.0**: its only Error was the redundant word “Obsidian” in the directory description. Version **1.1.1** removes that word and is published on GitHub; its latest scan no longer reports that Error. Both versions have byte-identical `main.js` and `styles.css`; GitHub CI build and all 295 tests pass. The single persistent test vault was updated in place.
 
@@ -302,4 +316,6 @@ Compare note and `.base` changes after testing. Presentation must not rewrite Ma
 
 ### Publication and subsequent updates
 
-Version 1.1.1 is published on GitHub. Official scan observations, unconfirmed directory publication status, and client-search and phone-marketplace verification status are recorded at the top of this document. Core phone passes and remaining coverage limits are recorded separately. The latest title-alignment visual check passed on the actual iPhone through Mirroring. The developer-policy and ongoing-maintenance commitments were confirmed by the user and completed with the initial submission. Keep version metadata and the release tag consistent, and attach the three runtime files to the GitHub Release. A source push alone is not an installable update. Subsequent releases do not require a new initial submission, but each version is still scanned. The plugin does not update its own executable code; users update through Obsidian. The official sources linked above define the current process.
+Version 1.1.1 is published on GitHub. Official scan observations, unconfirmed directory publication status, and client-search and phone-marketplace verification status are recorded at the top of this document. Core phone passes and remaining coverage limits are recorded separately. The latest title-alignment visual check passed on the actual iPhone through Mirroring. The developer-policy and ongoing-maintenance commitments were confirmed by the user and completed with the initial submission. Keep version metadata and the release tag consistent, and attach the three runtime files to the GitHub Release. A source push alone is not an installable update. Subsequent releases do not require a new initial submission, but each version is still scanned. The service periodically checks GitHub Releases; developers can also use **Check for new releases**. The plugin does not update its own executable code; users update through Obsidian. [Official FAQ](https://docs.obsidian.md/community-directory/faq)
+
+Obsidian says automatic reviews typically take a few minutes and passing plugins become searchable and downloadable within 24 hours. This describes the directory process, not a fixed delay guaranteed for every update; scans and directory synchronization still need actual confirmation. The current 1.1.2 release checkpoint is at the top of this document. [Official announcement](https://obsidian.md/blog/future-of-plugins/) · [Review guide](review-warnings.md)

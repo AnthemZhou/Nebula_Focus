@@ -1,7 +1,21 @@
 import {AbstractInputSuggest, App} from 'obsidian';
 
-type Native = any;
-type Patch = {name: string; original: Native; wrapper: Native; descriptor?: PropertyDescriptor};
+type NativeMethod = (this: unknown, ...args: unknown[]) => unknown;
+type PropertySuggest = Record<string, unknown> & {context: {key: string}; close: NativeMethod};
+type Patch = {name: string; original: NativeMethod; wrapper: NativeMethod; descriptor?: PropertyDescriptor};
+const record = (value: unknown): Record<string, unknown> | undefined =>
+  value !== null && typeof value === 'object' ? value as Record<string, unknown> : undefined;
+const isMethod = (value: unknown): value is NativeMethod => typeof value === 'function';
+/** These editors can belong to another window, so avoid the global Element constructor. */
+function suggestInput(suggest: Record<string, unknown>): Element | undefined {
+  const input = suggest.textInputEl ?? suggest.inputEl, value = record(input);
+  return value?.nodeType === 1 && typeof value.tagName === 'string' &&
+    typeof value.closest === 'function' && typeof value.matches === 'function' ? input as Element : undefined;
+}
+function callMethod(target: unknown, name: string, ...args: unknown[]): unknown {
+  const object = record(target), method = object?.[name];
+  return isMethod(method) ? method.apply(object, args) : undefined;
+}
 const CLASSIFICATIONS = new Set(['状态', '类型', '重要性', '领域', '优先级', '分类', '发布平台', '内容类型',
   'status', 'type', 'priority', 'area', 'domain']);
 const normalize = (key: string) => key.replace(/^note\./, '').normalize('NFC').trim().toLowerCase();
@@ -17,8 +31,8 @@ export class PropertySuggestions {
   private patches: Patch[] = [];
   private active = false;
   private generation = 0;
-  private instances = new WeakMap<HTMLElement, Native>();
-  private prototype = (AbstractInputSuggest as Native)?.prototype;
+  private instances = new WeakMap<Element, PropertySuggest>();
+  private prototype = record(AbstractInputSuggest?.prototype);
 
   constructor(private app: App) {}
 
@@ -26,7 +40,7 @@ export class PropertySuggestions {
   refresh(root: ParentNode) {
     if (!this.active && !this.install()) return;
     const doc = (root as Node).ownerDocument ?? root as Document;
-    const input = doc.activeElement as HTMLElement | null;
+    const input = doc.activeElement;
     if (!input || !this.suppressedInput(input)) return;
     const instance = this.instances.get(input);
     if (instance) {this.dismiss(instance); return;}
@@ -44,18 +58,21 @@ export class PropertySuggestions {
       return descriptor && !descriptor.configurable && !descriptor.writable;
     })())) return false;
     this.active = true;
-    const owner = this, generation = ++this.generation;
+    const generation = ++this.generation;
+    const suppress = (suggest: unknown) => {
+      if (!this.active || this.generation !== generation || !this.isPropertySuggest(suggest)) return false;
+      const input = suggestInput(suggest);
+      if (!input) return false;
+      this.instances.set(input, suggest);
+      if (!this.suppressedInput(input, suggest.context.key, callMethod(suggest, 'getValue'))) return false;
+      this.dismiss(suggest);
+      return true;
+    };
     for (const name of names) {
       const original = target[name], descriptor = Object.getOwnPropertyDescriptor(target, name);
-      const wrapper = function(this: Native, ...args: Native[]) {
-        if (owner.active && owner.generation === generation && owner.isPropertySuggest(this)) {
-          const input = this.textInputEl ?? this.inputEl;
-          owner.instances.set(input, this);
-          if (owner.suppressedInput(input, this.context.key, this.getValue?.())) {
-            owner.dismiss(this);
-            return;
-          }
-        }
+      if (!isMethod(original)) continue;
+      const wrapper = function(this: unknown, ...args: unknown[]) {
+        if (suppress(this)) return;
         return original.apply(this, args);
       };
       target[name] = wrapper;
@@ -64,19 +81,19 @@ export class PropertySuggestions {
     return true;
   }
 
-  private isPropertySuggest(suggest: Native): boolean {
-    const input = suggest?.textInputEl ?? suggest?.inputEl;
-    return suggest?.app === this.app && typeof suggest.context?.key === 'string' &&
-      suggest.suggestEl?.classList?.contains('mod-property-value') &&
-      input?.nodeType === 1 && typeof suggest.close === 'function';
+  private isPropertySuggest(suggest: unknown): suggest is PropertySuggest {
+    const value = record(suggest);
+    if (!value || value.app !== this.app || typeof record(value.context)?.key !== 'string' ||
+      !suggestInput(value) || !isMethod(value.close)) return false;
+    return callMethod(record(value.suggestEl)?.classList, 'contains', 'mod-property-value') === true;
   }
 
-  private keyFor(input: HTMLElement): string | null {
+  private keyFor(input: Element): string | null {
     return input.closest<HTMLElement>('.metadata-property[data-property-key]')?.dataset.propertyKey ??
       input.closest<HTMLElement>('.bases-td[data-property]')?.dataset.property ?? null;
   }
 
-  private suppressedInput(input: HTMLElement, explicitKey?: string, value?: unknown): boolean {
+  private suppressedInput(input: Element, explicitKey?: string, value?: unknown): boolean {
     const rawKey = explicitKey ?? this.keyFor(input);
     if (!rawKey) return false;
     const key = normalize(rawKey);
@@ -89,36 +106,41 @@ export class PropertySuggestions {
     return key === '文件和媒体' || input.matches('.metadata-input-longtext');
   }
 
-  private dismiss(suggest: Native) {
-    suggest.runnable?.cancel?.();
-    suggest.manager?.runnable?.cancel?.();
+  private dismiss(suggest: PropertySuggest) {
+    callMethod(suggest.runnable, 'cancel');
+    callMethod(record(suggest.manager)?.runnable, 'cancel');
     suggest.close();
     // Native close clears values when isOpen; also clear a pending/closed
     // chooser so a stale async result cannot remain selected offscreen.
-    suggest.suggestions?.setSuggestions?.([]);
+    callMethod(suggest.suggestions, 'setSuggestions', []);
   }
 
-  private dismissExistingPopup(input: HTMLElement, doc: Document) {
+  private dismissExistingPopup(input: Element, doc: Document) {
     const key = this.keyFor(input);
     if (!key) return;
     const popups = [...doc.querySelectorAll<HTMLElement>('.suggestion-container.mod-property-value[data-property-key]')];
     const popup = popups[popups.length - 1];
     if (!popup || normalize(popup.dataset.propertyKey ?? '') !== normalize(key)) return;
-    const scope = (this.app as Native).keymap?.getWindowStack?.(doc.defaultView)?.scope;
-    const bindings = scope?.keys;
-    if (!Array.isArray(bindings)) return;
+    const stack = record(callMethod(this.app.keymap, 'getWindowStack', doc.defaultView));
+    const values = record(stack?.scope)?.keys;
+    if (!Array.isArray(values)) return;
+    const bindings: unknown[] = values;
     // Verify the specific native property-value scope before calling its Escape
     // callback. No keyboard event is dispatched to the editor, so its own Escape
     // handler cannot revert text, blur, commit, or interrupt IME composition.
-    if (!['ArrowUp', 'ArrowDown', 'Enter', 'Tab', '#', '^'].every(key => bindings.some(binding => binding.key === key))) return;
-    const escape = bindings.find(binding => binding.key === 'Escape' && typeof binding.func === 'function' &&
-      /\.onEscapeKey\(/.test(Function.prototype.toString.call(binding.func)));
-    if (!escape) return;
-    escape.func(new doc.defaultView!.KeyboardEvent('keydown', {key: 'Escape'}));
+    if (!['ArrowUp', 'ArrowDown', 'Enter', 'Tab', '#', '^'].every(key => bindings.some(binding => record(binding)?.key === key))) return;
+    if (!doc.defaultView) return;
+    for (const binding of bindings) {
+      const escape = record(binding), callback = escape?.func;
+      if (escape?.key !== 'Escape' || !isMethod(callback) || !/\.onEscapeKey\(/.test(Function.prototype.toString.call(callback))) continue;
+      callback.call(escape, new doc.defaultView.KeyboardEvent('keydown', {key: 'Escape'}));
+      break;
+    }
   }
 
   clear() {
     this.active = false; this.generation++;
+    if (!this.prototype) return;
     for (const patch of this.patches) if (this.prototype[patch.name] === patch.wrapper) {
       if (patch.descriptor) Object.defineProperty(this.prototype, patch.name, patch.descriptor);
       else delete this.prototype[patch.name];

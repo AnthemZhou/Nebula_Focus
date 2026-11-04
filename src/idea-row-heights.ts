@@ -4,14 +4,95 @@ import {supportsIdeaTagCell} from './idea-tag-support';
  * intact; rendering, selection and hit testing use the same vertical index.
  * No database configuration or note content is written.
  */
-type Native = any;
+import {IdeaFile, IdeaCell, IdeaView, isIdeaView, isIdeaFile, isIdeaCell, isHtmlElement, object} from './idea-native';
+type LayoutEntry = {file: IdeaFile; getValue(property: string): unknown; getRawProperty?: (property: string) => unknown};
+type LayoutCell = IdeaCell & {el: HTMLElement};
+type LayoutRow = {
+  entry?: LayoutEntry | null; el: HTMLElement; cells: LayoutCell[];
+  render(entry: LayoutEntry, properties: string[]): unknown;
+  virtualize(widths: number[], start: number, end: number): unknown;
+};
+type LayoutGroup = {tableEl: HTMLElement; tbodyEl: HTMLElement; selfHeight?: number; childStart?: number;
+  virtualize(width: number, widths: number[], start: number, end: number): unknown};
+type GroupData = {entries: LayoutEntry[]};
+type ColumnInfo = {customWidth?: number | null; contentWidth?: number | null; headerWidth?: number | null; getWidth(min: number, max: number): number};
+type Selection = {groupIdx: number; top: number; bottom: number; start: number; end: number};
+type ScrollPosition = {top: number; left: number};
+type LayoutView = IdeaView & {
+  containerEl: HTMLElement; scrollEl: HTMLElement; theadEl: HTMLElement; activeCellEl: HTMLElement; selectionEl: HTMLElement;
+  rows: LayoutRow[]; unusedRows: LayoutRow[]; groups: LayoutGroup[];
+  data: {properties: string[]; data: LayoutEntry[]; groupedData: GroupData[]};
+  columnInfo: Record<string, ColumnInfo>; minColWidth: number; maxColWidth: number;
+  header: {cells: (LayoutCell & {prop: string; innerEl: HTMLElement})[]; virtualize(widths: number[], start: number, end: number): unknown};
+  footerSummary: {el?: HTMLElement; shouldDisplay(): boolean; virtualize(widths: number[], start: number, end: number): unknown};
+  activeCell?: Index | null; selection?: Selection | null;
+  lastViewport?: Rect; pendingScroll?: ScrollPosition | null; lastScroll?: ScrollPosition;
+  updateVirtualDisplay(): unknown;
+  getCellRect(index: Index): Rect;
+  getClosestCellIndexWithinGroup(event: MouseEvent, group: number): Index;
+  getRowBaseHeight(): number; getRowHeightMult(): number; isGroupCollapsed(group: GroupData): boolean;
+};
+function layoutEntry(value: unknown): value is LayoutEntry {
+  return object(value) && isIdeaFile(value.file) && typeof value.getValue === 'function' &&
+    (value.getRawProperty === undefined || typeof value.getRawProperty === 'function');
+}
+function layoutRow(value: unknown): value is LayoutRow {
+  return object(value) && isHtmlElement(value.el) && Array.isArray(value.cells) &&
+    value.cells.every(cell => isIdeaCell(cell) && isHtmlElement(cell.el)) &&
+    (value.entry == null || layoutEntry(value.entry)) &&
+    typeof value.render === 'function' && typeof value.virtualize === 'function';
+}
+function groupData(value: unknown): value is GroupData {
+  return object(value) && Array.isArray(value.entries) && value.entries.every(layoutEntry);
+}
+function numberFields(value: unknown, keys: string[]): boolean {
+  return object(value) && keys.every(key => typeof value[key] === 'number');
+}
+function layoutView(value: unknown): value is LayoutView {
+  if (!object(value)) return false;
+  const raw = value;
+  if (!isIdeaView(value)) return false;
+  for (const key of ['containerEl', 'scrollEl', 'theadEl', 'activeCellEl', 'selectionEl']) if (!isHtmlElement(raw[key])) return false;
+  for (const key of ['updateVirtualDisplay', 'getCellRect', 'getClosestCellIndexWithinGroup', 'getRowBaseHeight', 'getRowHeightMult', 'isGroupCollapsed'])
+    if (typeof raw[key] !== 'function') return false;
+  if (!Array.isArray(raw.rows) || !raw.rows.every(layoutRow) || !Array.isArray(raw.unusedRows) || !raw.unusedRows.every(layoutRow)) return false;
+  if (!Array.isArray(raw.groups) || !raw.groups.every(group => object(group) && isHtmlElement(group.tableEl) &&
+      isHtmlElement(group.tbodyEl) && typeof group.virtualize === 'function' &&
+      (group.selfHeight === undefined || typeof group.selfHeight === 'number') &&
+      (group.childStart === undefined || typeof group.childStart === 'number'))) return false;
+  const data = raw.data, header = raw.header, footer = raw.footerSummary;
+  if (!object(data) || !Array.isArray(data.properties) || !data.properties.every(p => typeof p === 'string') ||
+      !Array.isArray(data.data) || !data.data.every(layoutEntry) || !Array.isArray(data.groupedData) || !data.groupedData.every(groupData)) return false;
+  if (!object(header) || typeof header.virtualize !== 'function' || !Array.isArray(header.cells) || !header.cells.every(cell =>
+      isIdeaCell(cell) && typeof cell.prop === 'string' && isHtmlElement(cell.el) && isHtmlElement(cell.innerEl))) return false;
+  if (!object(footer) || typeof footer.shouldDisplay !== 'function' || typeof footer.virtualize !== 'function' ||
+      (footer.el !== undefined && !isHtmlElement(footer.el))) return false;
+  if (!object(raw.columnInfo) || !Object.values(raw.columnInfo).every(info => object(info) && typeof info.getWidth === 'function' &&
+      ['customWidth', 'contentWidth', 'headerWidth'].every(key => info[key] == null || typeof info[key] === 'number'))) return false;
+  if (raw.activeCell != null && !numberFields(raw.activeCell, ['groupIdx', 'row', 'column'])) return false;
+  if (raw.selection != null && !numberFields(raw.selection, ['groupIdx', 'top', 'bottom', 'start', 'end'])) return false;
+  if (raw.pendingScroll != null && !numberFields(raw.pendingScroll, ['top', 'left'])) return false;
+  return true;
+}
+function rowFactory(row: LayoutRow): ((view: LayoutView) => LayoutRow) | null {
+  const prototype: unknown = Object.getPrototypeOf(row);
+  const Constructor: unknown = object(prototype) ? prototype.constructor : undefined;
+  if (typeof Constructor !== 'function') return null;
+  return view => {
+    const created: unknown = Reflect.construct(Constructor, [view]);
+    if (!layoutRow(created)) throw new Error('Unsupported native row constructor');
+    return created;
+  };
+}
+
 type Index = {groupIdx: number; row: number; column: number};
 type Rect = {left: number; right: number; top: number; bottom: number};
-type Patch = {name: string; original: Native; wrapper: Native; descriptor?: PropertyDescriptor};
+type Patch = {name: 'updateVirtualDisplay' | 'getCellRect' | 'getClosestCellIndexWithinGroup'; original: unknown; wrapper: unknown; descriptor?: PropertyDescriptor};
 type GroupLayout = {offsets: number[]; top: number; bodyTop: number; collapsed: boolean};
 type State = {
-  view: Native; host: HTMLElement; patches: Patch[]; Row: Native; measureRow: Native;
-  heights: Map<Native, {key: string; height: number}>; groups: GroupLayout[];
+  view: LayoutView; host: HTMLElement; patches: Patch[]; createRow: (view: LayoutView) => LayoutRow; measureRow: LayoutRow;
+  originalUpdate: LayoutView['updateVirtualDisplay']; originalRect: LayoutView['getCellRect']; originalClosest: LayoutView['getClosestCellIndexWithinGroup'];
+  heights: Map<IdeaFile, {key: string; height: number}>; groups: GroupLayout[];
   widths: number[]; width: number; busy: boolean; frame: number; observer: MutationObserver;
   resize: ResizeObserver; onInput: EventListener; onKey: EventListener; signature: string; autoWidthKey: string;
   resizing: boolean; resizeKind: 'pointer' | 'drag' | null; onResizeStart: EventListener; onResizeEnd: EventListener; epoch: number;
@@ -48,7 +129,7 @@ export function nearestScroll(current: number, start: number, end: number, viewp
 function styles(el: HTMLElement, values: Record<string, string>) {
   for (const [name, value] of Object.entries(values)) if (el.style.getPropertyValue(name) !== value) el.style.setProperty(name, value);
 }
-function children(el: Native, values: HTMLElement[]) {
+function children(el: HTMLElement, values: HTMLElement[]) {
   el.setChildrenInPlace(values);
 }
 function viewport(el: HTMLElement): Rect {
@@ -64,25 +145,30 @@ function viewport(el: HTMLElement): Rect {
   return {left: (left - rect.left) / scale, right: (right - rect.left) / scale,
     top: (top - rect.top) / scale, bottom: (bottom - rect.top) / scale};
 }
-function valueKey(entry: Native, properties: string[]): string {
+function valueKey(entry: LayoutEntry, properties: string[]): string {
   return JSON.stringify(properties.map(property => {
     try {
       if (property.startsWith('note.') && typeof entry.getRawProperty === 'function') return entry.getRawProperty(property.slice(5));
-      return entry.getValue(property)?.toString?.() ?? '';
+      const value = entry.getValue(property);
+      if (value == null) return '';
+      if (object(value) && typeof value.toString === 'function') return (value.toString as () => unknown).call(value);
+      return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? String(value) : '';
     } catch {return '';}
   }));
 }
 
 export class IdeaRowHeights {
-  private states = new Map<Native, State>();
+  private states = new Map<unknown, State>();
   private failed = new WeakSet<object>();
-  constructor(private afterRender?: (view: Native) => void) {}
+  constructor(private afterRender?: (view: unknown) => void) {}
 
   /** Attach after presentation classes and column-width clamps. True requests
    * one updateVirtualDisplay call; unchanged periodic scans return false.
    */
-  refresh(view: Native): boolean {
-    const host = view?.queryController?.viewContainerEl as HTMLElement;
+  refresh(view: unknown): boolean {
+    if (!isIdeaView(view)) return this.release(view);
+    const host = view.queryController?.viewContainerEl;
+    if (!isHtmlElement(host)) return this.release(view);
     if (view?.type !== 'table' || view.config?.name !== '想法收集箱' || !host?.isConnected || view._loaded === false) return this.release(view);
     if (this.failed.has(view)) return false;
     const current = this.states.get(view);
@@ -92,12 +178,17 @@ export class IdeaRowHeights {
       if (next !== current.signature) {current.signature = next; current.epoch++; return true;}
       return false;
     }
-    const row = view.rows?.[0] ?? view.unusedRows?.[0];
+    if (!layoutView(view)) return false;
+    const row = view.rows[0] ?? view.unusedRows[0];
     if (!host.getBoundingClientRect().width || !row || !Array.isArray(view.data?.groupedData) ||
         !view.header?.virtualize || !view.footerSummary?.virtualize || !row.virtualize ||
-        !['updateVirtualDisplay', 'getCellRect', 'getClosestCellIndexWithinGroup'].every(name => typeof view[name] === 'function')) return false;
+        !['updateVirtualDisplay', 'getCellRect', 'getClosestCellIndexWithinGroup'].every(name => typeof Reflect.get(view, name) === 'function')) return false;
+    const createRow = rowFactory(row); if (!createRow) return false;
+    let measureRow: LayoutRow;
+    try {measureRow = createRow(view);} catch {return false;}
     const win = host.ownerDocument.defaultView!;
-    const state: State = {view, host, patches: [], Row: row.constructor, measureRow: new row.constructor(view),
+    const state: State = {view, host, patches: [], createRow, measureRow,
+      originalUpdate: view.updateVirtualDisplay.bind(view), originalRect: view.getCellRect.bind(view), originalClosest: view.getClosestCellIndexWithinGroup.bind(view),
       heights: new Map(), groups: [], widths: [], width: 0, busy: false, frame: 0,
       observer: new win.MutationObserver(records => {
         if (records.some(record => record.type !== 'attributes' || record.oldValue !== (record.target as Element).getAttribute(record.attributeName!))) this.schedule(state, true);
@@ -109,14 +200,14 @@ export class IdeaRowHeights {
       }), onInput: () => this.schedule(state, true), onKey: event => this.pageKey(state, event as KeyboardEvent), signature: '', autoWidthKey: '',
       resizing: false, resizeKind: null, epoch: 0, onResizeStart: event => this.beginResize(state, event), onResizeEnd: event => this.resizeEndEvent(state, event),
       perf: {resizeStarts: 0, resizeEnds: 0, dragStarts: 0, ignoredPointerCancels: 0, lastResizeEnd: '', layouts: 0, previewLayouts: 0, measurementBatches: 0, measuredRows: 0, lastLayoutMs: 0, maxPreviewLayoutMs: 0, lastMeasureMs: 0}};
-    for (const name of ['updateVirtualDisplay', 'getCellRect', 'getClosestCellIndexWithinGroup']) {
+    for (const name of ['updateVirtualDisplay', 'getCellRect', 'getClosestCellIndexWithinGroup'] as const) {
       const descriptor = Object.getOwnPropertyDescriptor(view, name);
       if (descriptor && !descriptor.configurable && !descriptor.writable) {this.restore(state); return false;}
-      const original = view[name];
+      const original: unknown = Reflect.get(view, name);
       const wrapper = name === 'updateVirtualDisplay' ? () => this.update(state) : name === 'getCellRect'
         ? (index: Index) => this.cellRect(state, index) : (event: MouseEvent, group: number) => this.closest(state, event, group);
       state.patches.push({name, original, wrapper, descriptor});
-      view[name] = wrapper;
+      if (!Reflect.set(view, name, wrapper)) {this.restore(state); return false;}
     }
     this.states.set(view, state);
     state.signature = this.signature(state);
@@ -179,21 +270,21 @@ export class IdeaRowHeights {
   isResizing(): boolean {return [...this.states.values()].some(state => state.resizing);}
   /** Local diagnostics for regression checks; no logging, persistence or telemetry. */
   stats() {return [...this.states.values()].map(state => ({name: state.view.config.name, resizing: state.resizing, resizeKind: state.resizeKind, ...state.perf}));}
-  private measurementKey(state: State, entry: Native, key: string): string {
+  private measurementKey(state: State, entry: LayoutEntry, key: string): string {
     const active = state.host.ownerDocument.activeElement as HTMLElement | null;
-    const live = active && state.view.rows.find((row: Native) => row.entry.file === entry.file && row.el.contains(active));
+    const live = active && state.view.rows.find((row: LayoutRow) => row.entry?.file === entry.file && row.el.contains(active));
     return `${key}|${valueKey(entry, state.view.data.properties)}${live ? `|editing:${active?.textContent}:${active?.className}:${active?.style.cssText}` : ''}`;
   }
-  private createMeasurement(state: State, entry: Native, widths: number[]): HTMLElement {
+  private createMeasurement(state: State, entry: LayoutEntry, widths: number[]): HTMLElement {
     const active = state.host.ownerDocument.activeElement;
-    const existing = state.view.rows.find((row: Native) => row.entry.file === entry.file);
+    const existing = state.view.rows.find((row: LayoutRow) => row.entry?.file === entry.file);
     const editing = existing?.el.contains(active);
     // Always start from a native row with every column attached. An onscreen
     // row may have horizontally virtualized cells; merge its live editors below.
     state.measureRow.render(entry, state.view.data.properties);
     state.measureRow.virtualize(widths, 0, state.width);
     const row = state.measureRow.el.cloneNode(true) as HTMLElement;
-    if (editing) for (const cell of existing.el.children) {
+    if (editing && existing) for (const cell of existing.el.children) {
       const prop = (cell as HTMLElement).dataset.property;
       const target = Array.from(row.children).find(el => (el as HTMLElement).dataset.property === prop);
       if (cell.contains(active)) {
@@ -215,8 +306,8 @@ export class IdeaRowHeights {
       '--bases-table-row-height': 'auto'});
     const cells = Array.from(row.children) as HTMLElement[];
     for (const cell of cells) {
-      const index = state.view.data.properties.indexOf(cell.dataset.property);
-      const nativeCell = state.measureRow.cells?.find((candidate: Native) => candidate.prop === cell.dataset.property);
+      const index = state.view.data.properties.indexOf(cell.dataset.property ?? '');
+      const nativeCell = state.measureRow.cells?.find((candidate: LayoutCell) => candidate.prop === cell.dataset.property);
       cell.classList.toggle('bui-tag-picker-cell', supportsIdeaTagCell(state.view, nativeCell,
         (cell.dataset.property ?? '').replace(/^note\./, ''), cell));
       styles(cell, {position: 'relative', 'inset-inline-start': 'auto', width: `${widths[index]}px`,
@@ -243,10 +334,10 @@ export class IdeaRowHeights {
   /** Prepare every invalid row while detached, then write once and read once.
    * This avoids a synchronous browser layout for each database entry.
    */
-  private measureEntries(state: State, entries: Native[], widths: number[], key: string) {
+  private measureEntries(state: State, entries: LayoutEntry[], widths: number[], key: string) {
     const started = state.host.ownerDocument.defaultView!.performance.now();
-    const pending: {entry: Native; key: string; row: HTMLElement; height?: number}[] = [];
-    const seen = new Set<Native>();
+    const pending: {entry: LayoutEntry; key: string; row: HTMLElement; height?: number}[] = [];
+    const seen = new Set<IdeaFile>();
     const fragment = state.host.ownerDocument.createDocumentFragment();
     for (const entry of entries) {
       if (seen.has(entry.file)) continue;
@@ -268,11 +359,11 @@ export class IdeaRowHeights {
       state.perf.lastMeasureMs = state.host.ownerDocument.defaultView!.performance.now() - started;
     }
   }
-  private measure(state: State, entry: Native, _widths: number[], _key: string): number {
+  private measure(state: State, entry: LayoutEntry, _widths: number[], _key: string): number {
     return state.heights.get(entry.file)?.height ?? 32;
   }
   private update(state: State) {
-    const view = state.view, el = view.containerEl as HTMLElement;
+    const view = state.view, el = view.containerEl;
     if (state.busy || !this.states.has(view) || !el.isConnected || !el.getBoundingClientRect().width) return;
     state.busy = true; state.observer.disconnect();
     const started = state.host.ownerDocument.defaultView!.performance.now();
@@ -292,11 +383,11 @@ export class IdeaRowHeights {
   }
   private layout(state: State) {
     const v = state.view, data = v.data, properties: string[] = data.properties;
-    if (v.groups.length !== data.groupedData.length || v.groups.some((group: Native) => !group.tbodyEl || !group.virtualize)) throw Error('Unsupported native group structure');
+    if (v.groups.length !== data.groupedData.length || v.groups.some((group: LayoutGroup) => !group.tbodyEl || !group.virtualize)) throw Error('Unsupported native group structure');
     const automatic = properties.filter(property => !v.columnInfo[property]?.customWidth && !v.columnInfo[property]?.contentWidth);
-    const automaticKey = automatic.length ? `${automatic.join(',')}|${data.data.map((entry: Native) => valueKey(entry, automatic)).join('|')}` : '';
+    const automaticKey = automatic.length ? `${automatic.join(',')}|${data.data.map((entry: LayoutEntry) => valueKey(entry, automatic)).join('|')}` : '';
     if (properties.some(property => !v.columnInfo[property]) || (automatic.length && automaticKey !== state.autoWidthKey))
-      state.patches[0].original.call(v);
+      state.originalUpdate.call(v);
     state.autoWidthKey = automaticKey;
     const win = state.host.ownerDocument.defaultView!, css = win.getComputedStyle(v.containerEl);
     v.minColWidth = px(css.getPropertyValue('--bases-table-column-min-width')) || 40;
@@ -304,7 +395,7 @@ export class IdeaRowHeights {
     for (const cell of v.header.cells) if (!state.resizing && cell.el.offsetWidth && v.columnInfo[cell.prop]) v.columnInfo[cell.prop].headerWidth = cell.innerEl.scrollWidth;
     const widths = properties.map(property => v.columnInfo[property].getWidth(v.minColWidth, v.maxColWidth));
     let width = widths.reduce((sum, current) => sum + current, 0);
-    const available = v.containerEl.parentElement.clientWidth - 1;
+    const available = (v.containerEl.parentElement?.clientWidth ?? 1) - 1;
     if (widths.length && !v.columnInfo[properties[properties.length - 1]].customWidth && width < available) {widths[widths.length - 1] += available - width; width = available;}
     state.widths = widths; state.width = width;
     v.containerEl.classList.add('mod-multiline');
@@ -329,28 +420,28 @@ export class IdeaRowHeights {
     if (active && (!data.groupedData[active.groupIdx]?.entries[active.row] || active.column >= properties.length || v.isGroupCollapsed(data.groupedData[active.groupIdx]))) v.activeCell = null;
     const selection = v.selection;
     if (selection && (!data.groupedData[selection.groupIdx]?.entries[selection.bottom] || selection.end >= properties.length || v.isGroupCollapsed(data.groupedData[selection.groupIdx]))) v.selection = null;
-    const previous = [...v.rows], pool = [...v.unusedRows], nextRows: Native[] = [];
-    const currentFiles = new Set<Native>();
-    children(v.containerEl, v.groups.map((group: Native) => group.tableEl));
+    const previous = [...v.rows], pool = [...v.unusedRows], nextRows: LayoutRow[] = [];
+    const currentFiles = new Set<IdeaFile>();
+    children(v.containerEl, v.groups.map((group: LayoutGroup) => group.tableEl));
     let height = 0;
     const gap = px(css.getPropertyValue('--bases-table-group-gap')) || 10;
     state.groups = [];
     const widthKey = `${widths.join(',')}|${state.signature}|${state.epoch}`;
     const preview = state.resizing && state.heights.size > 0;
-    if (!preview) this.measureEntries(state, data.groupedData.flatMap((group: Native) => group.entries), widths, widthKey);
+    if (!preview) this.measureEntries(state, data.groupedData.flatMap((group: GroupData) => group.entries), widths, widthKey);
     for (let groupIndex = 0; groupIndex < v.groups.length; groupIndex++) {
       const group = v.groups[groupIndex], groupData = data.groupedData[groupIndex];
       const collapsed = !!v.isGroupCollapsed(groupData);
       group.tableEl.classList.toggle('is-collapsed', collapsed);
       let selfHeight = group.selfHeight, childStart = group.childStart;
-      if (!preview || !Number.isFinite(selfHeight) || !Number.isFinite(childStart)) {
+      if (!preview || typeof selfHeight !== 'number' || typeof childStart !== 'number' || !Number.isFinite(selfHeight) || !Number.isFinite(childStart)) {
         const bounds = group.tableEl.getBoundingClientRect(), bodyBounds = group.tbodyEl.getBoundingClientRect();
         const scale = bounds.width / group.tableEl.offsetWidth || 1;
         selfHeight = (bounds.height - bodyBounds.height) / scale;
         childStart = (bodyBounds.top - bounds.top) / scale;
       }
       group.selfHeight = selfHeight; group.childStart = childStart;
-      const heights = groupData.entries.map((entry: Native) => {
+      const heights = groupData.entries.map((entry: LayoutEntry) => {
         currentFiles.add(entry.file);
         return this.measure(state, entry, widths, widthKey);
       });
@@ -367,8 +458,8 @@ export class IdeaRowHeights {
         if (v.activeCell?.groupIdx === groupIndex) indexes.add(v.activeCell.row);
         for (const index of [...indexes].sort((a, b) => a - b)) {
           const entry = groupData.entries[index];
-          const oldIndex = previous.findIndex(row => row.entry.file === entry.file);
-          const row = oldIndex >= 0 ? previous.splice(oldIndex, 1)[0] : pool.pop() ?? new state.Row(v);
+          const oldIndex = previous.findIndex(row => row.entry?.file === entry.file);
+          const row = oldIndex >= 0 ? previous.splice(oldIndex, 1)[0] : pool.pop() ?? state.createRow(v);
           if (!preview || row.entry !== entry || row.cells.length !== properties.length) row.render(entry, properties);
           row.virtualize(widths, horizontalStart, horizontalEnd);
           styles(row.el, {top: `${offsets[index]}px`, width: `${width}px`, '--bases-table-row-height': `${heights[index]}px`});
@@ -400,7 +491,7 @@ export class IdeaRowHeights {
     v.header.virtualize(widths, horizontalStart, horizontalEnd);
     styles(v.theadEl, {width: `${width}px`});
     const rootChildren = [v.theadEl, v.containerEl];
-    if (v.footerSummary.shouldDisplay()) {
+    if (v.footerSummary.shouldDisplay() && v.footerSummary.el) {
       rootChildren.push(v.footerSummary.el); styles(v.footerSummary.el, {width: `${width}px`});
       v.footerSummary.virtualize(widths, horizontalStart, horizontalEnd);
     }
@@ -414,7 +505,7 @@ export class IdeaRowHeights {
   }
   private cellRect(state: State, index: Index): Rect {
     const v = state.view, group = state.groups[index.groupIdx];
-    if (!group || index.row >= group.offsets.length - 1) return state.patches[1].original.call(v, index);
+    if (!group || index.row >= group.offsets.length - 1) return state.originalRect.call(v, index);
     const base = v.getRowBaseHeight(), body = v.groups[index.groupIdx].tbodyEl.getBoundingClientRect();
     const scroll = v.scrollEl.getBoundingClientRect();
     const y = body.top - scroll.top + v.scrollEl.scrollTop;
@@ -425,7 +516,7 @@ export class IdeaRowHeights {
   }
   private closest(state: State, event: MouseEvent, groupIndex: number): Index {
     const v = state.view, group = state.groups[groupIndex];
-    if (!group) return state.patches[2].original.call(v, event, groupIndex);
+    if (!group) return state.originalClosest.call(v, event, groupIndex);
     const bounds = v.containerEl.getBoundingClientRect(), scale = bounds.width / v.containerEl.offsetWidth || 1;
     const top = v.groups[groupIndex].tbodyEl.getBoundingClientRect().top;
     const rtl = state.host.ownerDocument.defaultView!.getComputedStyle(v.containerEl).direction === 'rtl';
@@ -461,7 +552,7 @@ export class IdeaRowHeights {
         start: oldSelection?.start ?? old.column, end: oldSelection?.end ?? old.column};
     } else v.selection = null;
     this.update(state);
-    const cell = this.cellRect(state, v.activeCell), scroll = v.scrollEl as HTMLElement;
+    const cell = this.cellRect(state, v.activeCell), scroll = v.scrollEl;
     const sign = state.host.ownerDocument.defaultView!.getComputedStyle(scroll).direction === 'rtl' ? -1 : 1;
     const left = nearestScroll(scroll.scrollLeft * sign, cell.left, cell.right, scroll.clientWidth, Math.max(0, scroll.scrollWidth - scroll.clientWidth));
     const top = nearestScroll(scroll.scrollTop, cell.top, cell.bottom, scroll.clientHeight, Math.max(0, scroll.scrollHeight - scroll.clientHeight));
@@ -471,23 +562,24 @@ export class IdeaRowHeights {
   private restore(state: State) {
     for (const patch of state.patches) if (state.view[patch.name] === patch.wrapper) {
       if (patch.descriptor) Object.defineProperty(state.view, patch.name, patch.descriptor);
-      else delete state.view[patch.name];
+      else Reflect.deleteProperty(state.view, patch.name);
     }
   }
-  private release(view: Native): boolean {
+  private release(view: unknown): boolean {
     const state = this.states.get(view); if (!state) return false;
+    const nativeView = state.view;
     this.states.delete(view); state.observer.disconnect(); state.resize.disconnect();
     if (state.frame) state.host.ownerDocument.defaultView!.cancelAnimationFrame(state.frame);
-    view.containerEl.removeEventListener('input', state.onInput, true);
-    view.containerEl.removeEventListener('keydown', state.onKey, true);
-    for (const type of ['pointerdown', 'dragstart']) view.theadEl.removeEventListener(type, state.onResizeStart, true);
+    nativeView.containerEl.removeEventListener('input', state.onInput, true);
+    nativeView.containerEl.removeEventListener('keydown', state.onKey, true);
+    for (const type of ['pointerdown', 'dragstart']) nativeView.theadEl.removeEventListener(type, state.onResizeStart, true);
     for (const type of ['pointerup', 'pointercancel', 'drop', 'dragend', 'blur']) state.host.ownerDocument.defaultView!.removeEventListener(type, state.onResizeEnd, true);
     state.host.classList.remove('bui-ideas-auto', 'bui-ideas-resizing'); this.restore(state);
-    for (const row of [...view.rows, ...view.unusedRows]) row.el.style.removeProperty('--bases-table-row-height');
+    for (const row of [...nativeView.rows, ...nativeView.unusedRows]) row.el.style.removeProperty('--bases-table-row-height');
     state.measureRow.el.remove(); state.heights.clear();
-    if (view._loaded !== false && view.containerEl.isConnected) view.updateVirtualDisplay();
+    if (nativeView._loaded !== false && nativeView.containerEl.isConnected) nativeView.updateVirtualDisplay();
     return true;
   }
-  prune() {for (const [view, state] of this.states) if (view._loaded === false || !state.host.isConnected) this.release(view);}
+  prune() {for (const [view, state] of this.states) if (state.view._loaded === false || !state.host.isConnected) this.release(view);}
   clear() {for (const view of [...this.states.keys()]) this.release(view);}
 }

@@ -710,3 +710,15 @@ test('a query acknowledged during a newer click is still published when its cell
     assert.equal(f.writes.length,2);
   }finally{f.close();}
 });
+
+
+test('unknown native cell and row structures retain native handlers without property writes',()=>{
+  const f=fixture();try {
+    f.editor.clear();
+    f.view.rows=[{cells:[{el:42,prop:'note.类型'}]}];
+    assert.doesNotThrow(()=>f.editor.attach(f.view));
+    assert.equal(f.open('类型'),null);
+    assert.deepEqual(f.writes,[]);
+    assert.equal(f.native.click,1);
+  }finally{f.close();}
+});

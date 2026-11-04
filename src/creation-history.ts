@@ -1,22 +1,82 @@
 import {App, Notice, parseYaml, Platform, StringValue} from 'obsidian';
+import type {TFile, WorkspaceLeaf} from 'obsidian';
 import {ensureCreationOrder} from './creation-order';
 import {applyPropertyTransaction} from './property-history';
 
-type Native = any;
-type Created = {file: Native; path: string; content: string; ctime: number; mtime: number; removed: boolean; titleTouched?: boolean};
-type Session = {key: string; leaf: Native; file: Native};
-type Suspended = {session: Session; records: Map<Native, Created>; properties: Set<Native>; undo: Native[]; redo: Native[]; wasLast: boolean};
+type UnknownMethod = (this: object, ...args: unknown[]) => unknown;
+type NativeRecord = Record<string, unknown>;
+function recordValue(value: unknown): value is NativeRecord {return !!value && typeof value === 'object';}
+function method(value: unknown): value is UnknownMethod {return typeof value === 'function';}
+function field(value: unknown, key: string): unknown {return recordValue(value) ? value[key] : undefined;}
+function nativeGet(target: object, key: PropertyKey): unknown {return Reflect.get(target, key, target);}
+function nativeBound(target: object, key: PropertyKey): unknown {
+  const value = nativeGet(target, key);
+  return method(value) ? value.bind(target) : value;
+}
+type QueryController = {
+  view?: unknown; isReadOnly?: boolean; viewContainerEl?: HTMLElement; viewHeaderEl?: HTMLElement;
+  newItemMenu: ItemMenu; requestNotifyView?: () => void;
+};
+type ItemMenu = {
+  app?: unknown; queryController?: QueryController | null; open: UnknownMethod; close?: () => void;
+  newlyCreatedFile?: unknown; popover?: {hoverEl?: HTMLElement} | null;
+};
+type HistoryView = {
+  type?: string; _loaded?: boolean; containerEl: HTMLElement; config?: {name?: unknown; query?: {file?: unknown} | null; groupBy?: {property?: unknown} | null} | null;
+  queryController: QueryController; undoStack: unknown[]; redoStack: unknown[];
+  undoTransaction: UnknownMethod; redoTransaction: UnknownMethod; createTransaction?: UnknownMethod;
+  createNoteInGroup?: UnknownMethod; isGroupedByFolder?: boolean; isReadOnly?: boolean;
+  getEphemeralState?: () => unknown; setEphemeralState?: (state: unknown) => void; showError?: (error: unknown) => void;
+};
+function optional(value: unknown, valid: (value: unknown) => boolean): boolean {return value === undefined || valid(value);}
+function htmlElement(value: unknown): value is HTMLElement {
+  const constructor = field(field(field(value, 'ownerDocument'), 'defaultView'), 'HTMLElement');
+  return typeof constructor === 'function' && value instanceof constructor;
+}
+function itemMenu(value: unknown): value is ItemMenu {
+  if (!recordValue(value) || !method(value.open) || !optional(value.close, method)) return false;
+  if (value.queryController != null && !recordValue(value.queryController)) return false;
+  return value.popover === null || optional(value.popover, popover => recordValue(popover) && optional(popover.hoverEl, htmlElement));
+}
+/** Validate the native capabilities and optional shape before installing wrappers.
+ * DOM checks use the element's own window so popout panes stay supported.
+ */
+function historyView(value: unknown): value is HistoryView {
+  // Factory callbacks can expose a native instance before its config exists.
+  // Some innocuous-looking properties are getters backed by that config, so
+  // inspect readiness first and let a later discovery retry partial instances.
+  try {
+    if (!recordValue(value) || !recordValue(value.config)) return false;
+    const config = value.config;
+    if (!recordValue(value.queryController) || !itemMenu(value.queryController.newItemMenu)) return false;
+    const boolean = (value: unknown) => typeof value === 'boolean';
+    const controller = value.queryController;
+    return htmlElement(value.containerEl) && method(value.undoTransaction) && method(value.redoTransaction) &&
+      Array.isArray(value.undoStack) && Array.isArray(value.redoStack) &&
+      optional(value.type, value => typeof value === 'string') &&
+      ['_loaded', 'isGroupedByFolder', 'isReadOnly'].every(key => optional(value[key], boolean)) &&
+      ['createTransaction', 'createNoteInGroup', 'getEphemeralState', 'setEphemeralState', 'showError'].every(key => optional(value[key], method)) &&
+      optional(controller.isReadOnly, boolean) && optional(controller.requestNotifyView, method) &&
+      optional(controller.viewContainerEl, htmlElement) && optional(controller.viewHeaderEl, htmlElement) &&
+      (config.query == null || recordValue(config.query)) && (config.groupBy == null || recordValue(config.groupBy));
+  } catch {return false;}
+}
+
+type Created = {file: TFile; path: string; content: string; ctime: number; mtime: number; removed: boolean; titleTouched?: boolean};
+type Session = {key: string; leaf: WorkspaceLeaf; file: unknown};
+type Suspended = {session: Session; records: Map<unknown, Created>; properties: Set<unknown>; undo: unknown[]; redo: unknown[]; wasLast: boolean};
 // Phone views backed by a real external Base share history across source tabs.
 // Inline Bases and desktop panes retain their leaf-owned sessions.
 type PhoneScope = {
-  file: Native; key: string; owners: Set<Session>; bindings: Set<Binding>; records: Map<Native, Created>; properties: Set<Native>;
-  undo: Native[]; redo: Native[]; queue: Promise<void>; pendingCreates: number;
+  file: TFile; key: string; owners: Set<Session>; bindings: Set<Binding>; records: Map<unknown, Created>; properties: Set<unknown>;
+  undo: unknown[]; redo: unknown[]; queue: Promise<void>; pendingCreates: number;
 };
 type Binding = {
-  view: Native; menu: Native; open: Native; undo: Native; redo: Native;
-  wrappedOpen: Native; wrappedUndo: Native; wrappedRedo: Native; transaction?: Native; wrappedTransaction?: Native;
-  groupCreate?: Native; wrappedGroupCreate?: Native; surfaces: Set<HTMLElement>;
-  records: Map<Native, Created>; properties: Set<Native>; cleanup: (() => void)[]; queue: Promise<void>; creating: boolean;
+  view: HistoryView; menu: ItemMenu; open: UnknownMethod; undo: UnknownMethod; redo: UnknownMethod;
+  wrappedOpen: UnknownMethod; wrappedUndo: UnknownMethod; wrappedRedo: UnknownMethod;
+  transaction?: UnknownMethod; wrappedTransaction?: UnknownMethod;
+  groupCreate?: UnknownMethod; wrappedGroupCreate?: UnknownMethod; surfaces: Set<HTMLElement>;
+  records: Map<unknown, Created>; properties: Set<unknown>; cleanup: (() => void)[]; queue: Promise<void>; creating: boolean;
   pendingCreates: number; pendingRecord?: Created; live: boolean;
   session?: Session; phone?: PhoneScope;
 };
@@ -29,11 +89,11 @@ function textTarget(target: HTMLElement): boolean {
 
 // Property undo may serialize equivalent YAML differently. Compare native data
 // and the exact body, without normalizing or writing the note itself.
-function canonical(value: Native): Native {
+function canonical(value: unknown): unknown {
   if (typeof value === 'number' && !Number.isFinite(value)) throw Error('Unsupported YAML number');
   if (value && typeof value === 'object' && !Array.isArray(value) && Object.prototype.toString.call(value) !== '[object Object]') throw Error('Unsupported YAML value');
   if (Array.isArray(value)) return value.map(canonical);
-  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])]));
+  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical((value as NativeRecord)[key])]));
   return value;
 }
 export function sameCreatedContent(a: string, b: string): boolean {
@@ -52,14 +112,15 @@ export function sameCreatedContent(a: string, b: string): boolean {
  * No workspace-global file-create observer or global editor undo replacement.
  */
 export class BaseCreationHistory {
-  private bindings = new Map<Native, Binding>();
-  private surfaces = new Map<Native, Set<HTMLElement>>();
+  private bindings = new Map<unknown, Binding>();
+  private surfaces = new Map<unknown, Set<HTMLElement>>();
   private suspended = new Map<string, Suspended>();
   private phones = new Set<PhoneScope>();
   private last?: Binding;
-  constructor(private app: App, private changed: (view: Native) => void = () => {}) {}
+  constructor(private app: App, private changed: (view: unknown) => void = () => {}) {}
 
-  attach(view: Native) {
+  attach(view: unknown) {
+    if (!historyView(view)) return;
     const menu = view?.queryController?.newItemMenu;
     if (!view?.containerEl?.isConnected || view._loaded === false || !menu ||
         typeof menu.open !== 'function' || typeof view.undoTransaction !== 'function' ||
@@ -71,7 +132,7 @@ export class BaseCreationHistory {
     // A controller reuses its menu when changing view. It has only one owner.
     for (const binding of this.bindings.values()) if (binding.menu === menu) this.detach(binding, true);
     const binding: Binding = {view, menu, open: menu.open, undo: view.undoTransaction, redo: view.redoTransaction,
-      wrappedOpen: undefined, wrappedUndo: undefined, wrappedRedo: undefined,
+      wrappedOpen: () => undefined, wrappedUndo: () => undefined, wrappedRedo: () => undefined,
       records: new Map(), properties: new Set(), surfaces: this.surfaces.get(view) ?? new Set(), cleanup: [], queue: Promise.resolve(), creating: false, pendingCreates: 0, live: true};
     binding.session = session;
     this.joinPhone(binding);
@@ -83,24 +144,25 @@ export class BaseCreationHistory {
         if (old.pendingCreates) pendingOwner = old;
         else this.detach(old, true);
       }
-    const history = this;
-    binding.wrappedOpen = function(this: Native, ...args: Native[]) {
-      const menu = this;
-      history.pending(binding, 1); history.last = binding;
+    const history = {pending: this.pending.bind(this), notify: this.notify.bind(this), serial: this.serial.bind(this),
+      available: this.available.bind(this), captureAvailable: this.captureAvailable.bind(this), capture: this.capture.bind(this),
+      phoneCreationReceiver: this.phoneCreationReceiver.bind(this), historyReceiver: this.historyReceiver.bind(this),
+      enqueue: this.enqueue.bind(this), setLast: () => {this.last = binding;}, app: this.app};
+    binding.wrappedOpen = function(...args: unknown[]) {
+      if (!itemMenu(this)) return binding.open.apply(this, args);
+      history.pending(binding, 1); history.setLast();
       return history.serial(binding, async () => {
-      const available = () => history.available(binding) && menu.queryController?.view === view && view.queryController?.newItemMenu === menu;
+      const available = () => history.available(binding) && this.queryController?.view === view && view.queryController?.newItemMenu === this;
       if (!available() || binding.creating) return;
       binding.creating = true;
-      const previous = menu.newlyCreatedFile;
+      const previous = this.newlyCreatedFile;
       try {
         try {await ensureCreationOrder(view);} catch {new Notice('新建排序未能保存，保留原排序');}
         if (!available()) return;
-        const created: Native[] = [];
-        const result = await binding.open.apply(history.phoneCreationReceiver(menu, created), args);
-        const file = created.length === 1 ? created[0] : menu.newlyCreatedFile;
-        if (history.captureAvailable(binding) && file && file !== previous && file.extension === 'md' && history.app.vault.getAbstractFileByPath(file.path) === file) {
-          await history.capture(binding, file);
-        }
+        const created: unknown[] = [];
+        const result = await binding.open.apply(history.phoneCreationReceiver(this, created), args);
+        const file = created.length === 1 ? created[0] : this.newlyCreatedFile;
+        if (history.captureAvailable(binding) && file && file !== previous) await history.capture(binding, file);
         return result;
       } finally {binding.creating = false;}
       }, () => {history.pending(binding, -1); history.notify(binding);});
@@ -110,20 +172,24 @@ export class BaseCreationHistory {
     // Native folder-group creation bypasses newItemMenu and returns no TFile.
     // Use its same native file-manager API only for this explicit branch.
     if (typeof view.createNoteInGroup === 'function') {
-      binding.groupCreate = view.createNoteInGroup;
-      binding.wrappedGroupCreate = function(group: Native, ...args: Native[]) {
+      const groupCreate = view.createNoteInGroup;
+      binding.groupCreate = groupCreate;
+      binding.wrappedGroupCreate = function(group: unknown, ...args: unknown[]) {
+        const key = field(group, 'key');
+        const manager = history.app.fileManager;
+        const createMarkdown = field(manager, 'createNewMarkdownFile'), folderPath = field(key, 'data');
         if (!view.isGroupedByFolder || view.config?.groupBy?.property !== 'file.folder' ||
-            typeof StringValue !== 'function' || !(group?.key instanceof StringValue) ||
-            typeof (history.app.fileManager as Native).createNewMarkdownFile !== 'function')
-          return binding.groupCreate.call(this, group, ...args);
-        history.pending(binding, 1); history.last = binding;
+            typeof StringValue !== 'function' || !(key instanceof StringValue) || typeof folderPath !== 'string' ||
+            !method(createMarkdown))
+          return groupCreate.call(this, group, ...args);
+        history.pending(binding, 1); history.setLast();
         return history.serial(binding, async () => {
           if (!history.available(binding)) return;
-          const folder = history.app.vault.getFolderByPath(group.key.data);
+          const folder = history.app.vault.getFolderByPath(folderPath);
           if (!folder) {new Notice('目标文件夹不存在，未新建笔记'); return;}
           binding.creating = true;
           try {
-            const file = await (history.app.fileManager as Native).createNewMarkdownFile(folder);
+            const file = await createMarkdown.call(manager, folder);
             if (history.captureAvailable(binding)) await history.capture(binding, file);
           } catch (error) {
             if (typeof view.showError === 'function') view.showError(error);
@@ -134,15 +200,16 @@ export class BaseCreationHistory {
       view.createNoteInGroup = binding.wrappedGroupCreate;
     }
     if (typeof view.createTransaction === 'function') {
-      binding.transaction = view.createTransaction;
-      binding.wrappedTransaction = function(...args: Native[]) {
+      const transactionMethod = view.createTransaction;
+      binding.transaction = transactionMethod;
+      binding.wrappedTransaction = function(...args: unknown[]) {
         return history.serial(binding, async () => {
           if (!binding.live || binding.phone && !history.available(binding)) return;
           const previous = (binding.phone?.undo ?? view.undoStack).at(-1);
-          const result = await binding.transaction.apply(history.historyReceiver(binding, this), args);
+          const result = await transactionMethod.apply(history.historyReceiver(binding, this), args);
           const transaction = (binding.phone?.undo ?? view.undoStack).at(-1);
           if (transaction && transaction !== previous) binding.properties.add(transaction);
-          history.last = binding;
+          history.setLast();
           return result;
         });
       };
@@ -170,10 +237,10 @@ export class BaseCreationHistory {
 
   private joinPhone(binding: Binding) {
     const {session, view, menu} = binding;
-    const base = view.config?.query?.file, path = typeof base === 'string' ? base : base?.path;
-    const file: Native = typeof path === 'string' && this.app.vault.getAbstractFileByPath(path);
+    const base = view.config?.query?.file, path = typeof base === 'string' ? base : field(base, 'path');
+    const file = typeof path === 'string' ? this.app.vault.getFileByPath(path) : null;
     if (!Platform?.isPhone || !session || !file || file.extension !== 'base' || menu.queryController?.view !== view) return;
-    const key = JSON.stringify([view.config.name, view.type]);
+    const key = JSON.stringify([view.config?.name, view.type]);
     for (const scope of this.phones) if (!this.phoneOpen(scope)) this.phones.delete(scope);
     let scope = [...this.phones].find(item => item.file === file && item.key === key);
     if (!scope) {
@@ -213,24 +280,24 @@ export class BaseCreationHistory {
     return this.available(binding) || !!binding.phone && this.phones.has(binding.phone) && this.phoneOpen(binding.phone);
   }
 
-  private historyReceiver(binding: Binding, receiver: Native): Native {
+  private historyReceiver(binding: Binding, receiver: object): object {
     const scope = binding.phone;
     if (!scope) return receiver;
     // Native transactions may finish after their view unmounts, and assign
     // entirely new stack arrays. Keep those reads/writes in the shared scope;
     // all other native methods retain their real view receiver.
-    const history = this;
+    const syncPhone = () => this.syncPhone(scope);
     return new Proxy(receiver, {
       get(target, key) {
         if (key === 'undoStack') return scope.undo;
         if (key === 'redoStack') return scope.redo;
-        const value = Reflect.get(target, key, target);
-        return typeof value === 'function' ? value.bind(target) : value;
+        return nativeBound(target, key);
       },
-      set(target, key, value) {
+      set(target, key, value: unknown) {
         if (key === 'undoStack' || key === 'redoStack') {
+          if (!Array.isArray(value)) return false;
           scope[key === 'undoStack' ? 'undo' : 'redo'] = value;
-          history.syncPhone(scope); return true;
+          syncPhone(); return true;
         }
         return Reflect.set(target, key, value, target);
       },
@@ -256,38 +323,37 @@ export class BaseCreationHistory {
    * createNewFile return value; never patch the shared file manager or listen
    * for unrelated vault creates. Other methods keep their original receiver.
    */
-  private phoneCreationReceiver(menu: Native, created: Native[]): Native {
-    const app = menu.app, manager = app?.fileManager;
-    if (!Platform?.isPhone || app !== this.app || typeof manager?.createNewFile !== 'function') return menu;
+  private phoneCreationReceiver(menu: ItemMenu, created: unknown[]): ItemMenu {
+    const app = menu.app, manager = field(app, 'fileManager');
+    if (!Platform?.isPhone || app !== this.app || !recordValue(manager) || !method(manager.createNewFile)) return menu;
     const managerReceiver = new Proxy(manager, {get(target, key) {
-      const value = Reflect.get(target, key, target);
-      if (key === 'createNewFile') return async (...args: Native[]) => {
+      const value = nativeGet(target, key);
+      if (key === 'createNewFile' && method(value)) return async (...args: unknown[]) => {
         const file = await value.apply(target, args); created.push(file); return file;
       };
-      return typeof value === 'function' ? value.bind(target) : value;
+      return method(value) ? value.bind(target) : value;
     }});
     const appReceiver = new Proxy(app, {get(target, key) {
       if (key === 'fileManager') return managerReceiver;
-      const value = Reflect.get(target, key, target);
-      return typeof value === 'function' ? value.bind(target) : value;
+      return nativeBound(target, key);
     }});
     return new Proxy(menu, {get(target, key, receiver) {
-      return key === 'app' ? appReceiver : Reflect.get(target, key, receiver);
+      return key === 'app' ? appReceiver : Reflect.get(target, key, receiver) as unknown;
     }});
   }
 
   // Markdown preview destroys off-screen Base instances. Keep their history in
   // the owning open note, rather than treating scrolling as closing a database.
-  private session(view: Native): Session | undefined {
+  private session(view: HistoryView): Session | undefined {
     const base = view.config?.query?.file;
-    const path = typeof base === 'string' ? base : base?.path;
+    const path = typeof base === 'string' ? base : field(base, 'path');
     if (typeof path !== 'string' || !path.endsWith('.base')) return;
     let result: Session | undefined;
     this.app.workspace.iterateAllLeaves(leaf => {
-      const current = leaf as Native;
-      if (current.id && current.view?.file && current.view.containerEl?.contains(view.containerEl))
-        result = {leaf: current, file: current.view.file,
-          key: JSON.stringify([current.id, current.view.file.path, path, view.config.name, view.type])};
+      const id = field(leaf, 'id'), file = field(leaf.view, 'file');
+      if (id && file && leaf.view.containerEl?.contains(view.containerEl))
+        result = {leaf, file,
+          key: JSON.stringify([id, field(file, 'path'), path, view.config?.name, view.type])};
     });
     return result;
   }
@@ -295,7 +361,7 @@ export class BaseCreationHistory {
     // A phone can detach the whole inactive tab's DOM while keeping that tab
     // open. Conversely, a closed leaf can leave its DOM connected until the
     // next layout. Workspace membership, not rendering, owns the session.
-    if (session.leaf.view?.file !== session.file) return false;
+    if (field(session.leaf.view, 'file') !== session.file) return false;
     let registered = false;
     this.app.workspace.iterateAllLeaves(leaf => {if (leaf === session.leaf) registered = true;});
     return registered;
@@ -320,7 +386,7 @@ export class BaseCreationHistory {
     if (saved.wasLast && !this.last) this.last = binding;
   }
 
-  registerSurface(view: Native, root: HTMLElement): () => void {
+  registerSurface(view: unknown, root: HTMLElement): () => void {
     const surfaces = this.surfaces.get(view) ?? new Set<HTMLElement>();
     this.surfaces.set(view, surfaces); surfaces.add(root);
     this.attach(view);
@@ -342,8 +408,10 @@ export class BaseCreationHistory {
       (typeof root.checkVisibility !== 'function' || root.checkVisibility({checkVisibilityCSS: true})));
   }
 
-  private async capture(binding: Binding, file: Native) {
-    if (!file || file.extension !== 'md' || this.app.vault.getAbstractFileByPath(file.path) !== file) return;
+  private async capture(binding: Binding, candidate: unknown) {
+    const path = field(candidate, 'path');
+    const file = typeof path === 'string' ? this.app.vault.getFileByPath(path) : null;
+    if (!file || file !== candidate || file.extension !== 'md') return;
     const {view, menu} = binding;
     const record: Created = {file, path: file.path, content: '', ctime: file.stat.ctime, mtime: file.stat.mtime, removed: false};
     binding.pendingRecord = record;
@@ -377,14 +445,15 @@ export class BaseCreationHistory {
   }
 
   private liveDraft(record: Created, binding: Binding): boolean {
-    const visited = new Set<Native>(), editors = new Map<Native, string>();
-    const cleanSnapshots = new Set<Native>(), dirtySnapshots = new Set<Native>();
+    const visited = new Set<unknown>(), editors = new Map<object, string>();
+    const cleanSnapshots = new Set<unknown>(), dirtySnapshots = new Set<unknown>();
     let dirty = false;
-    const visit = (component: Native, depth = 0) => {
-      if (!component || visited.has(component) || depth > 12) return;
+    const visit = (component: unknown, depth = 0) => {
+      if (!recordValue(component) || visited.has(component) || depth > 12) return;
       visited.add(component);
-      if (component.file === record.file && component.editor?.getValue) {
-        const editor = component.editor, value = editor.getValue();
+      if (component.file === record.file && recordValue(component.editor) && method(component.editor.getValue)) {
+        const editor = component.editor, getValue = component.editor.getValue, value = getValue.call(editor);
+        if (typeof value !== 'string') throw Error('无法确认笔记编辑器内容，未撤销新建');
         editors.set(editor, value);
         if (component.dirty === true || component.saveAgain === true) dirtySnapshots.add(editor);
         // Native property undo updates MarkdownView.data before its source
@@ -395,7 +464,7 @@ export class BaseCreationHistory {
             typeof component.lastSavedData === 'string' && value === component.lastSavedData &&
             typeof component.data === 'string' && sameCreatedContent(record.content, component.data)) cleanSnapshots.add(editor);
       }
-      for (const child of component._children ?? []) visit(child, depth + 1);
+      if (Array.isArray(component._children)) for (const child of component._children as unknown[]) visit(child, depth + 1);
       for (const key of ['view', 'embed', 'markdownView']) if (component[key] && component[key] !== component) visit(component[key], depth + 1);
     };
     this.app.workspace.iterateAllLeaves(leaf => visit(leaf.view));
@@ -423,7 +492,7 @@ export class BaseCreationHistory {
           if (!owned() || !unchanged()) return;
           source.pop(); target.push(marker);
           if (binding.live) {
-            if (marker.state) view.setEphemeralState?.(marker.state);
+            if (field(marker, 'state')) view.setEphemeralState?.(field(marker, 'state'));
             view.queryController.requestNotifyView?.();
           }
         } catch (error) {new Notice(error instanceof Error ? error.message : '属性撤销未完成，历史记录已保留');}
@@ -444,7 +513,9 @@ export class BaseCreationHistory {
         // Close only this creation's editor before removing its file. Native
         // close flushes pending editor work; verify again after that work settles.
         if (binding.menu.newlyCreatedFile === record.file) binding.menu.close?.();
-        await new Promise(resolve => setTimeout(resolve, 50));
+        const window = view.containerEl.ownerDocument.defaultView;
+        if (!window) throw Error('笔记窗口已关闭，未撤销新建');
+        await new Promise<void>(resolve => window.setTimeout(resolve, 50));
         if (!current()) return;
         const contents = await this.app.vault.read(record.file);
         if (!current()) return;
@@ -461,7 +532,8 @@ export class BaseCreationHistory {
         record.removed = false;
         // Property transactions following creation must target the restored TFile.
         for (const transaction of [...(binding.phone?.undo ?? view.undoStack), ...(binding.phone?.redo ?? view.redoStack)])
-          for (const change of transaction.changes ?? []) if (change.file === previous) change.file = record.file;
+          if (recordValue(transaction) && Array.isArray(transaction.changes))
+            for (const change of transaction.changes as unknown[]) if (recordValue(change) && change.file === previous) change.file = record.file;
       }
       if (!owned() || !unchanged()) return;
       const index = source.indexOf(marker);
@@ -469,7 +541,7 @@ export class BaseCreationHistory {
       target.push(marker);
       if (binding.live) {
         view.queryController.requestNotifyView?.();
-        if (marker.state) view.setEphemeralState?.(marker.state);
+        if (field(marker, 'state')) view.setEphemeralState?.(field(marker, 'state'));
         this.focus(binding);
       }
     } catch (error) {new Notice(error instanceof Error ? error.message : '操作未完成，历史记录已保留');}
@@ -526,9 +598,9 @@ export class BaseCreationHistory {
     if (!checking) void this.enqueue(binding, redo); return true;
   }
 
-  forView(view: Native, redo: boolean, checking: boolean): boolean {
+  forView(view: unknown, redo: boolean, checking: boolean): boolean {
     const binding = this.bindings.get(view);
-    if (!binding || !this.available(binding) || (!(redo ? view.redoStack : view.undoStack).length && (redo || !this.pending(binding)))) return false;
+    if (!binding || !this.available(binding) || (!(redo ? binding.view.redoStack : binding.view.undoStack).length && (redo || !this.pending(binding)))) return false;
     if (!checking) {this.last = binding; void this.enqueue(binding, redo);}
     return true;
   }
@@ -561,11 +633,13 @@ export class BaseCreationHistory {
     if (binding.view.redoTransaction === binding.wrappedRedo) binding.view.redoTransaction = binding.redo;
     if (binding.wrappedTransaction && binding.view.createTransaction === binding.wrappedTransaction) binding.view.createTransaction = binding.transaction;
     if (binding.wrappedGroupCreate && binding.view.createNoteInGroup === binding.wrappedGroupCreate) binding.view.createNoteInGroup = binding.groupCreate;
-    const removed = new Set([...binding.records.values()].filter(record => record.removed).map(record => record.file));
-    if (!scoped) for (const key of ['undoStack', 'redoStack']) binding.view[key] = binding.view[key].flatMap((item: Native) => {
+    const removed = new Set<unknown>([...binding.records.values()].filter(record => record.removed).map(record => record.file));
+    if (!scoped) for (const key of ['undoStack', 'redoStack'] as const) binding.view[key] = binding.view[key].flatMap(item => {
       if (binding.records.has(item)) return [];
-      const changes = item.changes?.filter((change: Native) => !removed.has(change.file));
-      if (!changes || changes.length === item.changes.length) return [item];
+      if (!recordValue(item) || !Array.isArray(item.changes)) return [item];
+      const original: unknown[] = item.changes;
+      const changes = original.filter(change => !recordValue(change) || !removed.has(change.file));
+      if (changes.length === original.length) return [item];
       return changes.length ? [{...item, changes}] : [];
     });
     this.bindings.delete(binding.view);

@@ -108,5 +108,6 @@ export function remapPageSettings(settings: PageTreeSettings, oldPath: string, n
 
 export function validPageName(value: string): string | null {
   const name = value.trim().replace(/\.md$/i, '');
-  return !name || name.startsWith('.') || /[\\/:*?"<>|\x00-\x1f]/.test(name) ? null : name;
+  const hasControlCharacter = [...name].some(character => character.charCodeAt(0) < 32);
+  return !name || name.startsWith('.') || /[\\/:*?"<>|]/.test(name) || hasControlCharacter ? null : name;
 }

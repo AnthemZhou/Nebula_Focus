@@ -1,11 +1,18 @@
 import {Notice, setIcon} from 'obsidian';
 
-type Native = any;
+import {IdeaView, IdeaRow, IdeaEntry, IdeaFile, isIdeaView} from './idea-native';
+type TitleView = IdeaView & {rows: IdeaRow[]; updateProperty(file: IdeaFile, property: string, value: unknown): unknown};
+type TitleRow = IdeaRow & {entry: IdeaEntry};
+function titleView(value: unknown): value is TitleView {
+  return isIdeaView(value) && Array.isArray(value.rows) && typeof value.updateProperty === 'function';
+}
+function titleRow(value: IdeaRow): value is TitleRow {return !!value.entry;}
+
 const TITLE_COLUMN = 'formula.想法';
 const TITLE_PROPERTY = '这里写想法';
 const READ_ONLY = '[disabled], [aria-disabled="true"], [aria-readonly="true"], [data-readonly="true"], .is-read-only, .is-readonly, .mod-readonly';
 type Binding = {
-  view: Native; row: Native; file: Native; path: string; query: Native;
+  view: TitleView; row: TitleRow; file: IdeaFile; path: string; query: unknown;
   cell: HTMLElement; outer: HTMLElement; link: HTMLElement; icon: HTMLButtonElement;
   attributes: Map<string, string | null>; hadTitleClass: boolean; hadCellClass: boolean;
   cleanup: () => void; forwarding: boolean; down?: {x: number; y: number; moved: boolean}; stopGesture?: () => void;
@@ -23,16 +30,16 @@ export class IdeaTitleEditors {
   private bindings = new Map<HTMLElement, Binding>();
   private edit?: Edit;
 
-  refresh(view: Native) {
+  refresh(view: unknown) {
     this.pruneEdit();
-    if (view?.type !== 'table' || view.config?.name !== '想法收集箱' ||
-        !Array.isArray(view.rows) || typeof view.updateProperty !== 'function') {
+    if (!titleView(view)) {
       this.releaseView(view); return;
     }
     const seen = new Set<HTMLElement>();
     for (const row of view.rows) {
-      const nativeCell = row.cells?.find((cell: Native) => cell.prop === TITLE_COLUMN);
-      const cell = nativeCell?.renderer?.el as HTMLElement | undefined;
+      if (!titleRow(row)) continue;
+      const nativeCell = row.cells?.find(cell => cell.prop === TITLE_COLUMN);
+      const cell = nativeCell?.renderer?.el;
       const link = cell?.querySelector<HTMLElement>('.internal-link');
       if (!cell?.isConnected || !link || !row.entry?.file) continue;
       seen.add(link);
@@ -50,7 +57,7 @@ export class IdeaTitleEditors {
     for (const binding of this.bindings.values()) if (binding.view === view && !seen.has(binding.link)) this.release(binding);
   }
 
-  private attach(view: Native, row: Native, cell: HTMLElement, link: HTMLElement) {
+  private attach(view: TitleView, row: TitleRow, cell: HTMLElement, link: HTMLElement) {
     const doc = link.ownerDocument, icon = doc.createElement('button');
     icon.type = 'button';
     icon.className = 'bui-idea-page-button'; icon.setAttribute('aria-label', '打开想法笔记');
@@ -252,10 +259,10 @@ export class IdeaTitleEditors {
     if (!selection) return;
     let range: Range | null = null;
     if (point) {
-      const position = (doc as Native).caretPositionFromPoint?.(point.clientX, point.clientY);
+      const position = doc.caretPositionFromPoint?.(point.clientX, point.clientY);
       if (position && link.contains(position.offsetNode)) {range = doc.createRange(); range.setStart(position.offsetNode, position.offset);}
       else {
-        const nativeRange = (doc as Native).caretRangeFromPoint?.(point.clientX, point.clientY) as Range | undefined;
+        const nativeRange = doc.caretRangeFromPoint?.(point.clientX, point.clientY);
         if (nativeRange && link.contains(nativeRange.startContainer)) range = nativeRange;
       }
     }
@@ -274,12 +281,12 @@ export class IdeaTitleEditors {
     const value = (link.textContent ?? '').replace(/[\r\n]+/g, ' ').trim();
     this.close(edit);
     if (value === edit.original) {if (focus && link.isConnected) link.focus({preventScroll: true}); return;}
-    const displayed = value || String(file.basename ?? edit.original);
+    const displayed = value || (typeof file.basename === 'string' ? file.basename : edit.original);
     link.textContent = displayed;
     try {
       // updateProperty creates the native undoable Bases transaction; no
       // filesystem writes, file renames, or formula changes happen here.
-      Promise.resolve(view.updateProperty(file, TITLE_PROPERTY, value)).catch(() => {
+      void Promise.resolve(view.updateProperty(file, TITLE_PROPERTY, value)).catch(() => {
         if (this.current(binding) && link.textContent === displayed && this.edit?.binding !== binding) link.textContent = edit.original;
         new Notice('想法标题未能保存，请重试');
       });
@@ -316,7 +323,7 @@ export class IdeaTitleEditors {
     if (!binding.hadCellClass) binding.cell.classList.remove('bui-idea-title-cell');
     this.bindings.delete(binding.link);
   }
-  private releaseView(view: Native) {for (const binding of this.bindings.values()) if (binding.view === view) this.release(binding);}
+  private releaseView(view: unknown) {for (const binding of this.bindings.values()) if (binding.view === view) this.release(binding);}
   prune() {
     this.pruneEdit();
     for (const binding of this.bindings.values()) if (!this.current(binding)) this.release(binding);

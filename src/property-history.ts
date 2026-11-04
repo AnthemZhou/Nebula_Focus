@@ -1,6 +1,9 @@
-type Native = any;
+import type {App, TAbstractFile, TFile} from 'obsidian';
 type Snapshot = Record<string, unknown>;
-const alreadyDesired = Symbol('property-history-already-desired');
+function markdownFile(file: TAbstractFile | null): file is TFile {
+  return !!file && 'extension' in file && file.extension === 'md';
+}
+const alreadyDesired = new Error('property-history-already-desired');
 
 function equal(left: unknown, right: unknown, seen = new WeakMap<object, Set<object>>()): boolean {
   if (Object.is(left, right)) return true;
@@ -21,13 +24,13 @@ function equal(left: unknown, right: unknown, seen = new WeakMap<object, Set<obj
 function clone(value: unknown, seen = new WeakMap<object, unknown>()): unknown {
   if (value === null || ['undefined', 'string', 'boolean', 'number'].includes(typeof value)) return value;
   if (typeof value !== 'object') throw new Error('事务包含无法恢复的属性值');
-  if (seen.has(value!)) return seen.get(value!);
+  if (seen.has(value)) return seen.get(value);
   const tag = Object.prototype.toString.call(value);
   if (tag === '[object Date]') return new Date(Date.prototype.getTime.call(value));
   if (tag !== '[object Object]' && tag !== '[object Array]') throw new Error('事务包含无法恢复的属性值');
-  const result: Native = Array.isArray(value) ? new Array(value.length) : {};
-  seen.set(value!, result);
-  for (const key of Object.keys(value!)) Object.defineProperty(result, key, {
+  const result: object = Array.isArray(value) ? new Array<unknown>(value.length) : {};
+  seen.set(value, result);
+  for (const key of Object.keys(value)) Object.defineProperty(result, key, {
     value: clone((value as Snapshot)[key], seen), enumerable: true, configurable: true, writable: true,
   });
   return result;
@@ -42,32 +45,42 @@ function snapshot(value: unknown): Snapshot {
  * The caller owns stacks and transaction ownership; this function never moves
  * a stack, changes view state, or reads/writes Markdown body text.
  */
-export async function applyPropertyTransaction(app: Native, _view: Native, transaction: Native, redo: boolean): Promise<void> {
+export async function applyPropertyTransaction(app: App, _view: unknown, transaction: unknown, redo: boolean): Promise<void> {
   const action = redo ? '重做' : '撤销';
-  if (!Array.isArray(transaction?.changes)) throw new Error(`无法${action}：事务记录无效。`);
-  const resolver = typeof app?.vault?.getFileByPath === 'function' ? app.vault.getFileByPath : app?.vault?.getAbstractFileByPath;
+  if (!transaction || typeof transaction !== 'object' || !('changes' in transaction) || !Array.isArray(transaction.changes)) throw new Error(`无法${action}：事务记录无效。`);
+  const resolver = typeof app?.vault?.getFileByPath === 'function' ? app.vault.getFileByPath.bind(app.vault)
+    : typeof app?.vault?.getAbstractFileByPath === 'function' ? app.vault.getAbstractFileByPath.bind(app.vault) : undefined;
   if (typeof resolver !== 'function' || typeof app?.fileManager?.processFrontMatter !== 'function')
     throw new Error(`无法${action}：原生属性恢复接口不可用。`);
-  let changes: {file: Native; path: string; expected: Snapshot; desired: Snapshot}[];
+  let changes: {file: unknown; path: string; expected: Snapshot; desired: Snapshot}[];
   try {
-    changes = transaction.changes.map((change: Native) => ({file: change.file, path: change.file?.path,
-      expected: snapshot(redo ? change.start : change.end), desired: snapshot(redo ? change.end : change.start)}));
+    const rawChanges: unknown[] = transaction.changes;
+    changes = rawChanges.map(change => {
+      if (!change || typeof change !== 'object') throw new Error('Invalid property change');
+      const fields = change as Record<string, unknown>;
+      const file = fields.file;
+      const path = file && typeof file === 'object' && 'path' in file && typeof file.path === 'string' ? file.path : '';
+      return {file, path, expected: snapshot(redo ? fields.start : fields.end), desired: snapshot(redo ? fields.end : fields.start)};
+    });
   } catch {throw new Error(`无法${action}：事务属性快照无效，已保留操作记录。`);}
 
   // Keep the native transaction's ordering, and stop immediately on failure.
   // Completed changes are recognised by their full desired snapshot on retry.
   for (const {file, path, expected, desired} of changes) {
     const failure = (reason: string) => new Error(`无法${action}“${path || '此笔记'}”：${reason}`);
-    const assertFile = () => {
-      if (file?.extension !== 'md') throw failure('仅支持 Markdown 笔记。');
-      if (!path || file.path !== path || resolver.call(app.vault, path) !== file)
+    const assertFile = (): TFile => {
+      if (!file || typeof file !== 'object' || !('extension' in file) || file.extension !== 'md')
+        throw failure('仅支持 Markdown 笔记。');
+      const current = path ? resolver(path) : null;
+      if (!('path' in file) || file.path !== path || !Object.is(current, file) || !markdownFile(current))
         throw failure('原笔记已删除、移动或被替换，未修改其他文件。');
+      return current;
     };
-    assertFile();
+    const liveFile = assertFile();
     let visited = false;
     let guardError: Error | undefined;
     try {
-      await app.fileManager.processFrontMatter(file, (current: Snapshot) => {
+      await app.fileManager.processFrontMatter(liveFile, (current: Snapshot) => {
         visited = true;
         try {
           assertFile();

@@ -65,14 +65,14 @@ function fixture() {
     open(){doc.body.append(this.modalEl);}
     close(){this.onClose?.();this.modalEl.remove();}
   }
-  const menus=[];
+  const menus=[], notices=[];
   class Menu {
     constructor(){this.items=[];menus.push(this);}
     addItem(callback){const item={setTitle(title){this.title=title;return this;},setIcon(){return this;},onClick(run){this.run=run;return this;}};callback(item);this.items.push(item);return this;}
     showAtPosition(position){this.position=position;}
     showAtMouseEvent(){}
   }
-  const api = {Plugin, TFile, TFolder: class {}, ItemView: class extends Component {}, MarkdownView, Component, Modal, Notice:class{}, Menu, setIcon(){}};
+  const api = {Plugin, TFile, TFolder: class {}, ItemView: class extends Component {}, MarkdownView, Component, Modal, Notice:class{constructor(message){notices.push(message);}}, Menu, setIcon(){}};
   const mod = {exports:{}};
   new vm.Script(fs.readFileSync('main.js','utf8')).runInContext(vm.createContext({
     module:mod,exports:mod.exports,require:name => {assert.equal(name,'obsidian'); return api;},
@@ -85,7 +85,7 @@ function fixture() {
   const fm = {截止日期:'2020-01-01',状态:'制作中',项目下一步:'Read the paper',项目摘要:'',次数:0};
   const app = plugin.app = {
     metadataCache: {getFileCache:() => ({frontmatter:fm,embeds:[{link:'first.png'},{link:'second.png'}]}), getFirstLinkpathDest:(link) => ({path:link})},
-    vault: {getResourcePath:file => 'app://local/'+file.path,getFileByPath:path=>({path}),read:async()=>originalText,
+    vault: {getResourcePath:file => 'app://local/'+file.path,getFileByPath:path=>path===file.path?file:{path},read:async()=>originalText,
       modify:(...args)=>writes.push(args),process:(...args)=>writes.push(args)},
     workspace:{openLinkText(){},trigger(){}},
     renderContext:{},
@@ -103,7 +103,7 @@ function fixture() {
     updateVirtualDisplay(){},register(){},
   };
   view.queryController.view=view;
-  return {dom,doc,plugin,view,entry,fm,file,writes,app,native,originalText,menus,close:()=>dom.window.close()};
+  return {dom,doc,plugin,view,entry,fm,file,writes,app,native,originalText,menus,notices,close:()=>dom.window.close()};
 }
 
 test('touch card menu moves only through an explicit native action and never opens the note on menu tap',()=>{
@@ -832,4 +832,121 @@ test('page sidebar preferences share the settings queue with tag edits and prese
     await assert.rejects(f.plugin.savePageSidebar({...sidebar, favorites: []}), /unavailable/);
     assert.equal(writes.length, 2);
   } finally {f.close();}
+});
+
+
+test('unknown native column and group data falls back without replacing note content',()=>{
+  for(const malformed of [
+    f=>{f.view.config.getOrder=()=>null;},
+    f=>{f.view.config.getOrder=()=>['file.name',42];},
+    f=>{f.view.config.getDisplayName=()=>({unexpected:'object'});},
+    f=>{f.view.orderedGroups=[{key:'bad',entries:[{file:null}]}];},
+    f=>{f.view.data=null;},
+    f=>{f.view.data={data:{length:1}};},
+  ]) {
+    const f=fixture();try{
+      f.plugin.attach(f.view);assert.equal(f.native.hidden,true);
+      malformed(f);assert.doesNotThrow(()=>f.view.onDataUpdated());
+      assert.equal(f.native.hidden,false);assert.equal(f.doc.querySelector('.bui-presentation').hidden,true);
+      assert.deepEqual(f.writes,[]);
+    }finally{f.close();}
+  }
+});
+
+test('presentation snapshots column names once and keeps its native render hook synchronous',()=>{
+  const f=fixture();try{
+    let reads=0;f.view.config.getOrder=()=>++reads===1?['file.name','note.项目下一步']:null;
+    const result={native:'return'};f.view.onDataUpdated=()=>result;
+    f.plugin.attach(f.view);
+    assert.equal(reads,1);assert.match(f.doc.querySelector('.bui-next-step').textContent,/Read the paper/);
+    f.view.config.getOrder=()=>['file.name','note.项目下一步'];f.fm.项目下一步='synchronous new value';
+    assert.equal(f.view.onDataUpdated(),result);
+    assert.match(f.doc.querySelector('.bui-next-step').textContent,/synchronous new value/);
+    assert.deepEqual(f.writes,[]);
+  }finally{f.close();}
+});
+
+test('native value conversion cannot inject an object string into card text',()=>{
+  const f=fixture();try{
+    f.view.config.getOrder=()=>['note.项目下一步'];
+    f.entry.getValue=()=>({toString:()=>({unexpected:true})});
+    f.plugin.attach(f.view);
+    assert.equal(f.doc.querySelector('.bui-field-value').textContent,'');
+    assert.doesNotMatch(f.doc.body.textContent,/\[object Object\]/);
+    assert.deepEqual(f.writes,[]);
+  }finally{f.close();}
+});
+
+test('stale and malformed native groups block retained create and move controls',()=>{
+  for(const invalid of [null,{},[{entries:null}],[]]) {
+    const f=fixture();try{
+      const target={key:{toString:()=> '完成'},entries:[]};f.view.orderedGroups.push(target);
+      const calls=[];f.view.createNoteInGroup=()=>calls.push('create');f.view.moveCardToColumn=()=>calls.push('card');f.view.moveColumn=()=>calls.push('column');
+      f.plugin.attach(f.view);const create=f.doc.querySelector('.bui-column-new');
+      f.doc.querySelector('.bui-card-action').click();const move=f.menus.at(-1).items.find(i=>i.title==='移至：完成').run;
+      f.doc.querySelector('.bui-column-action').click();const reorder=f.menus.at(-1).items[0].run;
+      f.view.orderedGroups=invalid;
+      assert.doesNotThrow(()=>{create.click();move();reorder();f.doc.querySelector('.bui-card-action').click();});
+      assert.deepEqual(calls,[]);assert.deepEqual(f.writes,[]);
+    }finally{f.close();}
+  }
+});
+
+test('explicit native create and move actions report synchronous throws and rejected promises',async()=>{
+  for(const mode of ['throw','reject']) for(const action of ['create','column-menu','card-menu','column-drop','card-drop']) {
+    const f=fixture();try{
+      const target={key:{toString:()=> '完成'},entries:[]};f.view.orderedGroups.push(target);
+      const message=mode+' '+action;
+      const fail=()=>{if(mode==='throw')throw Error(message);return Promise.reject(Error(message));};
+      f.view.createNoteInGroup=fail;f.view.moveColumn=fail;f.view.moveCardToColumn=fail;
+      f.plugin.attach(f.view);assert.deepEqual(f.notices,[]);
+      const fire=(element,type)=>element.dispatchEvent(new f.dom.window.Event(type,{bubbles:true,cancelable:true}));
+      if(action==='create')f.doc.querySelector('.bui-column-new').click();
+      if(action==='column-menu'){f.doc.querySelector('.bui-column-action').click();f.menus.at(-1).items[0].run();}
+      if(action==='card-menu'){f.doc.querySelector('.bui-card-action').click();f.menus.at(-1).items.find(i=>i.title==='移至：完成').run();}
+      if(action==='column-drop'){fire(f.doc.querySelector('.bui-group-heading'),'dragstart');fire(f.doc.querySelectorAll('.bui-column')[1],'drop');}
+      if(action==='card-drop'){fire(f.doc.querySelector('.bui-card'),'dragstart');fire(f.doc.querySelectorAll('.bui-column')[1],'drop');}
+      await new Promise(resolve=>setImmediate(resolve));
+      assert.deepEqual(f.notices,[message],mode+' '+action);assert.deepEqual(f.writes,[]);
+    }finally{f.close();}
+  }
+});
+
+
+test('presentation probes tolerate native getters during initialization and retry later',()=>{
+  const f=fixture();try{
+    let ready=false;const config=f.view.config;
+    Object.defineProperty(f.view,'config',{configurable:true,get(){if(!ready)throw Error('config initializing');return config;}});
+    assert.doesNotThrow(()=>f.plugin.attach(f.view));assert.equal(f.plugin.adapters.size,0);assert.equal(f.native.hidden,false);
+    ready=true;f.plugin.attach(f.view);assert.equal(f.plugin.adapters.size,1);assert.equal(f.doc.querySelectorAll('.bui-card').length,1);
+    const group=f.view.orderedGroups[0];const entries=group.entries;
+    Object.defineProperty(group,'entries',{configurable:true,get(){throw Error('groups initializing');}});
+    assert.doesNotThrow(()=>f.view.onDataUpdated());assert.equal(f.native.hidden,false);
+    Object.defineProperty(group,'entries',{configurable:true,value:entries});f.view.onDataUpdated();
+    assert.equal(f.doc.querySelector('.bui-presentation').hidden,false);assert.deepEqual(f.writes,[]);
+  }finally{f.close();}
+});
+
+test('native factories retain their return while queuing discovery of a partial view',()=>{
+  const f=fixture();try{
+    let ready=false,scheduled=0;const config=f.view.config, receiver={};
+    Object.defineProperty(f.view,'config',{configurable:true,get(){if(!ready)throw Error('config initializing');return config;}});
+    const registration={factory(...args){assert.equal(this,receiver);assert.deepEqual(args,['host']);return f.view;}};
+    f.app.internalPlugins={plugins:{bases:{instance:{registrations:{kanban:registration}}}}};
+    f.plugin.schedule=()=>{scheduled++;};f.plugin.installFactories();
+    assert.equal(registration.factory.call(receiver,'host'),f.view);
+    assert.equal(scheduled,1);assert.equal(f.plugin.adapters.size,0);
+    ready=true;f.plugin.attach(f.view);assert.equal(f.plugin.adapters.size,1);assert.equal(f.native.hidden,true);
+    assert.deepEqual(f.writes,[]);
+  }finally{f.close();}
+});
+
+test('table preparation defers an initializing config getter without disabling future preparation',()=>{
+  const f=fixture();try{
+    let ready=false;
+    const view={get config(){if(!ready)throw Error('config initializing');return {name:'Other table'};}};
+    assert.equal(f.plugin.prepareTable(view),false);
+    ready=true;assert.equal(f.plugin.prepareTable(view),true);
+    assert.deepEqual(f.writes,[]);
+  }finally{f.close();}
 });

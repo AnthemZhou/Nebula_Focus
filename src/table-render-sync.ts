@@ -1,6 +1,16 @@
-type Native = any;
+type NativeMethod = (this: unknown, ...args: unknown[]) => unknown;
+type TableView = {
+  type: 'table'; containerEl: HTMLElement; scrollEl?: unknown; _loaded?: unknown;
+  updateVirtualDisplay?: unknown;
+};
+function isTableView(view: unknown): view is TableView {
+  if (!view || typeof view !== 'object') return false;
+  const candidate = view as Record<string, unknown>;
+  return candidate.type === 'table' && candidate.containerEl instanceof HTMLElement;
+}
+const isMethod = (value: unknown): value is NativeMethod => typeof value === 'function';
 type Binding = {
-  view: Native; root: HTMLElement; original?: Native; wrapped?: Native; descriptor?: PropertyDescriptor;
+  view: TableView; root: HTMLElement; original?: NativeMethod; wrapped?: NativeMethod; descriptor?: PropertyDescriptor;
   observer: MutationObserver; live: boolean; painting: boolean; prepared: boolean; failed?: boolean;
 };
 
@@ -10,13 +20,13 @@ type Binding = {
  * retries until native data is ready, then runs once before that frame paints;
  * ordinary scrolling never repeats geometry setup or workspace discovery. */
 export class TableRenderSync {
-  private bindings = new Map<Native, Binding>();
-  constructor(private paint: (view: Native, root: HTMLElement) => void, private enabled: () => boolean,
-    private prepare?: (view: Native) => boolean) {}
+  private bindings = new Map<unknown, Binding>();
+  constructor(private paint: (view: unknown, root: HTMLElement) => void, private enabled: () => boolean,
+    private prepare?: (view: unknown) => boolean) {}
 
-  attach(view: Native) {
-    if (view?.type !== 'table' || !(view.containerEl instanceof HTMLElement)) return;
-    const container = view.containerEl as HTMLElement;
+  attach(view: unknown) {
+    if (!isTableView(view)) return;
+    const container = view.containerEl;
     const root: HTMLElement = view.scrollEl instanceof HTMLElement ? view.scrollEl
       : container.closest<HTMLElement>('.bases-view') ?? container;
     let binding = this.bindings.get(view);
@@ -40,12 +50,13 @@ export class TableRenderSync {
       if (records.length) this.refresh(current);
     });
     const descriptor = Object.getOwnPropertyDescriptor(view, 'updateVirtualDisplay');
-    if (typeof view.updateVirtualDisplay === 'function' && (!descriptor || descriptor.writable || descriptor.configurable)) {
-      current.original = view.updateVirtualDisplay; current.descriptor = descriptor;
-      const synchronizer = this;
-      current.wrapped = function(this: Native, ...args: Native[]) {
-        const result = current.original.apply(this, args);
-        synchronizer.refresh(current);
+    const original = view.updateVirtualDisplay;
+    if (isMethod(original) && (!descriptor || descriptor.writable || descriptor.configurable)) {
+      current.original = original; current.descriptor = descriptor;
+      const refresh = () => this.refresh(current);
+      current.wrapped = function(this: unknown, ...args: unknown[]) {
+        const result = original.apply(this, args);
+        refresh();
         return result;
       };
       view.updateVirtualDisplay = current.wrapped;
@@ -56,7 +67,7 @@ export class TableRenderSync {
   }
 
   /** Automatic row geometry calls this while its own observer is disconnected. */
-  refreshView(view: Native) {
+  refreshView(view: unknown) {
     const binding = this.bindings.get(view);
     if (binding) this.refresh(binding);
   }

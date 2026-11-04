@@ -1043,3 +1043,21 @@ test('phone placeholder promoted in place to the real query owner joins existing
   await placeholder.view.undoTransaction();assert.equal(f.files.has(file.path),false);
   await f.view.redoTransaction();assert(f.files.has(file.path));assert.equal(placeholder.view.redoStack.length,0);
 });
+
+
+test('partially initialized native config getters cannot abort creation and are retried after initialization',async t=>{
+  const f=fixture(t);f.history.clear();
+  const config=f.view.config;let getterReads=0;
+  delete f.view.config;
+  Object.defineProperty(f.view,'isGroupedByFolder',{configurable:true,get(){getterReads++;return this.config.groupBy?.property==='file.folder';}});
+  assert.doesNotThrow(()=>f.history.attach(f.view));
+  assert.equal(getterReads,0,'config readiness is checked before computed native flags');
+  assert.equal(f.menu.open,f.original.open);assert.equal(f.view.undoTransaction,f.original.undo);
+  // The native constructor may fill config before another dependent field.
+  f.view.config=config;let ready=false;
+  Object.defineProperty(f.view,'isReadOnly',{configurable:true,get(){if(!ready)throw Error('controller initializing');return false;}});
+  assert.doesNotThrow(()=>f.history.attach(f.view));assert.equal(f.menu.open,f.original.open);
+  ready=true;f.history.attach(f.view);assert.notEqual(f.menu.open,f.original.open);
+  const file=await f.created();await f.view.undoTransaction();assert.equal(f.files.has(file.path),false);
+  await f.view.redoTransaction();assert.equal(f.files.has(file.path),true);
+});

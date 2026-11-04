@@ -4,20 +4,43 @@ import {supportsIdeaTagCell} from './idea-tag-support';
  * Wrap the native column-width accessor, which is shared by rendering, hit testing
  * and selection. Never change customWidth, configuration, or persisted note data.
  */
-type Native = any;
+import {IdeaView, IdeaCell, isIdeaView, isIdeaCell, isHtmlElement, object} from './idea-native';
+type WidthInfo = {getWidth?: (...args: unknown[]) => number};
+type WidthEntry = {getValue(property: string): unknown};
+type WidthView = IdeaView & {
+  containerEl: HTMLElement;
+  data: {data: WidthEntry[]; properties?: string[]};
+  header: {cells: IdeaCell[]};
+  columnInfo?: Record<string, unknown>;
+  updateVirtualDisplay(): unknown;
+};
+function widthEntry(value: unknown): value is WidthEntry {return object(value) && typeof value.getValue === 'function';}
+function widthInfo(value: unknown): value is WidthInfo & Required<WidthInfo> {
+  return object(value) && typeof value.getWidth === 'function';
+}
+function widthView(value: unknown): value is WidthView {
+  if (!object(value)) return false;
+  const raw = value;
+  if (!isIdeaView(value) || !isHtmlElement(value.containerEl)) return false;
+  const header = raw.header, data = value.data;
+  return object(header) && Array.isArray(header.cells) && header.cells.every(isIdeaCell) &&
+    !!data && Array.isArray(data.data) && data.data.every(widthEntry) &&
+    (data.properties === undefined || (Array.isArray(data.properties) && data.properties.every(item => typeof item === 'string'))) &&
+    (raw.columnInfo === undefined || object(raw.columnInfo)) && typeof raw.updateVirtualDisplay === 'function';
+}
 const PROPERTIES = ['note.领域', 'note.类型', 'note.重要性'] as const;
 const FONT_PROPERTIES = ['font-family', 'font-size', 'font-weight', 'font-style', 'font-stretch',
   'font-variant', 'font-feature-settings', 'font-variation-settings', 'font-kerning',
   'letter-spacing', 'word-spacing', 'text-transform', 'direction'] as const;
 
 type WidthPatch = {
-  info: Native;
+  info: WidthInfo;
   minimum: number;
-  original: (...args: Native[]) => number;
-  wrapper: (...args: Native[]) => number;
+  original: (...args: unknown[]) => number;
+  wrapper: (...args: unknown[]) => number;
   descriptor?: PropertyDescriptor;
 };
-type ViewState = {host: HTMLElement; patches: Map<string, WidthPatch>; keys: Map<string, string>};
+type ViewState = {view: WidthView; host: HTMLElement; patches: Map<string, WidthPatch>; keys: Map<string, string>};
 
 function pixels(value: string | undefined): number {
   const result = parseFloat(value ?? '');
@@ -28,24 +51,25 @@ function horizontal(style: CSSStyleDeclaration): number {
     pixels(style.borderLeftWidth) + pixels(style.borderRightWidth) +
     pixels(style.marginLeft) + pixels(style.marginRight);
 }
-function values(value: Native): string[] {
+function values(value: unknown): string[] {
   if (value == null) return [];
   if (Array.isArray(value)) return value.flatMap(values);
   if (typeof value === 'object' && 'data' in value) return values(value.data);
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean')
     return String(value).trim() ? [String(value)] : [];
-  const text = value.toString?.();
+  const text = object(value) && typeof value.toString === 'function'
+    ? (value.toString as () => unknown).call(value) : undefined;
   return typeof text === 'string' && text && text !== '[object Object]' ? [text] : [];
 }
 
-function nativeCell(view: Native, property: string): Native | null {
+function nativeCell(view: WidthView, property: string): IdeaCell | null {
   // Horizontal virtualization removes cells from the document, but keeps the
   // native row's full cell list. Sample the same schema even when scrolled away.
   for (const row of view.rows ?? []) {
-    const cell = row.cells?.find((cell: Native) => cell.prop === property);
+    const cell = row.cells?.find((cell: IdeaCell) => cell.prop === property);
     if (cell?.el instanceof HTMLElement) return cell;
   }
-  const el = view.containerEl.querySelector(`.bases-td[data-property="${property}"]`);
+  const el = view.containerEl.querySelector<HTMLElement>(`.bases-td[data-property="${property}"]`);
   return el ? {el} : null;
 }
 
@@ -81,25 +105,25 @@ class TextMeasure {
 }
 
 export class IdeaColumnWidths {
-  private states = new Map<Native, ViewState>();
+  private states = new Map<unknown, ViewState>();
   private widths = new Map<string, number>();
   private revision = 0;
 
   /** Call after applying the presentation classes. True means native geometry
    * needs one updateVirtualDisplay() call; repeated unchanged scans return false.
    */
-  refresh(view: Native): boolean {
-    const host = view?.queryController?.viewContainerEl;
-    if (view?.type !== 'table' || view.config?.name !== '想法收集箱' ||
-        !(host instanceof HTMLElement) || !(view.containerEl instanceof HTMLElement) ||
-        typeof view.updateVirtualDisplay !== 'function') return this.release(view);
+  refresh(view: unknown): boolean {
+    if (!isIdeaView(view)) return this.release(view);
+    const host = view.queryController?.viewContainerEl;
+    if (!isHtmlElement(host) || !isHtmlElement(view.containerEl)) return this.release(view);
+    if (!('updateVirtualDisplay' in view) || typeof view.updateVirtualDisplay !== 'function') return this.release(view);
     if (!host.isConnected || view._loaded === false) return this.release(view);
     // Cached editor/preview components can be hidden. Measure only when their
     // actual native controls have layout; the next visible scan will attach.
-    if (!Array.isArray(view.data?.data) || !Array.isArray(view.header?.cells)) return false;
+    if (!widthView(view)) return false;
     let state = this.states.get(view);
     if (!state) {
-      state = {host, patches: new Map(), keys: new Map()};
+      state = {view, host, patches: new Map(), keys: new Map()};
       this.states.set(view, state);
     }
     // Existing clamps are independent of the chosen column width. During a
@@ -114,14 +138,14 @@ export class IdeaColumnWidths {
       for (const property of PROPERTIES) {
         if (!view.data.properties?.includes(property)) continue;
         const info = view.columnInfo?.[property];
-        if (!info || typeof info.getWidth !== 'function') continue;
+        if (!widthInfo(info)) continue;
         const labels = new Set<string>();
         for (const entry of view.data.data) {
           try {for (const text of values(entry.getValue(property))) labels.add(text);} catch { /* Unsupported native values do not contribute to the column minimum. */ }
         }
-        const header = view.header.cells.find((cell: Native) => cell.prop === property);
+        const header = view.header.cells.find((cell: IdeaCell) => cell.prop === property);
         const label = header?.el?.querySelector('.bases-table-header-name')?.textContent ?? '';
-        const sample = nativeCell(view, property), cell = sample?.el as HTMLElement | undefined;
+        const sample = nativeCell(view, property), cell = sample?.el;
         const kind = cell?.querySelector('.bases-table-cell')?.getAttribute('data-property-type') ?? '';
         const picker = !!cell && supportsIdeaTagCell(view, sample, property.slice(5), cell);
         const key = JSON.stringify([fontKey, label, kind, picker,
@@ -140,7 +164,7 @@ export class IdeaColumnWidths {
           const descriptor = Object.getOwnPropertyDescriptor(info, 'getWidth');
           if (descriptor && !descriptor.configurable && !descriptor.writable) continue;
           const next: WidthPatch = {info, minimum, original: info.getWidth, descriptor, wrapper: () => 0};
-          next.wrapper = function(this: Native, ...args: Native[]) {
+          next.wrapper = function(this: WidthInfo, ...args: unknown[]) {
             return Math.max(next.original.apply(this, args), next.minimum);
           };
           try {info.getWidth = next.wrapper;} catch {continue;}
@@ -157,17 +181,17 @@ export class IdeaColumnWidths {
     return changed;
   }
 
-  private minimum(view: Native, property: string, measure: TextMeasure, labels: string[]): number {
-    const header = view.header.cells.find((cell: Native) => cell.prop === property);
-    const headerName = header?.el?.querySelector('.bases-table-header-name') as HTMLElement | null;
-    const label = header?.innerEl as HTMLElement | undefined;
-    if (!headerName || !label) return 0;
+  private minimum(view: WidthView, property: string, measure: TextMeasure, labels: string[]): number {
+    const header = view.header.cells.find((cell: IdeaCell) => cell.prop === property);
+    const headerName = header?.el?.querySelector<HTMLElement>('.bases-table-header-name');
+    const label = header?.innerEl;
+    if (!header?.el || !headerName || !label) return 0;
     const win = headerName.ownerDocument.defaultView!;
     const style = (el: Element) => win.getComputedStyle(el);
     const icon = label.querySelector<HTMLElement>('.bases-table-header-icon');
     const iconWidth = icon && style(icon).display !== 'none' ? icon.getBoundingClientRect().width : 0;
     const labelStyle = style(label);
-    const sort = header.el.querySelector('.bases-table-header-sort') as HTMLElement | null;
+    const sort = header.el.querySelector<HTMLElement>('.bases-table-header-sort');
     const sortIcon = sort?.querySelector('svg');
     // Native sort arrows are absolutely positioned. Reserve their slot even
     // before a sort is enabled, so enabling one never hides the header text.
@@ -189,7 +213,7 @@ export class IdeaColumnWidths {
       // Otherwise the first clamp reserves a native remove button and a later
       // scan shrinks the column when the picker hides it, rewrapping tag rows.
       cell.classList.toggle('bui-tag-picker-cell',
-        supportsIdeaTagCell(view, sample, property.slice(5), sample.el));
+        supportsIdeaTagCell(view, sample, property.slice(5), sample?.el ?? cell));
       cell.setAttribute('aria-hidden', 'true'); cell.inert = true;
       cell.removeAttribute('style');
       cell.classList.add('bui-tag-width-measure');
@@ -254,7 +278,7 @@ export class IdeaColumnWidths {
     else delete patch.info.getWidth;
   }
 
-  private release(view: Native): boolean {
+  private release(view: unknown): boolean {
     const state = this.states.get(view);
     if (!state) return false;
     for (const patch of state.patches.values()) this.restore(patch);
@@ -263,7 +287,7 @@ export class IdeaColumnWidths {
   }
 
   prune() {
-    for (const [view, state] of this.states) if (view._loaded === false || !state.host.isConnected) this.release(view);
+    for (const [view, state] of this.states) if (state.view._loaded === false || !state.host.isConnected) this.release(view);
   }
 
   /** Restore accessors, then let the caller's normal css-change refresh native geometry. */

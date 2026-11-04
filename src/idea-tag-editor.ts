@@ -10,18 +10,27 @@ export type {IdeaTagOrderStore} from './idea-tag-order';
 
 // Bases has no public cell-editor extension point. If this guarded adapter no
 // longer recognises the native renderer, leave that cell's native editor alone.
-type Native = any;
+import {EditableIdeaView, IdeaView, IdeaEntry, IdeaFile, IdeaCell, isEditableIdeaView,
+  isHtmlElement, isIdeaView, isIdeaEntry, isIdeaCell, isIdeaIndex, isIterable, object} from './idea-native';
+type ReadableEntry = IdeaEntry & {getRawProperty(property: string): unknown};
+type TagCell = IdeaCell & {renderer: {entry: ReadableEntry; propertyEditor?: unknown; val?: unknown}};
+function readableEntry(value: unknown): value is ReadableEntry {
+  return isIdeaEntry(value) && typeof value.getRawProperty === 'function';
+}
+function tagCell(value: unknown): value is TagCell {
+  return isIdeaCell(value) && !!value.renderer && readableEntry(value.renderer.entry);
+}
 type Property = '领域' | '类型' | '重要性';
 type Value = string | string[];
-type Binding = {view: Native; host: HTMLElement; removeListeners: (() => void)[]; markedCells: Set<HTMLElement>};
-type Target = {binding: Binding; cell: Native; anchor: HTMLElement; entry: Native; property: Property};
+type Binding = {view: EditableIdeaView; host: HTMLElement; removeListeners: (() => void)[]; markedCells: Set<HTMLElement>};
+type Target = {binding: Binding; cell: TagCell; anchor: HTMLElement; entry: ReadableEntry; property: Property};
 type Choice = {value: string; create: boolean};
 type Drag = {
   pointerId: number; value: string; row: HTMLElement; startX: number; startY: number; moved: boolean;
   original: string[]; preview: string[]; motion: TagDragMotion; activated: boolean; holdTimer?: number; settling?: boolean; removeListeners: (() => void)[];
 };
 type Editor = Target & {
-  file: Native; query: Native; popup: HTMLElement; selectedEl: HTMLElement; input: HTMLInputElement;
+  file: IdeaFile; query: unknown; popup: HTMLElement; selectedEl: HTMLElement; input: HTMLInputElement;
   optionsEl: HTMLElement; statusEl: HTMLElement; values: string[]; displayedValues: string[]; choices: Choice[]; active: number;
   observedValues: string[]; awaitingValues: string[][]; pendingDisplay?: string[]; syncTimer?: number; saving: boolean;
   clearInputOnSync?: string; closeOnSync: boolean; lastAttemptFailed: boolean;
@@ -50,7 +59,7 @@ function unmodified(event: MouseEvent | KeyboardEvent): boolean {
  * path. Opening, filtering, blur and cancellation never write note data.
  */
 export class IdeaTagEditors {
-  private bindings = new Map<Native, Binding>();
+  private bindings = new Map<unknown, Binding>();
   private editor?: Editor;
   private orders = new Map<string, string[]>();
   private catalogs = new Map<string, {added: string[]; hidden: string[]}>();
@@ -80,7 +89,7 @@ export class IdeaTagEditors {
     return {added: [...cached.added], hidden: [...cached.hidden]};
   }
 
-  private catalog(view: Native, property: Property, selected: string[] = []): TagCatalog {
+  private catalog(view: IdeaView, property: Property, selected: string[] = []): TagCatalog {
     const key = ideaTagOrderKey(view, property), order = this.readOrder(key), options = this.readOptions(key);
     const values = new Set<string>();
     for (const entry of this.entries(view)) {
@@ -92,7 +101,8 @@ export class IdeaTagEditors {
   }
 
   /** Called by the header adapter; returns false for non-classification columns. */
-  manage(view: Native, rawProperty: string, anchor: HTMLElement, keyboard = false): boolean {
+  manage(view: unknown, rawProperty: string, anchor: HTMLElement, keyboard = false): boolean {
+    if (!isIdeaView(view)) return false;
     const property = rawProperty.replace(/^note\./, '') as Property;
     const key = ideaTagOrderKey(view, property);
     if (!rawProperty.startsWith('note.') || !PROPERTIES.has(property) || !key || !this.orderStore?.writeOptions) return false;
@@ -105,10 +115,13 @@ export class IdeaTagEditors {
       }});
   }
 
-  attach(view: Native) {
-    const container = view?.containerEl as HTMLElement | undefined;
-    const candidate = view?.queryController?.viewContainerEl as HTMLElement | undefined;
-    const host = candidate?.contains(container!) ? candidate : container?.parentElement;
+  attach(view: unknown) {
+    if (!isEditableIdeaView(view)) {
+      const old = this.bindings.get(view); if (old) this.detach(old); return;
+    }
+    const container = view.containerEl;
+    const candidate = view.queryController?.viewContainerEl;
+    const host = isHtmlElement(candidate) && candidate.contains(container) ? candidate : container.parentElement;
     if (!host || !container || view?.type !== 'table' || view.config?.name !== '想法收集箱' ||
         typeof view.getCellFromDom !== 'function' || typeof view.updateProperty !== 'function' ||
         !container.isConnected || view._loaded === false) {
@@ -157,7 +170,7 @@ export class IdeaTagEditors {
    * the native removal affordance. Unknown/read-only cells keep native controls. */
   private refreshCellMarkers(binding: Binding) {
     const current = new Set<HTMLElement>();
-    for (const anchor of binding.view.containerEl.querySelectorAll('.bases-td[data-property]') as NodeListOf<HTMLElement>) {
+    for (const anchor of binding.view.containerEl.querySelectorAll<HTMLElement>('.bases-td[data-property]')) {
       try {if (this.target(binding, anchor)) current.add(anchor);} catch { /* Keep the native renderer on unknown structures. */ }
     }
     for (const anchor of binding.markedCells) if (!current.has(anchor)) anchor.classList.remove('bui-tag-picker-cell');
@@ -171,16 +184,20 @@ export class IdeaTagEditors {
     if (!anchor || !view.containerEl.contains(anchor) || !binding.host.contains(anchor)) return null;
     const property = anchor.dataset.property?.replace(/^note\./, '') as Property;
     if (!anchor.dataset.property?.startsWith('note.') || !PROPERTIES.has(property)) return null;
-    const cell = view.getCellFromDom(anchor), entry = cell?.renderer?.entry;
-    const result = {binding, cell, anchor, entry, property};
+    const cell = view.getCellFromDom(anchor);
+    if (!tagCell(cell)) return null;
+    const entry = cell.renderer.entry;
+    const result: Target = {binding, cell, anchor, entry, property};
     return this.editable(result) ? result : null;
   }
 
   private keyboardTarget(binding: Binding, target: EventTarget | null): Target | null {
     const {view} = binding, index = view.activeCell;
-    if (target !== view.containerEl || !index || view.selection) return null;
-    const entry = view.data?.groupedData?.[index.groupIdx]?.entries?.[index.row];
-    const row = view.rows?.find((item: Native) => item.entry === entry);
+    if (target !== view.containerEl || !isIdeaIndex(index) || view.selection) return null;
+    const groups = view.data?.groupedData;
+    const group: unknown = Array.isArray(groups) ? groups[index.groupIdx] : undefined;
+    const entry: unknown = object(group) && Array.isArray(group.entries) ? group.entries[index.row] : undefined;
+    const row = view.rows?.find(item => item.entry === entry);
     return this.target(binding, row?.cells?.[index.column]?.el ?? null);
   }
 
@@ -197,19 +214,22 @@ export class IdeaTagEditors {
     return true;
   }
 
-  private entries(view: Native): Native[] {
+  private entries(view: IdeaView): IdeaEntry[] {
     // Native query results are already scoped to this database. Never collect
     // every vault property: unrelated databases may use the same property key.
     const results = view.queryController?.results;
-    if (results && typeof results.values === 'function' && typeof results.get === 'function') return Array.from(results.values());
-    return Array.isArray(view.data?.data) ? view.data.data : [];
+    if (object(results) && typeof results.values === 'function' && typeof results.get === 'function') {
+      const entries: unknown = (results.values as () => unknown).call(results);
+      if (isIterable(entries)) return Array.from(entries).filter(isIdeaEntry);
+    }
+    const data: unknown = view.data?.data;
+    return Array.isArray(data) ? data.filter(isIdeaEntry) : [];
   }
 
-  private currentEntry(edit: Editor): Native | null {
+  private currentEntry(edit: Editor): ReadableEntry | null {
     if (!this.bindings.has(edit.binding.view) || edit.binding.view.config?.query !== edit.query ||
         !this.editable(edit) || edit.cell.renderer.entry.file.path !== edit.file.path) return null;
-    return this.entries(edit.binding.view).find(entry => entry?.file?.path === edit.file.path &&
-      typeof entry.getRawProperty === 'function') ?? null;
+    return this.entries(edit.binding.view).filter(readableEntry).find(entry => entry.file.path === edit.file.path) ?? null;
   }
 
   private open(target: Target, keyboard = false) {
@@ -673,7 +693,9 @@ export class IdeaTagEditors {
       try {
         const actual = valuesOf(this.currentEntry(edit)?.getRawProperty(edit.property), edit.property);
         const notify = edit.binding.view.queryController?.requestNotifyView;
-        if (JSON.stringify(actual) === JSON.stringify(edit.pendingDisplay) && typeof notify?.run === 'function') notify.run();
+        if (JSON.stringify(actual) === JSON.stringify(edit.pendingDisplay) &&
+            (typeof notify === 'function' || object(notify)) && 'run' in notify && typeof notify.run === 'function')
+          (notify.run as () => unknown).call(notify);
       } catch { /* An unknown native scheduler simply keeps its usual timing. */ }
       this.syncCommittedEditor(edit.binding);
       if (this.editor !== edit || edit.lastAttemptFailed || !edit.pendingDisplay) return;

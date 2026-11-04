@@ -396,3 +396,14 @@ test('classification width is stable across empty first rows, metadata refresh a
     assert.equal(container.querySelector('[aria-hidden="true"]'),null);assert.equal(info.customWidth,130);
   }finally{widths.clear();dom.window.close();}
 });
+
+
+test('unrecognized native layout shapes fall back without wrapping geometry methods',()=>{
+  const f=fixture();try {
+    f.view.groups[0].tbodyEl={};
+    assert.equal(f.adapter.refresh(f.view),false);
+    assert.equal(f.view.updateVirtualDisplay,f.original.updateVirtualDisplay);
+    assert.equal(f.host.classList.contains('bui-ideas-auto'),false);
+    assert.equal(f.container.querySelector('[aria-hidden="true"]'),null);
+  }finally{f.close();}
+});

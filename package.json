@@ -1,11 +1,12 @@
 {
   "name": "nebula-focus",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Notion-like native Bases UI: compact tables, colored tags, covers and inline editing.",
   "main": "main.js",
   "license": "GPL-3.0-only",
   "author": "Shengyu Zhou",
   "scripts": {
+    "lint": "eslint src",
     "build": "tsc --noEmit && node esbuild.config.mjs",
     "dev": "node esbuild.config.mjs --watch",
     "test": "node --test tests/*.test.cjs",
@@ -14,8 +15,13 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "esbuild": "^0.25.0",
+    "eslint": "10.14.0",
+    "eslint-plugin-obsidianmd": "0.4.2",
     "jsdom": "^26.0.0",
     "obsidian": "1.14.4",
     "typescript": "^5.9.0"
+  },
+  "overrides": {
+    "moment": "2.31.0"
   }
 }

@@ -1,4 +1,14 @@
-type Native = any;
+type RecordValue = Record<string, unknown>;
+function record(value: unknown): value is RecordValue {return !!value && typeof value === 'object';}
+function callable(value: unknown): value is (...args: unknown[]) => unknown {return typeof value === 'function';}
+function readOnly(value: unknown): boolean {return record(value) && (value.isReadOnly === true || value.readOnly === true);}
+function closestReadOnly(value: unknown): boolean {
+  return record(value) && callable(value.closest) && !!value.closest.call(value, READ_ONLY);
+}
+function validSort(value: unknown): value is Sort {
+  return record(value) && typeof value.property === 'string' &&
+    typeof value.direction === 'string' && ['ASC', 'DESC'].includes(value.direction);
+}
 type Sort = {property: string; direction: string; [key: string]: unknown};
 const READ_ONLY = '[disabled], [aria-disabled="true"], [aria-readonly="true"], [data-readonly="true"], .is-read-only, .is-readonly, .mod-readonly';
 
@@ -7,20 +17,20 @@ const READ_ONLY = '[disabled], [aria-disabled="true"], [aria-readonly="true"], [
  * Obsidian 1.14.5 schedules disk writes without returning their completion, so
  * this cannot promise that the queued write has reached disk. No note is written.
  */
-export async function ensureCreationOrder(view: Native): Promise<boolean> {
-  const config = view?.config, query = config?.query, controller = view?.queryController;
-  if (view?.type !== 'table' || config?.name !== '想法收集箱' || view?._loaded === false ||
-      typeof config.getSort !== 'function' || typeof query?.saveFn !== 'function') return false;
-  if ([view, config, query, controller].some(target => target?.isReadOnly === true || target?.readOnly === true)) return false;
-  if (view.containerEl?.closest?.(READ_ONLY) || view.theadEl?.closest?.(READ_ONLY)) return false;
-  const path = typeof query.file === 'string' ? query.file : query.file?.path;
+export async function ensureCreationOrder(view: unknown): Promise<boolean> {
+  if (!record(view) || !record(view.config) || !record(view.config.query)) return false;
+  const config = view.config, query = view.config.query, controller = view.queryController;
+  if (view.type !== 'table' || config.name !== '想法收集箱' || view._loaded === false ||
+      !callable(config.getSort) || !callable(query.saveFn)) return false;
+  if ([view, config, query, controller].some(readOnly)) return false;
+  if (closestReadOnly(view.containerEl) || closestReadOnly(view.theadEl)) return false;
+  const path = typeof query.file === 'string' ? query.file : record(query.file) ? query.file.path : undefined;
   // Inline Bases can save their configuration into the containing Markdown.
   // Require the native query's own external .base identity, not sourcePath:
   // sourcePath often points to the Markdown note embedding an external Base.
   if (typeof path !== 'string' || !/\.base$/i.test(path) || /^(?:[a-z]+:|\/)/i.test(path)) return false;
   const current: unknown = config.getSort();
-  if (!Array.isArray(current) || current.some(item => !item || typeof item.property !== 'string' ||
-      !['ASC', 'DESC'].includes(item.direction))) return false;
+  if (!Array.isArray(current) || !current.every(validSort)) return false;
   if (current.some(item => item.property === 'file.ctime')) return false;
   const previous = Object.getOwnPropertyDescriptor(config, 'sort');
   if (previous && (!('value' in previous) || previous.writable === false)) return false;
