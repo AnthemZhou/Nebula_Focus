@@ -2,9 +2,16 @@
 
 ## 中文
 
+### 发布与目录状态（2026-11-04）
+
+1.1.0 的真机对齐检查完成后，已发布到 GitHub 并提交官方目录。目录首轮扫描要求简介删除重复的“Obsidian”字样；1.1.1 已修正该发布元数据并发布。两版 `main.js` 与 `styles.css` 逐字节相同，GitHub CI 的构建与 295 项测试通过。唯一测试库已原处更新。
+
+官方条目：[Nebula Focus](https://community.obsidian.md/plugins/nebula-focus)。截至本记录，目录仍在处理审核；手动检测新 Release 遇到刷新间隔限制，尚未确认 1.1.1 审核通过或可从手机插件库安装。首轮扫描中的原生内部类型适配提示为 Warning，发布附件溯源与附加 ZIP 提示为 Recommendation；不把这些结果写成零警告。
+
+
 2026-11-04 最终真机镜像检查：同一 iCloud 库更名为 `Nebula-Focus-iPhone` 并重载更新后，单行标题与页面图标在首行触摸区域内居中；点击进入原位编辑后文字高度不跳变，紫色选中轮廓完整。长标题仍自然换行，多标签扩高的行保留顶部对齐。库列表只保留一个测试库；桌面也移除了旧 R9 的入口。13 篇原始虚构 Markdown 完整内容逐字节未变。
 
-### 当前状态：1.1.0 发布准备（2026-11-04）
+### 1.1.0 发布前验证记录（2026-11-04）
 
 1.1.0 正在准备发布，最低 Obsidian **1.14.5**，已允许移动端加载；构建与 **295/295** 自动测试通过。iPhone 核心流程已有用户直接确认，包括标签字号一致及「新建→加标签→撤销两次→重做两次」正常。手机隐藏撤销/重做额外行已通过 R10 真机镜像检查。
 
@@ -148,9 +155,16 @@ R10 候选 SHA-256：`main.js` 为 `e7e838dcc333bf9249516445f6c635dee505d5920b0b
 
 ## English
 
+### Release and directory status (2026-11-04)
+
+After the final actual-iPhone alignment check, version 1.1.0 was published on GitHub and submitted to the directory. The first scan required removal of the redundant “Obsidian” word from the description; version 1.1.1 fixes that metadata and is published. Both versions have byte-identical `main.js` and `styles.css`; GitHub CI build and all 295 tests pass. The single persistent test vault was updated in place.
+
+[Official listing](https://community.obsidian.md/plugins/nebula-focus): review is still in progress at this record. A manual new-release check encountered the directory refresh cooldown; 1.1.1 approval and installation through phone community search are not yet confirmed. Internal native-type adapter findings were Warnings; artifact attestations and extra ZIP attachments were Recommendations. This is not a zero-warning claim.
+
+
 Final actual-iPhone Mirroring check, 2026-11-04: after reloading the same iCloud vault renamed `Nebula-Focus-iPhone`, single-line titles and page icons are centered within the first-line touch target. Entering inline edit preserves text position and the complete selection outline. Long titles still wrap naturally; tag-expanded rows remain top-aligned. The vault list contains one test vault, and the old desktop R9 entry was removed. All 13 original fictional Markdown files are byte-for-byte unchanged.
 
-### Current status: 1.1.0 release preparation (2026-11-04)
+### 1.1.0 pre-release verification record (2026-11-04)
 
 Version 1.1.0 is in release preparation, with Obsidian **1.14.5** as its minimum and mobile loading enabled. The build and **295/295** automated tests pass. Core iPhone workflows have direct user confirmation, including consistent tag font sizes and creation → tag edit → two undos → two redos. R10's removal of the extra phone history row passed scoped actual-device Mirroring checks.
 

@@ -1,6 +1,20 @@
-# Nebula Focus validation — 1.1.0 release preparation
+# Nebula Focus validation — 1.1 series
 
-## Current status / 当前状态 — 2026-11-04
+### 发布与目录状态（2026-11-04）
+
+1.1.0 的真机对齐检查完成后，已发布到 GitHub 并提交官方目录。目录首轮扫描要求简介删除重复的“Obsidian”字样；1.1.1 已修正该发布元数据并发布。两版 `main.js` 与 `styles.css` 逐字节相同，GitHub CI 的构建与 295 项测试通过。唯一测试库已原处更新。
+
+官方条目：[Nebula Focus](https://community.obsidian.md/plugins/nebula-focus)。截至本记录，目录仍在处理审核；手动检测新 Release 遇到刷新间隔限制，尚未确认 1.1.1 审核通过或可从手机插件库安装。首轮扫描中的原生内部类型适配提示为 Warning，发布附件溯源与附加 ZIP 提示为 Recommendation；不把这些结果写成零警告。
+
+
+### Release and directory status (2026-11-04)
+
+After the final actual-iPhone alignment check, version 1.1.0 was published on GitHub and submitted to the directory. The first scan required removal of the redundant “Obsidian” word from the description; version 1.1.1 fixes that metadata and is published. Both versions have byte-identical `main.js` and `styles.css`; GitHub CI build and all 295 tests pass. The single persistent test vault was updated in place.
+
+[Official listing](https://community.obsidian.md/plugins/nebula-focus): review is still in progress at this record. A manual new-release check encountered the directory refresh cooldown; 1.1.1 approval and installation through phone community search are not yet confirmed. Internal native-type adapter findings were Warnings; artifact attestations and extra ZIP attachments were Recommendations. This is not a zero-warning claim.
+
+
+## 1.1.0 pre-release verification record — 2026-11-04
 
 Version **1.1.0** is in release preparation, with Obsidian **1.14.5** as the minimum
 and mobile loading enabled. The current build and **295/295** automated tests pass.
