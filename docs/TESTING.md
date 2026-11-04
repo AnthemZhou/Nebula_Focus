@@ -2,21 +2,21 @@
 
 ### 发布与目录状态（2026-11-04）
 
-1.1.0 的真机对齐检查完成后，已发布到 GitHub 并提交官方目录。目录首轮扫描要求简介删除重复的“Obsidian”字样；1.1.1 已修正该发布元数据并发布。两版 `main.js` 与 `styles.css` 逐字节相同，GitHub CI 的构建与 295 项测试通过。唯一测试库已原处更新。
+1.1.0 的真机对齐检查完成后，已发布到 GitHub 并提交官方目录。2026-11-04 的失败通知明确对应 **1.1.0**：其唯一 Error 是简介不能包含目录语境中重复的“Obsidian”字样。**1.1.1** 已删除该字样并发布到 GitHub，最新复检不再出现这一 Error。两版 `main.js` 与 `styles.css` 逐字节相同，GitHub CI 的构建与 295 项测试通过。唯一测试库已原处更新。
 
-官方条目：[Nebula Focus](https://community.obsidian.md/plugins/nebula-focus)。截至本记录，目录仍在处理审核；手动检测新 Release 遇到刷新间隔限制，尚未确认 1.1.1 审核通过或可从手机插件库安装。首轮扫描中的原生内部类型适配提示为 Warning，发布附件溯源与附加 ZIP 提示为 Recommendation；不把这些结果写成零警告。
+官方条目：[Nebula Focus](https://community.obsidian.md/plugins/nebula-focus)。最新管理页面显示 1.1.1（提交 `9ce1bab`）的扫描为 **Completed**，无 Error；构建复现通过，生成的 `main.js` 与发布附件逐字节相同。公开页面曾显示版本 **1.1.1** 和 **Add to Obsidian** 安装入口。目录最终发布状态仍在核对；扫描 Completed 与出现安装入口不能单独证明已上架。重新打开 macOS 客户端插件市场后搜索 Nebula Focus，结果仍为 0；手机从插件库安装尚未确认，搜索不可用的原因尚未确定。原生内部类型适配与 CSS 检查仍有 Warning，发布附件溯源与附加 ZIP 仍有 Recommendation；这不是零警告结果。
 
 
 ### Release and directory status (2026-11-04)
 
-After the final actual-iPhone alignment check, version 1.1.0 was published on GitHub and submitted to the directory. The first scan required removal of the redundant “Obsidian” word from the description; version 1.1.1 fixes that metadata and is published. Both versions have byte-identical `main.js` and `styles.css`; GitHub CI build and all 295 tests pass. The single persistent test vault was updated in place.
+After the final actual-iPhone alignment check, version 1.1.0 was published on GitHub and submitted to the directory. The failure notification dated 2026-11-04 explicitly refers to **1.1.0**: its only Error was the redundant word “Obsidian” in the directory description. Version **1.1.1** removes that word and is published on GitHub; its latest scan no longer reports that Error. Both versions have byte-identical `main.js` and `styles.css`; GitHub CI build and all 295 tests pass. The single persistent test vault was updated in place.
 
-[Official listing](https://community.obsidian.md/plugins/nebula-focus): review is still in progress at this record. A manual new-release check encountered the directory refresh cooldown; 1.1.1 approval and installation through phone community search are not yet confirmed. Internal native-type adapter findings were Warnings; artifact attestations and extra ZIP attachments were Recommendations. This is not a zero-warning claim.
+[Official listing](https://community.obsidian.md/plugins/nebula-focus): the latest management page shows the scan for **1.1.1** (commit `9ce1bab`) as **Completed** with no Errors. Build reproduction passed: the generated `main.js` matches the release asset byte for byte. The public page was observed showing version **1.1.1** and an **Add to Obsidian** installation entry. Final directory publication status remains under verification; a completed scan and a visible installation entry alone do not confirm marketplace availability. After reopening the macOS community browser, searching for Nebula Focus still returned zero results. Phone marketplace installation remains unverified, and the cause of search unavailability has not been established. Native internal-type adapter and CSS findings remain Warnings; artifact attestations and extra ZIP attachments remain Recommendations. This is not a zero-warning result.
 
 
 ## 1.1.0 pre-release verification record — 2026-11-04
 
-Version **1.1.0** is in release preparation, with Obsidian **1.14.5** as the minimum
+At this pre-release checkpoint, version **1.1.0** was in release preparation, with Obsidian **1.14.5** as the minimum
 and mobile loading enabled. The current build and **295/295** automated tests pass.
 Core iPhone workflows have direct user confirmation, including consistent tag
 font sizes and creation → tag edit → two undos → two redos. R10's removal of the
@@ -31,15 +31,15 @@ R10), and updates plugin files in place. Nine older iCloud test vaults were
 archived locally under ignored `dist` storage with their data retained. No more
 numbered iCloud vaults are created for each build.
 
-The official directory submission has **not** been sent. The user has confirmed the developer-policy agreement and ongoing-maintenance commitment. Android,
+At this checkpoint, the directory submission had not yet been sent; the user had confirmed the developer-policy agreement and ongoing-maintenance commitment. The 1.1.1 scan observations and unconfirmed publication status are recorded at the top of this document. Android,
 iPad, third-party themes and untested lifecycle edge cases remain stated coverage
 limits; they are not collectively treated as a new release-blocking checklist.
 The dated R2–R10 sections below preserve historical observations and decisions,
 not the current submission status. The published 1.0.0 baseline is also retained.
 
-**1.1.0 正在准备发布**，最低 Obsidian **1.14.5**，允许移动端加载；当前构建与 **295/295** 测试通过。核心 iPhone 流程已有用户直接确认，R10 隐藏手机撤销行已有有限真机镜像证据。最新单行标题垂直偏移已用基于 `1lh` 的平衡内边距修复：原先 32px 链接文字在 44px 点击行中贴顶；本次真机镜像中的显示与原位编辑视觉检查通过。
+本节记录发布前的检查结果：当时 **1.1.0 正在准备发布**，最低 Obsidian **1.14.5**，允许移动端加载；当前构建与 **295/295** 测试通过。核心 iPhone 流程已有用户直接确认，R10 隐藏手机撤销行已有有限真机镜像证据。最新单行标题垂直偏移已用基于 `1lh` 的平衡内边距修复：原先 32px 链接文字在 44px 点击行中贴顶；本次真机镜像中的显示与原位编辑视觉检查通过。
 
-当前只保留一个 iCloud 测试库 **Nebula-Focus-iPhone**（原 R10），今后原处升级。9 个旧库的数据已保留归档到本地忽略的 `dist`，不再逐轮新建编号库。官方目录尚未提交，用户已同意开发者政策与持续维护承诺。下方 R2–R10 是历史记录；Android、iPad、第三方主题及其他未测边界是明确的覆盖限制，不把所有历史待测项重新列为当前发布阻断。
+当前只保留一个 iCloud 测试库 **Nebula-Focus-iPhone**（原 R10），今后原处升级。9 个旧库的数据已保留归档到本地忽略的 `dist`，不再逐轮新建编号库。此检查时点尚未提交官方目录，用户已同意开发者政策与持续维护承诺；当前 1.1.1 扫描记录及尚未确认的目录发布状态见本文顶部。下方 R2–R10 是历史记录；Android、iPad、第三方主题及其他未测边界是明确的覆盖限制，不把所有历史待测项重新列为当前发布阻断。
 
 ## Final iPhone title alignment check
 
@@ -47,7 +47,7 @@ On 2026-11-04, the updated persistent iCloud vault was reloaded on the actual iP
 
 ## Automated checks
 
-The published 1.0.0 baseline passed 86/86 tests. **The current 1.1.0 preparation build, including the page sidebar, passes 295/295 automated tests (2026-11-04).** `npm run build` performs strict TypeScript checking and produces the external-
+The published 1.0.0 baseline passed 86/86 tests. **The released 1.1.1 build, including the page sidebar, passes 295/295 automated tests (2026-11-04).** `npm run build` performs strict TypeScript checking and produces the external-
 Obsidian CommonJS bundle. `npm test` covers:
 
 - automatic row heights, variable-height selection geometry and resize caches;

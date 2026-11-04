@@ -4,7 +4,7 @@
 
 [中文](#中文) · [English](#english) · [下载 / Downloads](https://github.com/AnthemZhou/Nebula_Focus/releases) · [反馈 / Issues](https://github.com/AnthemZhou/Nebula_Focus/issues)
 
-**1.1.0** · Obsidian **1.14.5+** · Desktop + iPhone · GPL-3.0-only
+**1.1.1** · Obsidian **1.14.5+** · Desktop + iPhone · GPL-3.0-only
 
 ## 中文
 
@@ -26,7 +26,7 @@ Nebula Focus 为 Obsidian 原生数据库（Bases）提供 Notion-like 的阅读
 
 需要 Obsidian 1.14.5 或更新版本，并启用「数据库 / Bases」核心插件。支持桌面与 iPhone；已验证范围见下方兼容说明。
 
-已提交[官方插件目录](https://community.obsidian.md/plugins/nebula-focus)，审核进行中。目前可从 GitHub Releases 安装；审核通过后可在社区插件市场搜索 **Nebula Focus**。
+[官方插件目录](https://community.obsidian.md/plugins/nebula-focus)已显示 1.1.1；自动检查完成，无 Error。1.1.0 的简介措辞错误已修复。截至 2026-11-04，客户端插件市场搜索尚未找到该条目，商店安装仍未确认；目前可按下列步骤从 GitHub Releases 安装。
 
 1. 从 [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases) 下载 `nebula-focus-1.1.1.zip`。
 2. 解压到库的 `.obsidian/plugins/nebula-focus/`。
@@ -133,7 +133,7 @@ It works with content already organized as Markdown and native Bases. After a No
 
 Use Obsidian 1.14.5 or later with the **Bases** core plugin enabled. Desktop and iPhone are supported; see the tested scope below.
 
-The [official directory listing](https://community.obsidian.md/plugins/nebula-focus) has been submitted and review is in progress. Install from GitHub Releases for now; community installation becomes available after approval.
+The [official directory listing](https://community.obsidian.md/plugins/nebula-focus) shows 1.1.1, with its automated scan completed and no Errors. This fixes the description wording rejected in 1.1.0. As of 2026-11-04, the in-app marketplace search has not returned the entry, so store installation is not yet verified. Use GitHub Releases with the steps below for now.
 
 1. Download `nebula-focus-1.1.1.zip` from [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases).
 2. Extract it into `.obsidian/plugins/nebula-focus/` inside your vault.

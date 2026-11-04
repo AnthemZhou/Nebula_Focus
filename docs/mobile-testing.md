@@ -4,22 +4,22 @@
 
 ### 发布与目录状态（2026-11-04）
 
-1.1.0 的真机对齐检查完成后，已发布到 GitHub 并提交官方目录。目录首轮扫描要求简介删除重复的“Obsidian”字样；1.1.1 已修正该发布元数据并发布。两版 `main.js` 与 `styles.css` 逐字节相同，GitHub CI 的构建与 295 项测试通过。唯一测试库已原处更新。
+1.1.0 的真机对齐检查完成后，已发布到 GitHub 并提交官方目录。2026-11-04 的失败通知明确对应 **1.1.0**：其唯一 Error 是简介不能包含目录语境中重复的“Obsidian”字样。**1.1.1** 已删除该字样并发布到 GitHub，最新复检不再出现这一 Error。两版 `main.js` 与 `styles.css` 逐字节相同，GitHub CI 的构建与 295 项测试通过。唯一测试库已原处更新。
 
-官方条目：[Nebula Focus](https://community.obsidian.md/plugins/nebula-focus)。截至本记录，目录仍在处理审核；手动检测新 Release 遇到刷新间隔限制，尚未确认 1.1.1 审核通过或可从手机插件库安装。首轮扫描中的原生内部类型适配提示为 Warning，发布附件溯源与附加 ZIP 提示为 Recommendation；不把这些结果写成零警告。
+官方条目：[Nebula Focus](https://community.obsidian.md/plugins/nebula-focus)。最新管理页面显示 1.1.1（提交 `9ce1bab`）的扫描为 **Completed**，无 Error；构建复现通过，生成的 `main.js` 与发布附件逐字节相同。公开页面曾显示版本 **1.1.1** 和 **Add to Obsidian** 安装入口。目录最终发布状态仍在核对；扫描 Completed 与出现安装入口不能单独证明已上架。重新打开 macOS 客户端插件市场后搜索 Nebula Focus，结果仍为 0；手机从插件库安装尚未确认，搜索不可用的原因尚未确定。原生内部类型适配与 CSS 检查仍有 Warning，发布附件溯源与附加 ZIP 仍有 Recommendation；这不是零警告结果。
 
 
 2026-11-04 最终真机镜像检查：同一 iCloud 库更名为 `Nebula-Focus-iPhone` 并重载更新后，单行标题与页面图标在首行触摸区域内居中；点击进入原位编辑后文字高度不跳变，紫色选中轮廓完整。长标题仍自然换行，多标签扩高的行保留顶部对齐。库列表只保留一个测试库；桌面也移除了旧 R9 的入口。13 篇原始虚构 Markdown 完整内容逐字节未变。
 
 ### 1.1.0 发布前验证记录（2026-11-04）
 
-1.1.0 正在准备发布，最低 Obsidian **1.14.5**，已允许移动端加载；构建与 **295/295** 自动测试通过。iPhone 核心流程已有用户直接确认，包括标签字号一致及「新建→加标签→撤销两次→重做两次」正常。手机隐藏撤销/重做额外行已通过 R10 真机镜像检查。
+本节记录发布前的检查结果：当时 1.1.0 正在准备发布，最低 Obsidian **1.14.5**，已允许移动端加载；构建与 **295/295** 自动测试通过。iPhone 核心流程已有用户直接确认，包括标签字号一致及「新建→加标签→撤销两次→重做两次」正常。手机隐藏撤销/重做额外行已通过 R10 真机镜像检查。
 
 最新的单行标题垂直偏移已修复：原先 32px 链接文字在 44px 点击行内贴顶，现用基于 `1lh` 的平衡内边距居中。本次真机镜像中的显示与原位编辑视觉检查通过。
 
 iCloud 当前只保留 **Nebula-Focus-iPhone** 一个测试库（原 R10），后续原处更新插件文件。9 个旧测试库的数据已保留归档到本地忽略的 `dist`，不再每次创建新的编号库。
 
-官方目录**尚未提交**；用户已确认同意开发者政策和持续维护承诺，待提交后记录官方扫描结果。Android、iPad、第三方主题及未测生命周期边界继续明确披露，不把所有历史待测场景作为当前发布阻断。下方 R2–R10 记录保留各轮当时的结果与决定；它们不是当前发布状态。镜像观察、直接触摸和自动测试仍分别记录，不互相替代。
+此检查时点尚未提交官方目录；用户已确认同意开发者政策和持续维护承诺。当前 1.1.1 扫描记录及尚未确认的目录发布状态见本文顶部。Android、iPad、第三方主题及未测生命周期边界继续明确披露，不把所有历史待测场景作为当前发布阻断。下方 R2–R10 记录保留各轮当时的结果与决定；它们不是当前发布状态。镜像观察、直接触摸和自动测试仍分别记录，不互相替代。
 
 ### 历史记录：R2 起始测试（2026-11-01 至 2026-11-04）
 
@@ -149,7 +149,7 @@ R10 候选 SHA-256：`main.js` 为 `e7e838dcc333bf9249516445f6c635dee505d5920b0b
 
 ### 上架与后续更新
 
-当前准备 1.1.0，核心手机流程的通过结果和剩余覆盖限制已分别记录。最新标题对齐已通过真机镜像视觉检查；用户已同意开发者政策和持续维护承诺，官方提交待执行。`manifest.json`、`package.json`、`versions.json` 和 Release tag 保持一致；正式 Release 附 `main.js`、`manifest.json` 和 `styles.css`。仅推送源码不构成可安装更新。首次提交使用 Obsidian Community 开发者页面，处理实际自动审核结果；尚未完成的测试不能写成已通过。[官方提交流程](https://docs.obsidian.md/Plugins/Releasing/Submit%20your%20plugin)
+1.1.1 已发布到 GitHub；官方扫描记录、尚未确认的目录发布状态，以及客户端搜索和手机商店安装的验证状态见本文顶部。核心手机流程的通过结果和剩余覆盖限制已分别记录。最新标题对齐已通过真机镜像视觉检查；开发者政策与持续维护承诺已获用户确认并随首次提交完成。`manifest.json`、`package.json`、`versions.json` 和 Release tag 保持一致；正式 Release 附 `main.js`、`manifest.json` 和 `styles.css`。仅推送源码不构成可安装更新。首次提交使用 Obsidian Community 开发者页面，处理实际自动审核结果；尚未完成的测试不能写成已通过。[官方提交流程](https://docs.obsidian.md/Plugins/Releasing/Submit%20your%20plugin)
 
 首次上架后，后续版本不需要重复填写初次提交表单，但每个新版本仍会接受自动扫描。用户通过 Obsidian 的“检查更新”安装，插件自身不实现下载或替换自身代码的更新器。[官方 FAQ](https://docs.obsidian.md/community-directory/faq) · [官方更新机制说明](https://obsidian.md/blog/future-of-plugins/) · [开发者政策](https://docs.obsidian.md/community-directory/developer-policies)
 
@@ -157,22 +157,22 @@ R10 候选 SHA-256：`main.js` 为 `e7e838dcc333bf9249516445f6c635dee505d5920b0b
 
 ### Release and directory status (2026-11-04)
 
-After the final actual-iPhone alignment check, version 1.1.0 was published on GitHub and submitted to the directory. The first scan required removal of the redundant “Obsidian” word from the description; version 1.1.1 fixes that metadata and is published. Both versions have byte-identical `main.js` and `styles.css`; GitHub CI build and all 295 tests pass. The single persistent test vault was updated in place.
+After the final actual-iPhone alignment check, version 1.1.0 was published on GitHub and submitted to the directory. The failure notification dated 2026-11-04 explicitly refers to **1.1.0**: its only Error was the redundant word “Obsidian” in the directory description. Version **1.1.1** removes that word and is published on GitHub; its latest scan no longer reports that Error. Both versions have byte-identical `main.js` and `styles.css`; GitHub CI build and all 295 tests pass. The single persistent test vault was updated in place.
 
-[Official listing](https://community.obsidian.md/plugins/nebula-focus): review is still in progress at this record. A manual new-release check encountered the directory refresh cooldown; 1.1.1 approval and installation through phone community search are not yet confirmed. Internal native-type adapter findings were Warnings; artifact attestations and extra ZIP attachments were Recommendations. This is not a zero-warning claim.
+[Official listing](https://community.obsidian.md/plugins/nebula-focus): the latest management page shows the scan for **1.1.1** (commit `9ce1bab`) as **Completed** with no Errors. Build reproduction passed: the generated `main.js` matches the release asset byte for byte. The public page was observed showing version **1.1.1** and an **Add to Obsidian** installation entry. Final directory publication status remains under verification; a completed scan and a visible installation entry alone do not confirm marketplace availability. After reopening the macOS community browser, searching for Nebula Focus still returned zero results. Phone marketplace installation remains unverified, and the cause of search unavailability has not been established. Native internal-type adapter and CSS findings remain Warnings; artifact attestations and extra ZIP attachments remain Recommendations. This is not a zero-warning result.
 
 
 Final actual-iPhone Mirroring check, 2026-11-04: after reloading the same iCloud vault renamed `Nebula-Focus-iPhone`, single-line titles and page icons are centered within the first-line touch target. Entering inline edit preserves text position and the complete selection outline. Long titles still wrap naturally; tag-expanded rows remain top-aligned. The vault list contains one test vault, and the old desktop R9 entry was removed. All 13 original fictional Markdown files are byte-for-byte unchanged.
 
 ### 1.1.0 pre-release verification record (2026-11-04)
 
-Version 1.1.0 is in release preparation, with Obsidian **1.14.5** as its minimum and mobile loading enabled. The build and **295/295** automated tests pass. Core iPhone workflows have direct user confirmation, including consistent tag font sizes and creation → tag edit → two undos → two redos. R10's removal of the extra phone history row passed scoped actual-device Mirroring checks.
+At this pre-release checkpoint, version 1.1.0 was in release preparation, with Obsidian **1.14.5** as its minimum and mobile loading enabled. The build and **295/295** automated tests pass. Core iPhone workflows have direct user confirmation, including consistent tag font sizes and creation → tag edit → two undos → two redos. R10's removal of the extra phone history row passed scoped actual-device Mirroring checks.
 
 The latest single-line title alignment fix is implemented: the 32px link text previously sat at the top of a 44px touch row; balanced padding based on `1lh` centers it vertically. Actual-phone display and inline-edit visual checks passed through Mirroring.
 
 Only **Nebula-Focus-iPhone** remains as the persistent iCloud test vault (formerly R10). Future builds update its plugin files in place. Nine older iCloud test vaults were archived locally under ignored `dist` storage with their data retained; no new numbered iCloud vault is created for each build.
 
-The official directory submission has **not** been sent. The user has confirmed the developer-policy agreement and ongoing-maintenance commitment. Android, iPad, third-party themes and untested lifecycle boundaries remain disclosed coverage limits, not a collective new release-blocking checklist. R2–R10 entries below preserve each round's historical observations and decisions rather than the current release status. Mirroring, direct touch and automated results remain separate evidence levels.
+At this checkpoint, the directory submission had not yet been sent; the user had confirmed the developer-policy agreement and ongoing-maintenance commitment. The 1.1.1 scan observations and unconfirmed publication status are recorded at the top of this document. Android, iPad, third-party themes and untested lifecycle boundaries remain disclosed coverage limits, not a collective new release-blocking checklist. R2–R10 entries below preserve each round's historical observations and decisions rather than the current release status. Mirroring, direct touch and automated results remain separate evidence levels.
 
 ### Historical record: initial R2 testing (2026-11-01 to 2026-11-04)
 
@@ -300,6 +300,6 @@ After `npm run build`, update `main.js`, `manifest.json` and `styles.css` in the
 
 Compare note and `.base` changes after testing. Presentation must not rewrite Markdown bodies. Verify explicit data edits, view configuration changes and test-created/undone files separately. Existing undo exclusions remain in [undo-coverage.md](undo-coverage.md).
 
-### Release preparation and directory submission
+### Publication and subsequent updates
 
-Version 1.1.0 is being prepared with core phone passes and remaining coverage limits recorded separately. The latest title-alignment visual check passed on the actual iPhone through Mirroring; the user has agreed to the developer policies and ongoing-maintenance commitment, and directory submission is the next step. Keep version metadata and the release tag consistent, and attach the three runtime files to the GitHub Release. A source push alone is not an installable update. Subsequent releases do not require a new initial submission, but each version is still scanned. The plugin does not update its own executable code; users update through Obsidian. The official sources linked above define the current process.
+Version 1.1.1 is published on GitHub. Official scan observations, unconfirmed directory publication status, and client-search and phone-marketplace verification status are recorded at the top of this document. Core phone passes and remaining coverage limits are recorded separately. The latest title-alignment visual check passed on the actual iPhone through Mirroring. The developer-policy and ongoing-maintenance commitments were confirmed by the user and completed with the initial submission. Keep version metadata and the release tag consistent, and attach the three runtime files to the GitHub Release. A source push alone is not an installable update. Subsequent releases do not require a new initial submission, but each version is still scanned. The plugin does not update its own executable code; users update through Obsidian. The official sources linked above define the current process.
