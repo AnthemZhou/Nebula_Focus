@@ -8,7 +8,7 @@
 
 2026-11-04，使用与官方检查相同的 `eslint-plugin-obsidianmd@0.4.2` 比较修改前后源码：**1,570 项诊断 → 38 项警告、0 项错误**。不安全的赋值、调用、成员访问等类型诊断已清除；原生 Bases 边界改用明确结构与运行时校验，无法识别时保留原生处理。严格构建与 **308/308** 自动测试通过。
 
-这是可复现的本地结果，不是 1.1.2 官方扫描结论。截至本记录，1.1.2 未发布，GitHub 工作流与官方复检尚待核对。1.1.1 的官方扫描已 Completed、无 Error；1.1.0 邮件中的 Error 是简介重复使用宿主产品名，该问题已在 1.1.1 修复。
+这是可复现的本地结果，不是 1.1.2 官方扫描结论。1.1.2 已发布，GitHub 工作流通过，官方复检已排队。1.1.1 的官方扫描已 Completed、无 Error；1.1.0 邮件中的 Error 是简介重复使用宿主产品名，该问题已在 1.1.1 修复。
 
 ```sh
 npm ci
@@ -18,6 +18,8 @@ npm test
 ```
 
 `eslint.config.mjs` 保留官方推荐规则；下表中的 API 偏好、兼容性和文案规则明确设为 warning 并继续显示。类型安全与正确性规则仍为阻断错误。源码没有 `eslint-disable`，也没有通过关闭规则消除诊断数量。
+
+发布证据：[1.1.2 Release](https://github.com/AnthemZhou/Nebula_Focus/releases/tag/1.1.2) · [成功的 CI](https://github.com/AnthemZhou/Nebula_Focus/actions/runs/41794125012)。下载的三个运行文件与本地 SHA-256 一致；`gh attestation verify` 均通过，来源提交为 `2c22372`。官方部分结果已将 `main.js` 和 `styles.css` 的构建证明标为 Pass，完整扫描仍 Pending。
 
 ### 保留的 38 项警告
 
@@ -37,7 +39,7 @@ npm test
 
 标记为“multicolumn”的 `column-gap` 在这里用于 flex 布局，并未实现多栏排版；`clip-path` 用于视觉隐藏但保留辅助技术可读的状态提示。移动端兼容性仍以实际设备证据为准。
 
-发布工作流已配置 ESLint 和 `actions/attest@v4`，为 `main.js`、`manifest.json`、`styles.css` 提供构建证明；在实际 CI 成功之前，不声称证明已生成。附加 ZIP 是手动安装、公开源码和示例资料，三个标准运行文件仍单独上传。
+发布工作流已配置 ESLint 和 `actions/attest@v4`，为 `main.js`、`manifest.json`、`styles.css` 提供构建证明；实际 CI 已成功生成证明。附加 ZIP 是手动安装、公开源码和示例资料，三个标准运行文件仍单独上传。
 
 `npm audit --omit=dev` 当前为 **0 项漏洞**。开发依赖链中的 `minimatch` 仍有审计提示，上游使用的 v3 / v10 与 v11 API 不兼容，未以跨主版本强制覆盖处理。开发依赖审计与插件运行包要分别判断；它们也不是同一组 ESLint 警告。
 
@@ -55,9 +57,11 @@ npm test
 
 On 2026-11-04, comparing source before and after the changes with the same official `eslint-plugin-obsidianmd@0.4.2` rules reduced **1,570 findings to 38 warnings and zero errors**. Unsafe assignment, call and member-access findings are cleared. Native Bases boundaries now use explicit structures and runtime guards, retaining native handling when unrecognized. The strict build and **308/308** automated tests pass.
 
-These are reproducible local results, not the official 1.1.2 scan. At this checkpoint, 1.1.2 is not published; its GitHub workflow and official review remain to be checked. The official 1.1.1 scan completed without Errors. The Error in the 1.1.0 email concerned the redundant host-product name in the description, corrected in 1.1.1.
+These are reproducible local results, not the official 1.1.2 scan. Version 1.1.2 is published, its GitHub workflow passed, and the official review is queued. The official 1.1.1 scan completed without Errors. The Error in the 1.1.0 email concerned the redundant host-product name in the description, corrected in 1.1.1.
 
 Run `npm ci`, `npm run lint`, `npm run build` and `npm test`. The configuration retains the official recommended rules. API preferences, compatibility and wording rules below explicitly remain visible as warnings; unsafe-type and correctness rules remain blocking errors. No `eslint-disable` directives or disabled rules hide findings.
+
+Release evidence: [1.1.2 Release](https://github.com/AnthemZhou/Nebula_Focus/releases/tag/1.1.2) · [successful CI](https://github.com/AnthemZhou/Nebula_Focus/actions/runs/41794125012). The downloaded runtime files match local SHA-256 hashes, and all three pass `gh attestation verify` for source commit `2c22372`. Partial official results mark the `main.js` and `styles.css` attestations as Pass; the full scan remains Pending.
 
 ### Why 38 warnings remain
 
@@ -77,7 +81,7 @@ Excluding CSS comments, `!important` occurrences fall from **24 to 15**, and `:h
 
 The `column-gap` flagged as “multicolumn” is used in flex layouts, not multicolumn layout. `clip-path` visually hides live status text while retaining assistive-technology access. Actual-device evidence still defines the verified mobile scope.
 
-The workflow configures ESLint and `actions/attest@v4` for `main.js`, `manifest.json` and `styles.css`. Attestations are not claimed as generated before the actual CI run succeeds. Additional ZIPs contain manual-install files, public source and examples; the three standard runtime files remain separate assets.
+The workflow configures ESLint and `actions/attest@v4` for `main.js`, `manifest.json` and `styles.css`. The actual CI run succeeded and generated the attestations. Additional ZIPs contain manual-install files, public source and examples; the three standard runtime files remain separate assets.
 
 `npm audit --omit=dev` currently reports **zero vulnerabilities**. The development dependency chain still reports `minimatch`; its upstream v3 / v10 requirements are not API-compatible with v11, so no forced cross-major override is applied. Development-tool audit findings and runtime-package findings have different scope and are separate from ESLint warnings.
 

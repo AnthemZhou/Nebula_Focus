@@ -4,7 +4,7 @@
 
 [中文](#中文) · [English](#english) · [下载 / Downloads](https://github.com/AnthemZhou/Nebula_Focus/releases) · [反馈 / Issues](https://github.com/AnthemZhou/Nebula_Focus/issues)
 
-**1.1.2（发布准备中 / release preparation）** · Obsidian **1.14.5+** · Desktop + iPhone · GPL-3.0-only
+**1.1.2** · Obsidian **1.14.5+** · Desktop + iPhone · GPL-3.0-only
 
 ## 中文
 
@@ -26,9 +26,9 @@ Nebula Focus 为 Obsidian 原生数据库（Bases）提供 Notion-like 的阅读
 
 需要 Obsidian 1.14.5 或更新版本，并启用「数据库 / Bases」核心插件。支持桌面与 iPhone；已验证范围见下方兼容说明。
 
-当前源码正在准备 **1.1.2**，运行包尚未发布，官方扫描待发布后核对。现有 GitHub 版本为 **1.1.1**；其[官方目录扫描](https://community.obsidian.md/plugins/nebula-focus)已完成且无 Error，修复了 1.1.0 的简介措辞问题。截至 2026-11-04，客户端搜索与商店安装仍未确认；目前可先安装下列已发布版本。
+**1.1.2** 已发布到 [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases/tag/1.1.2)，发布 CI 通过，官方已接收新版扫描。1.1.1 的[目录扫描](https://community.obsidian.md/plugins/nebula-focus)已完成且无 Error。截至 2026-11-04，客户端搜索与商店安装仍未确认；可先使用下面的手动安装方式。
 
-1. 从 [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases) 下载 `nebula-focus-1.1.1.zip`。
+1. 从 [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases) 下载 `nebula-focus-1.1.2.zip`。
 2. 解压到库的 `.obsidian/plugins/nebula-focus/`。
 3. 确认目录内有 `main.js`、`manifest.json` 和 `styles.css`。
 4. 在 Obsidian 的第三方插件设置中启用 **Nebula Focus**。
@@ -91,7 +91,7 @@ iPhone 使用 iCloud 库时，可先在电脑上把三个插件文件放入同�
 
 最低要求 Obsidian 1.14.5。1.1.0 / 1.1.1 的运行代码与样式相同，已有 macOS 桌面与 iPhone 16 Pro Max 的测试记录。iPhone 核心操作有直接触摸验证，包括连续中文输入、标签编辑、横向滚动与旋转、卡片移动、图片放大，以及新建→加标签→撤销两次→重做两次；用户也确认了单元格与标签面板的字号一致。手机隐藏额外撤销按钮行，保留命令入口；表格单行标题在触摸区域内纵向居中，多行内容自然展开。
 
-1.1.2 的本地构建与 **308 项自动测试通过**；它增加原生结构校验，并收敛类型与样式警告。[同规则本地检查](docs/review-warnings.md)从 1,570 项降到 **38 项警告、0 项错误**，这不是尚未执行的 1.1.2 官方扫描结果。本版尚无新增真机测试结论。既有桌面浅色、深色主题已检查；Android、iPad、第三方主题及所有手机生命周期边界尚未逐项实测。这些结果说明已验证的核心流程，不代表所有移动设备、主题和交互都完成验收。详细记录见 [iPhone 测试记录](docs/mobile-testing.md) 与 [TESTING.md](docs/TESTING.md)。
+1.1.2 的本地构建与 **308 项自动测试通过**；它增加原生结构校验，并收敛类型与样式警告。[同规则本地检查](docs/review-warnings.md)从 1,570 项降到 **38 项警告、0 项错误**，本地计数不等同于官方完整扫描结果。本版尚无新增真机测试结论。本版桌面浅色、深色主题与看板新建、撤销、重做已检查；Android、iPad、第三方主题及所有手机生命周期边界尚未逐项实测。这些结果说明已验证的核心流程，不代表所有移动设备、主题和交互都完成验收。详细记录见 [iPhone 测试记录](docs/mobile-testing.md) 与 [TESTING.md](docs/TESTING.md)。
 
 彩色标签按明确的语义字段名识别，包括领域、类型、重要性、状态、优先级、分类、发布平台、内容类型、项目和关联项目等。普通标题、摘要、日期和媒体仍按原有方式处理。这是呈现层优化，不会把文本属性转换成 Notion 的 select 或 relation 类型，也不还原 Notion 的完整数据库规则。
 
@@ -136,9 +136,9 @@ It works with content already organized as Markdown and native Bases. After a No
 
 Use Obsidian 1.14.5 or later with the **Bases** core plugin enabled. Desktop and iPhone are supported; see the tested scope below.
 
-The source is being prepared for **1.1.2**; its package is not published yet, and its official scan is pending. The available GitHub version is **1.1.1**, whose [directory scan](https://community.obsidian.md/plugins/nebula-focus) completed without Errors after correcting the 1.1.0 description. In-app search and marketplace installation remain unverified as of 2026-11-04. Install the currently published version below for now.
+**1.1.2** is available on [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases/tag/1.1.2), with passing release CI and a queued official scan. The 1.1.1 [directory scan](https://community.obsidian.md/plugins/nebula-focus) completed without Errors. In-app search and marketplace installation remain unverified as of 2026-11-04; manual installation is available below.
 
-1. Download `nebula-focus-1.1.1.zip` from [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases).
+1. Download `nebula-focus-1.1.2.zip` from [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases).
 2. Extract it into `.obsidian/plugins/nebula-focus/` inside your vault.
 3. Check that the folder contains `main.js`, `manifest.json` and `styles.css`.
 4. Enable **Nebula Focus** in Obsidian's community plugin settings.
@@ -201,7 +201,7 @@ Covers use images referenced in your notes. Local attachments are read from the 
 
 Obsidian 1.14.5 is required. Versions 1.1.0 and 1.1.1 have identical runtime code and styles, with recorded testing on macOS desktop and iPhone 16 Pro Max. Core iPhone operations have direct-touch evidence: continuous Chinese input, tag editing, horizontal scrolling and rotation, card moves, image enlargement, and creation → tag edit → two undos → two redos. The user also confirmed matching tag font sizes between cells and the popup. The phone hides the extra undo-button row while retaining commands; single-line table titles are vertically centered within the touch target, while multiline content keeps its natural height.
 
-The 1.1.2 local build and **302 automated tests pass**. This version adds native-structure validation and reduces type and style findings. A [local comparison using the same rules](docs/review-warnings.md) reduces 1,570 findings to **38 warnings and zero errors**; this is not the still-pending 1.1.2 official scan. There is no new actual-phone result for this version. Previous desktop checks covered light and dark themes. Android, iPad, third-party themes and all phone lifecycle edge cases have not been individually tested. These results cover the verified core workflows, not every mobile device, theme or interaction. See the [iPhone test record](docs/mobile-testing.md) and [TESTING.md](docs/TESTING.md).
+The 1.1.2 local build and **308 automated tests pass**. This version adds native-structure validation and reduces type and style findings. A [local comparison using the same rules](docs/review-warnings.md) reduces 1,570 findings to **38 warnings and zero errors**; local counts are separate from the full official scan. There is no new actual-phone result for this version. This version passed desktop light/dark checks and board creation with undo/redo. Android, iPad, third-party themes and all phone lifecycle edge cases have not been individually tested. These results cover the verified core workflows, not every mobile device, theme or interaction. See the [iPhone test record](docs/mobile-testing.md) and [TESTING.md](docs/TESTING.md).
 
 Colored tags recognize explicit semantic field names for areas, types, importance, status, priority, categories, publishing platforms, content types and projects. Ordinary titles, summaries, dates and media retain their usual handling. This presentation layer does not convert text properties into Notion select or relation types, or recreate Notion's full database behavior.
 

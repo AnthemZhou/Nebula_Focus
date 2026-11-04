@@ -2,17 +2,17 @@
 
 ## 1.1.2 质量检查 / Quality checks（2026-11-04）
 
-1.1.2 正在准备发布。严格 TypeScript 构建与 **308/308** 自动测试通过；新增覆盖不完整原生结构，以及未知布局/编辑器保留原生处理。与修改前使用同一 `eslint-plugin-obsidianmd@0.4.2` 比较，**1,570 项诊断 → 38 项警告、0 项错误**，不安全类型系列已清除。保留项和检查命令见[检查说明](review-warnings.md)。
+1.1.2 已发布到 GitHub，发布 CI 通过。严格 TypeScript 构建与 **308/308** 自动测试通过；新增覆盖不完整原生结构，以及未知布局/编辑器保留原生处理。与修改前使用同一 `eslint-plugin-obsidianmd@0.4.2` 比较，**1,570 项诊断 → 38 项警告、0 项错误**，不安全类型系列已清除。保留项和检查命令见[检查说明](review-warnings.md)。
 
-CSS 去掉注释后，`!important` **24 → 15**、`:has()` **13 → 11**；修改聚焦废弃规则和选择器作用域。发布 CI 已加入 lint 与运行文件构建证明步骤，实际运行及官方 1.1.2 扫描仍待核对。本地计数不能替代官方全套检查。
+CSS 去掉注释后，`!important` **24 → 15**、`:has()` **13 → 11**；修改聚焦废弃规则和选择器作用域。发布 CI 已加入 lint 与运行文件构建证明步骤，实际 CI 已成功，官方 1.1.2 扫描已排队。本地计数不能替代官方全套检查。
 
 桌面 Obsidian 1.14.5 实测：重新加载后的看板、表格、画廊均能展示；看板新建 → 撤销 → 重做 → 撤销通过。浅色与深色主题下检查了卡片、紫色轮廓新建按钮和标签面板。14 份原有测试 Markdown 的 SHA-256 完全一致，测试条目已撤销。初始化时原生 getter 尚不可读的情景已补回归测试，准备完成后可正常重试。
 
 本次没有新增 iPhone 全流程通过结论。下方手机证据属于 1.1.0 / 1.1.1 及其候选构建；两版运行文件相同。后续测试继续原处更新唯一的 `Nebula-Focus-iPhone` 库。外观层仍不改 Markdown 正文或追加格式标记，主动属性编辑与纯展示分别验证。
 
-Version 1.1.2 is in release preparation. The strict TypeScript build and **308/308** automated tests pass, including new coverage for incomplete native structures and native fallback for unknown layouts/editors. Using the same `eslint-plugin-obsidianmd@0.4.2` rules before and after the changes gives **1,570 findings → 38 warnings and zero errors**, with unsafe-type findings cleared. See the [review guide](review-warnings.md) for retained findings and commands.
+Version 1.1.2 is published on GitHub with passing release CI. The strict TypeScript build and **308/308** automated tests pass, including new coverage for incomplete native structures and native fallback for unknown layouts/editors. Using the same `eslint-plugin-obsidianmd@0.4.2` rules before and after the changes gives **1,570 findings → 38 warnings and zero errors**, with unsafe-type findings cleared. See the [review guide](review-warnings.md) for retained findings and commands.
 
-Excluding CSS comments, `!important` falls **24 → 15** and `:has()` **13 → 11**, focusing on obsolete rules and selector scope. CI now configures lint and runtime-file attestations; its actual run and the official 1.1.2 scan remain to be checked. Local counts do not replace the full official review.
+Excluding CSS comments, `!important` falls **24 → 15** and `:has()` **13 → 11**, focusing on obsolete rules and selector scope. CI now configures lint and runtime-file attestations; the actual CI run passed and the official 1.1.2 scan is queued. Local counts do not replace the full official review.
 
 Desktop Obsidian 1.14.5 checks passed: reloaded board, table and gallery rendering; board create → undo → redo → undo; light/dark cards, outlined creation buttons and tag popup. SHA-256 hashes of all 14 pre-existing test Markdown files remained identical; the test-created note was undone. Regression tests cover native getters before initialization and successful retry after readiness.
 
@@ -67,7 +67,7 @@ On 2026-11-04, the updated persistent iCloud vault was reloaded on the actual iP
 
 ## Automated checks
 
-The published 1.0.0 baseline passed 86/86 tests. The released 1.1.1 build, including the page sidebar, passed 295/295. **The 1.1.2 candidate passes 308/308 automated tests (2026-11-04).** `npm run build` performs strict TypeScript checking and produces the external-
+The published 1.0.0 baseline passed 86/86 tests. The released 1.1.1 build, including the page sidebar, passed 295/295. **The released 1.1.2 build passes 308/308 automated tests (2026-11-04).** `npm run build` performs strict TypeScript checking and produces the external-
 Obsidian CommonJS bundle. `npm test` covers:
 
 - automatic row heights, variable-height selection geometry and resize caches;
