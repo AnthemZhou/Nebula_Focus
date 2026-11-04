@@ -8,7 +8,7 @@
 
 2026-11-04，使用与官方检查相同的 `eslint-plugin-obsidianmd@0.4.2` 比较修改前后源码：**1,570 项诊断 → 38 项警告、0 项错误**。不安全的赋值、调用、成员访问等类型诊断已清除；原生 Bases 边界改用明确结构与运行时校验，无法识别时保留原生处理。严格构建与 **308/308** 自动测试通过。
 
-这是可复现的本地结果，不是 1.1.2 官方扫描结论。1.1.2 已发布，GitHub 工作流通过，官方复检已排队。1.1.1 的官方扫描已 Completed、无 Error；1.1.0 邮件中的 Error 是简介重复使用宿主产品名，该问题已在 1.1.1 修复。
+这是可复现的本地结果，不是 1.1.2 官方扫描结论。1.1.2 已发布，GitHub 工作流通过，官方复检已 Completed、无 Error。1.1.1 的官方扫描已 Completed、无 Error；1.1.0 邮件中的 Error 是简介重复使用宿主产品名，该问题已在 1.1.1 修复。
 
 ```sh
 npm ci
@@ -19,7 +19,7 @@ npm test
 
 `eslint.config.mjs` 保留官方推荐规则；下表中的 API 偏好、兼容性和文案规则明确设为 warning 并继续显示。类型安全与正确性规则仍为阻断错误。源码没有 `eslint-disable`，也没有通过关闭规则消除诊断数量。
 
-发布证据：[1.1.2 Release](https://github.com/AnthemZhou/Nebula_Focus/releases/tag/1.1.2) · [成功的 CI](https://github.com/AnthemZhou/Nebula_Focus/actions/runs/41794125012)。下载的三个运行文件与本地 SHA-256 一致；`gh attestation verify` 均通过，来源提交为 `2c22372`。官方部分结果已将 `main.js` 和 `styles.css` 的构建证明标为 Pass，完整扫描仍 Pending。
+发布证据：[1.1.2 Release](https://github.com/AnthemZhou/Nebula_Focus/releases/tag/1.1.2) · [成功的 CI](https://github.com/AnthemZhou/Nebula_Focus/actions/runs/41794125012)。下载的三个运行文件与本地 SHA-256 一致；`gh attestation verify` 均通过，来源提交为 `2c22372`。官方已将 `main.js` 和 `styles.css` 的构建证明标为 Pass，依赖检查通过，并从源码逐字节复现发布的 `main.js`。官方源码仅保留 3 类 Warning（DOM 创建、默认快捷键、撤销回收位置），CSS 保留 4 类 Warning；输入法/Safari 兼容 API 与附加 ZIP 列为 Recommendation。它不是零警告版本。
 
 ### 保留的 38 项警告
 
@@ -57,11 +57,11 @@ npm test
 
 On 2026-11-04, comparing source before and after the changes with the same official `eslint-plugin-obsidianmd@0.4.2` rules reduced **1,570 findings to 38 warnings and zero errors**. Unsafe assignment, call and member-access findings are cleared. Native Bases boundaries now use explicit structures and runtime guards, retaining native handling when unrecognized. The strict build and **308/308** automated tests pass.
 
-These are reproducible local results, not the official 1.1.2 scan. Version 1.1.2 is published, its GitHub workflow passed, and the official review is queued. The official 1.1.1 scan completed without Errors. The Error in the 1.1.0 email concerned the redundant host-product name in the description, corrected in 1.1.1.
+These are reproducible local results, not the official 1.1.2 scan. Version 1.1.2 is published, its GitHub workflow passed, and the official review is Completed without Errors. The official 1.1.1 scan completed without Errors. The Error in the 1.1.0 email concerned the redundant host-product name in the description, corrected in 1.1.1.
 
 Run `npm ci`, `npm run lint`, `npm run build` and `npm test`. The configuration retains the official recommended rules. API preferences, compatibility and wording rules below explicitly remain visible as warnings; unsafe-type and correctness rules remain blocking errors. No `eslint-disable` directives or disabled rules hide findings.
 
-Release evidence: [1.1.2 Release](https://github.com/AnthemZhou/Nebula_Focus/releases/tag/1.1.2) · [successful CI](https://github.com/AnthemZhou/Nebula_Focus/actions/runs/41794125012). The downloaded runtime files match local SHA-256 hashes, and all three pass `gh attestation verify` for source commit `2c22372`. Partial official results mark the `main.js` and `styles.css` attestations as Pass; the full scan remains Pending.
+Release evidence: [1.1.2 Release](https://github.com/AnthemZhou/Nebula_Focus/releases/tag/1.1.2) · [successful CI](https://github.com/AnthemZhou/Nebula_Focus/actions/runs/41794125012). The downloaded runtime files match local SHA-256 hashes, and all three pass `gh attestation verify` for source commit `2c22372`. Official results mark the `main.js` and `styles.css` attestations as Pass, pass dependency checks and reproduce the released `main.js` byte for byte. Three source Warning categories remain (DOM creation, default shortcut, undo trash location), plus four CSS Warning categories. IME/Safari compatibility APIs and additional ZIPs are Recommendations. This is not a zero-warning release.
 
 ### Why 38 warnings remain
 

@@ -4,7 +4,7 @@
 
 ### 1.1.2 更新记录（2026-11-04）
 
-1.1.2 已发布到 GitHub：本地严格构建与 **308/308** 自动测试通过，同版本官方 ESLint 规则的本地比较从 1,570 项降至 **38 项警告、0 项错误**。本版加强原生结构边界校验并清理样式；保留项见[检查说明](review-warnings.md)。GitHub 发布 CI 已通过，官方扫描已排队。
+1.1.2 已发布到 GitHub：本地严格构建与 **308/308** 自动测试通过，同版本官方 ESLint 规则的本地比较从 1,570 项降至 **38 项警告、0 项错误**。本版加强原生结构边界校验并清理样式；保留项见[检查说明](review-warnings.md)。GitHub 发布 CI 已通过，官方扫描已 Completed、无 Error。
 
 这次尚无新增 iPhone 全流程实测结果，不能把类型检查或桌面结果写成手机通过。下方的直接触摸和镜像证据属于 1.1.0 / 1.1.1 及其候选构建。测试继续复用 **Nebula-Focus-iPhone**，原处升级文件、保留数据；没有新建测试库。
 
@@ -165,7 +165,7 @@ R10 候选 SHA-256：`main.js` 为 `e7e838dcc333bf9249516445f6c635dee505d5920b0b
 
 ### 1.1.2 update record (2026-11-04)
 
-Version 1.1.2 is published on GitHub. The local strict build and **308/308** automated tests pass; a comparison with the same official ESLint rule version reduces 1,570 findings to **38 warnings and zero errors**. This version strengthens native-structure boundaries and cleans up styles; retained findings are documented in the [review guide](review-warnings.md). GitHub release CI passed; the official scan is queued.
+Version 1.1.2 is published on GitHub. The local strict build and **308/308** automated tests pass; a comparison with the same official ESLint rule version reduces 1,570 findings to **38 warnings and zero errors**. This version strengthens native-structure boundaries and cleans up styles; retained findings are documented in the [review guide](review-warnings.md). GitHub release CI passed; the official scan is Completed without Errors.
 
 There is no new full iPhone-device result for this version. Type checks and desktop results must not be reported as a phone pass. The direct-touch and Mirroring evidence below belongs to 1.1.0 / 1.1.1 and their candidate builds. Continue updating **Nebula-Focus-iPhone** in place, preserving its data; no new test vault was created.
 
