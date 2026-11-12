@@ -1,15 +1,25 @@
-import {App, Component, ItemView, Menu, Modal, Notice, Plugin, TFile, TFolder, WorkspaceLeaf, setIcon, type ViewState} from 'obsidian';
+import {App, Component, ItemView, Menu, Modal, Notice, Platform, Plugin, TFile, TFolder, WorkspaceLeaf, setIcon, type ViewState} from 'obsidian';
 import {NebulaFocusSettings} from './settings';
+import type {FontPreferences} from './font-appearance';
+import type {PageArchiveActions} from './archive-controller';
+import type {RightWorkspaceController} from './right-workspace';
+import type {RibbonController} from './ribbon-controller';
+import {SidebarSearchModal} from './sidebar-search';
 import {PageNode, PageTreeSettings, buildPageTree, filterPages, flattenPages, readPageTreeSettings,
   remapPageSettings, reorderPages, validPageName} from './page-tree';
 
 export const PAGE_SIDEBAR_TYPE = 'nebula-pages';
 let nextViewId = 0;
-type PageNavigationState = {query: string; scroll: number; expanded: string[]};
+type PageNavigationState = {query: string; scroll: number; expanded: string[]; mobileQuery?: string};
 type SuspendedPage = {state: ViewState; navigation?: PageNavigationState};
 
 export class PageSidebar extends Component {
   settings: PageTreeSettings;
+  archives?: PageArchiveActions;
+  rightWorkspace?: RightWorkspaceController;
+  ribbon?: RibbonController;
+  openReminders?: () => Promise<void>;
+  reminders?: {preferences: {openOnStartup: boolean}; setOpenOnStartup(value: boolean): Promise<boolean>};
   readonly views = new Set<PageSidebarView>();
   private writes: Promise<unknown> = Promise.resolve();
   private timer = 0;
@@ -20,8 +30,9 @@ export class PageSidebar extends Component {
   private modeRequest = 0;
   private suspended = new Map<WorkspaceLeaf, SuspendedPage>();
   private nativeStates = new Map<WorkspaceLeaf, ViewState>();
+  private ribbonIcon?: HTMLElement;
 
-  constructor(readonly plugin: Plugin, initial: unknown, private save: (settings: PageTreeSettings) => Promise<void>, readonly openHome?: () => Promise<void>, initialEnabled = true) {
+  constructor(readonly plugin: Plugin, initial: unknown, private save: (settings: PageTreeSettings) => Promise<void>, initialEnabled = true, private font?: FontPreferences) {
     super();
     this.settings = readPageTreeSettings(initial);
     this.enabled = initialEnabled;
@@ -35,8 +46,9 @@ export class PageSidebar extends Component {
     this.plugin.registerView(PAGE_SIDEBAR_TYPE, leaf => new PageSidebarView(leaf, this));
     this.plugin.addCommand({id: 'open-page-sidebar', name: '打开页面侧栏', callback: () => {void this.open();}});
     this.plugin.addCommand({id: 'open-native-files', name: '打开原生文件列表', callback: () => {void this.openNative();}});
-    this.plugin.addRibbonIcon('panel-left', '页面侧栏', () => {void this.open();});
-    this.plugin.addSettingTab(new NebulaFocusSettings(this.plugin, this));
+    this.ribbonIcon = this.plugin.addRibbonIcon('panel-left', '页面侧栏', () => {void this.open();});
+    if (this.ribbonIcon) this.ribbonIcon.hidden = !this.isEnabled;
+    this.plugin.addSettingTab(new NebulaFocusSettings(this.plugin, this, this.font));
     this.app.workspace.onLayoutReady(() => {
       if (this.stopped) return;
       // On plugin reload the layout is already ready, but the host is still
@@ -72,11 +84,16 @@ export class PageSidebar extends Component {
 
   openNative(): Promise<void> {return this.navigate(() => this.showNative());}
 
+  closeMobileDrawer() {
+    if (this.isEnabled && Platform.isMobileApp) this.app.workspace.leftSplit?.collapse();
+  }
+
   /** Swap real workspace views in place. Layout preferences and note files are
    * untouched; the requested flag changes immediately to guard startup/commands. */
   setEnabled(enabled: boolean): Promise<void> {
     const changed = this.enabled !== enabled;
     this.enabled = enabled;
+    if (this.ribbonIcon) this.ribbonIcon.hidden = !this.isEnabled;
     const request = ++this.modeRequest;
     if (!enabled) {window.clearTimeout(this.startupTimer); this.startupTimer = 0;}
     return this.navigate(async () => {
@@ -180,7 +197,11 @@ export class PageSidebar extends Component {
       if (folderPath) await this.update(state => ({...state, expanded: [...state.expanded, folderPath]}));
       this.refresh();
       // File creation has succeeded even if navigation fails; never offer to create it twice.
-      try {await this.app.workspace.getLeaf(false).openFile(file);} catch (error) {this.failure('页面已创建，但未能打开', error);}
+      try {
+        if (this.rightWorkspace) await this.rightWorkspace.openFileInMain(file);
+        else await this.app.workspace.getLeaf(false).openFile(file);
+        if (this.app.workspace.getActiveFile()?.path === file.path) this.closeMobileDrawer();
+      } catch (error) {this.failure('页面已创建，但未能打开', error);}
     }).open();
   }
 }
@@ -190,16 +211,19 @@ export class PageSidebarView extends ItemView {
   private treeEl!: HTMLElement;
   private favoritesEl!: HTMLElement;
   private scrollEl!: HTMLElement;
-  private countEl!: HTMLElement;
   private liveEl!: HTMLElement;
   private nodes: PageNode[] = [];
   private rows: {node: PageNode; el: HTMLElement}[] = [];
-  private pointerDrag?: {pointerId: number; source: PageNode; row: HTMLElement; x: number; y: number;
+  private pointerDrag?: {pointerId: number; source: PageNode; row: HTMLElement; x: number; y: number; pinned: boolean;
     active: boolean; target?: PageNode; after: boolean};
+  private titleMotions = new Map<HTMLElement, {win: Window; timer: number; animation?: Animation}>();
   private suppressClick = false;
   private transientExpanded = new Set<string>();
   private closed = false;
   private viewId = ++nextViewId;
+  private nextTitleId = 0;
+  private mobileSearchQuery = '';
+  private searchModal?: SidebarSearchModal;
 
   constructor(leaf: WorkspaceLeaf, readonly sidebar: PageSidebar) {super(leaf);}
   getViewType() {return PAGE_SIDEBAR_TYPE;}
@@ -212,45 +236,39 @@ export class PageSidebarView extends ItemView {
     this.closed = false;
     this.contentEl.replaceChildren();
     this.contentEl.classList.add('bui-page-sidebar');
-    const header = this.contentEl.createDiv({cls: 'bui-pages-header'});
-    const logo = header.createSpan({cls: 'bui-pages-logo'}); setIcon(logo, 'panels-top-left');
-    const title = header.createDiv({cls: 'bui-pages-workspace'});
-    title.createDiv({text: this.app.vault.getName(), cls: 'bui-pages-vault'});
-    title.createDiv({text: '工作空间', cls: 'bui-pages-caption'});
-    this.iconButton(header, 'ellipsis', '侧栏选项', event => this.options(event));
-
-    const searchBox = this.contentEl.createDiv({cls: 'bui-pages-search'});
-    setIcon(searchBox.createSpan(), 'search');
-    this.search = searchBox.createEl('input', {type: 'search', placeholder: '搜索页面…'});
+    const toolbar = this.contentEl.createDiv({cls: 'bui-pages-toolbar'});
+    this.search = this.contentEl.createEl('input');
+    this.search.remove();
+    this.search.type = 'search'; this.search.placeholder = '搜索页面…';
     this.search.setAttribute('aria-label', '搜索页面');
     this.search.addEventListener('input', () => this.render());
     this.search.addEventListener('keydown', event => {
       if (event.key === 'Escape') {this.search.value = ''; this.render();}
       if (event.key === 'ArrowDown') {event.preventDefault(); this.rows[0]?.el.focus();}
     });
-    if (this.sidebar.openHome) {
-      const home = this.contentEl.createEl('button', {cls: 'bui-pages-home', text: '首页'});
-      const icon = home.createSpan(); setIcon(icon, 'house'); home.prepend(icon);
-      home.addEventListener('click', () => {void this.sidebar.openHome?.();});
-      const markHome = () => {
-        const active = this.app.workspace.getMostRecentLeaf()?.view.getViewType() === 'nebula-home';
-        home.classList.toggle('is-active', active); home.setAttribute('aria-current', active ? 'page' : 'false');
-      };
-      this.registerEvent(this.app.workspace.on('active-leaf-change', markHome)); markHome();
+    if (Platform.isMobileApp) {
+      toolbar.classList.add('bui-pages-mobile-header');
+      toolbar.createSpan({cls: 'bui-pages-vault-name', text: this.app.vault.getName()});
+    } else toolbar.classList.add('bui-pages-desktop-header');
+    this.iconButton(toolbar, 'search', '搜索页面', () => this.openSearch()).classList.add('bui-pages-search-button');
+    toolbar.addEventListener('contextmenu', event => {event.preventDefault(); this.options(event);});
+    this.contentEl.addEventListener('contextmenu', event => {
+      const target = event.target as HTMLElement;
+      if (target.closest('.bui-page-row, .bui-page-favorite, .bui-pages-toolbar')) return;
+      event.preventDefault(); this.options(event);
+    });
+    if (this.sidebar.openReminders) {
+      const reminders = this.contentEl.createEl('button', {cls: 'bui-pages-reminders', attr: {'aria-label': '提醒事项'}});
+      setIcon(reminders.createSpan(), 'list-todo'); reminders.createSpan({text: '提醒事项'});
+      reminders.addEventListener('click', () => {void this.sidebar.openReminders?.().then(() => this.sidebar.closeMobileDrawer())
+        .catch(error => this.sidebar.failure('提醒事项未能打开', error));});
     }
     this.scrollEl = this.contentEl.createDiv({cls: 'bui-pages-scroll'});
     this.favoritesEl = this.scrollEl.createDiv({cls: 'bui-pages-favorites'});
-    const heading = this.scrollEl.createDiv({cls: 'bui-pages-section'});
-    heading.createSpan({text: '页面'});
-    this.countEl = heading.createSpan({cls: 'bui-pages-count'});
-    this.iconButton(heading, 'list-collapse', '全部收起', () => {
-      this.search.value = '';
-      this.transientExpanded.clear(); void this.sidebar.update(state => ({...state, expanded: []}));
-    });
-    this.treeEl = this.scrollEl.createDiv({cls: 'bui-pages-tree', attr: {role: 'tree', 'aria-label': '工作空间页面'}});
+    this.treeEl = this.scrollEl.createDiv({cls: 'bui-pages-tree', attr: {role: 'tree', 'aria-label': '页面'}});
     const footer = this.contentEl.createDiv({cls: 'bui-pages-footer'});
     const create = footer.createEl('button', {cls: 'bui-pages-create'});
-    setIcon(create.createSpan(), 'plus'); create.createSpan({text: '新建页面'});
+    setIcon(create.createSpan(), 'square-pen'); create.createSpan({text: '新建页面'});
     create.addEventListener('click', () => this.sidebar.createPage());
     this.liveEl = this.contentEl.createDiv({cls: 'bui-pages-live', attr: {'aria-live': 'polite'}});
     this.sidebar.views.add(this);
@@ -258,16 +276,21 @@ export class PageSidebarView extends ItemView {
   }
 
   async onClose() {
-    this.cancelDrag();
+    this.cancelDrag(); this.stopTitleMotions();
+    this.searchModal?.close(); this.searchModal = undefined;
     this.closed = true; this.sidebar.views.delete(this); this.contentEl.replaceChildren();
   }
 
   captureNavigation(): PageNavigationState {
-    return {query: this.search?.value ?? '', scroll: this.scrollEl?.scrollTop ?? 0, expanded: [...this.transientExpanded]};
+    return {query: this.search?.value ?? '', scroll: this.scrollEl?.scrollTop ?? 0, expanded: [...this.transientExpanded],
+      ...(this.mobileSearchQuery ? {mobileQuery: this.mobileSearchQuery} : {})};
   }
   restoreNavigation(state: PageNavigationState) {
     if (this.closed || !this.treeEl) return;
-    this.search.value = state.query; this.transientExpanded = new Set(state.expanded);
+    // The old inline filter no longer has a visible field. Keep its query in
+    // the unified finder, never as an invisible filter on the restored tree.
+    this.search.value = ''; this.transientExpanded = new Set(state.expanded);
+    this.mobileSearchQuery = state.mobileQuery ?? state.query;
     this.render(); this.scrollEl.scrollTop = state.scroll;
   }
 
@@ -285,7 +308,7 @@ export class PageSidebarView extends ItemView {
 
   render() {
     if (this.closed || !this.treeEl || !this.sidebar.isEnabled) return;
-    this.cancelDrag();
+    this.cancelDrag(); this.stopTitleMotions();
     const activeElement = this.contentEl.ownerDocument.activeElement as HTMLElement | null;
     const focused = activeElement?.closest<HTMLElement>('.bui-page-row');
     const focusId = focused && this.treeEl.contains(focused) ? focused.dataset.id : undefined;
@@ -293,19 +316,28 @@ export class PageSidebarView extends ItemView {
     this.nodes = this.sidebar.tree();
     const query = this.search.value.trim();
     const visible = filterPages(this.nodes, query);
-    const all = flattenPages(this.nodes);
-    this.countEl.textContent = String(all.filter(node => !!node.filePath).length);
     this.favoritesEl.replaceChildren();
     if (!query) {
-      const favorites = this.sidebar.settings.favorites.map(id => all.find(node => node.id === id || node.filePath === id))
-        .filter((node): node is PageNode => !!node);
+      const favorites = this.favoriteNodes();
       if (favorites.length) {
-        this.favoritesEl.createDiv({cls: 'bui-pages-section', text: '收藏'});
+        this.favoritesEl.createDiv({cls: 'bui-pages-section', text: '置顶'});
         for (const node of favorites) this.renderFavorite(node);
       }
     }
     this.treeEl.replaceChildren(); this.rows = [];
-    this.renderNodes(visible, this.treeEl, 0, !!query);
+    const projects = visible.filter(node => !!node.folderPath), pages = visible.filter(node => !node.folderPath);
+    for (const [label, nodes] of [['项目', projects], ['页面', pages]] as const) {
+      if (!nodes.length) continue;
+      const section = this.treeEl.createDiv({cls: 'bui-pages-group', attr: {role: 'group', 'aria-label': label}});
+      const heading = section.createDiv({cls: 'bui-pages-section', attr: {role: 'presentation'}});
+      heading.createSpan({text: label});
+      heading.createSpan({cls: 'bui-pages-count', text: String(nodes.length)});
+      if (label === '项目') this.iconButton(heading, 'list-collapse', '全部收起', () => {
+        this.search.value = ''; this.transientExpanded.clear();
+        void this.sidebar.update(state => ({...state, expanded: []}));
+      });
+      this.renderNodes(nodes, section, 0, !!query);
+    }
     if (!visible.length) this.treeEl.createDiv({cls: 'bui-pages-empty', text: query ? '没有找到匹配的页面' : '从一个新页面开始'});
     const activePath = this.app.workspace.getActiveFile()?.path;
     const tabbable = this.rows.find(row => row.node.id === focusId) ?? this.rows.find(row => row.node.filePath === activePath) ?? this.rows[0];
@@ -320,10 +352,10 @@ export class PageSidebarView extends ItemView {
     nodes.forEach((node, index) => {
       const item = host.createDiv({cls: 'bui-page-item', attr: {role: 'none'}});
       const row = item.createDiv({cls: 'bui-page-row', attr: {role: 'treeitem', 'aria-level': String(depth + 1),
-        'aria-posinset': String(index + 1), 'aria-setsize': String(nodes.length), 'aria-label': node.title}});
+        'aria-posinset': String(index + 1), 'aria-setsize': String(nodes.length)}});
       row.dataset.id = node.id;
       row.style.setProperty('--page-depth', String(depth));
-      row.title = node.filePath ?? node.folderPath ?? node.title;
+      row.setAttribute('aria-description', node.filePath ?? node.folderPath ?? node.title);
       const isActive = !!node.filePath && node.filePath === this.app.workspace.getActiveFile()?.path;
       row.classList.toggle('is-active', isActive); row.setAttribute('aria-selected', String(isActive));
       const hasChildren = node.children.length > 0;
@@ -336,15 +368,16 @@ export class PageSidebarView extends ItemView {
         if (searching) disclosure.disabled = true;
       }
       this.renderNodeIcon(row, node);
-      row.createSpan({cls: 'bui-page-title', text: node.title});
+      const title = this.renderTitle(row, node.title);
+      row.setAttribute('aria-labelledby', title.id);
       const actions = row.createSpan({cls: 'bui-page-actions'});
-      this.iconButton(actions, 'ellipsis', node.title + ' 的操作', event => {event.stopPropagation(); this.nodeMenu(node, event);}, -1);
+      this.pinButton(actions, node, -1);
       if (node.kind === 'page' || node.kind === 'folder') this.iconButton(actions, 'plus', '在 ' + node.title + ' 下新建页面', event => {
         event.stopPropagation(); this.sidebar.createPage(node);
       }, -1);
       row.addEventListener('click', event => {
         if (this.suppressClick) {event.preventDefault(); return;}
-        void this.openNode(node, event.metaKey || event.ctrlKey);
+        void this.openNode(node);
       });
       row.addEventListener('auxclick', event => {if (event.button === 1) {event.preventDefault(); void this.openNode(node, true);}});
       row.addEventListener('contextmenu', event => {event.preventDefault(); this.nodeMenu(node, event);});
@@ -363,22 +396,108 @@ export class PageSidebarView extends ItemView {
   }
 
   private renderFavorite(node: PageNode) {
-    const row = this.favoritesEl.createDiv({cls: 'bui-page-favorite'});
+    const row = this.favoritesEl.createDiv({cls: 'bui-page-favorite', attr: {'data-id': node.id}});
     const open = row.createEl('button', {cls: 'bui-page-favorite-open'});
+    const active = !!node.filePath && node.filePath === this.app.workspace.getActiveFile()?.path;
+    row.classList.toggle('is-active', active); open.setAttribute('aria-current', active ? 'page' : 'false');
     this.renderNodeIcon(open, node);
-    open.createSpan({cls: 'bui-page-title', text: node.title});
-    open.title = node.filePath ?? node.id;
-    open.addEventListener('click', event => {void this.openNode(node, event.metaKey || event.ctrlKey);});
-    open.addEventListener('contextmenu', event => {event.preventDefault(); this.nodeMenu(node, event);});
-    this.iconButton(row, 'star', '取消收藏 ' + node.title, () => this.favorite(node));
+    this.renderTitle(open, node.title);
+    open.setAttribute('aria-description', node.filePath ?? node.id);
+    open.addEventListener('click', () => {if (!this.suppressClick) void this.openNode(node);});
+    open.addEventListener('contextmenu', event => {event.preventDefault(); this.nodeMenu(node, event, true);});
+    open.addEventListener('keydown', event => {
+      if (event.altKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
+        event.preventDefault();
+        const nodes = this.favoriteNodes(), index = nodes.findIndex(item => item.id === node.id);
+        const target = nodes[index + (event.key === 'ArrowUp' ? -1 : 1)];
+        if (target) this.moveFavorite(node, target, event.key === 'ArrowDown');
+      }
+    });
+    this.pinButton(row, node);
+    row.addEventListener('contextmenu', event => {
+      if ((event.target as HTMLElement).closest('.bui-page-favorite-open')) return;
+      event.preventDefault(); this.nodeMenu(node, event, true);
+    });
+    this.dragEvents(row, node, true);
+  }
+
+  private renderTitle(host: HTMLElement, title: string) {
+    const label = host.createSpan({cls: 'bui-page-title'});
+    label.id = `bui-page-title-${this.viewId}-${++this.nextTitleId}`;
+    const text = label.createSpan({cls: 'bui-page-title-text', text: title});
+    label.addEventListener('pointerenter', event => {
+      const win = label.ownerDocument.defaultView;
+      if (!win || Platform.isMobileApp || event.pointerType === 'touch' ||
+          !win.matchMedia?.('(hover: hover) and (pointer: fine)').matches || win.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      this.stopTitleMotion(label);
+      const motion: {win: Window; timer: number; animation?: Animation} = {win, timer: 0};
+      motion.timer = win.setTimeout(() => {
+        motion.timer = 0;
+        if (!label.isConnected || this.closed || win.matchMedia('(prefers-reduced-motion: reduce)').matches) {this.stopTitleMotion(label); return;}
+        const overflow = Math.max(0, text.scrollWidth - label.clientWidth);
+        if (!overflow || !text.animate) {this.stopTitleMotion(label); return;}
+        label.classList.add('is-scrolling');
+        motion.animation = text.animate([{transform: 'translateX(0)'}, {transform: `translateX(-${overflow}px)`}],
+          {duration: Math.max(1400, overflow / 28 * 1000), easing: 'linear', fill: 'forwards'});
+      }, 300);
+      this.titleMotions.set(label, motion);
+    });
+    label.addEventListener('pointerleave', () => this.stopTitleMotion(label));
+    return label;
+  }
+
+  private stopTitleMotion(label: HTMLElement) {
+    const motion = this.titleMotions.get(label);
+    if (motion) {motion.win.clearTimeout(motion.timer); motion.animation?.cancel(); this.titleMotions.delete(label);}
+    label.classList.remove('is-scrolling');
+  }
+  private stopTitleMotions() {for (const label of this.titleMotions.keys()) this.stopTitleMotion(label);}
+
+  private favoriteNodes() {
+    const all = flattenPages(this.nodes), seen = new Set<string>();
+    return this.sidebar.settings.favorites.map(id => all.find(node => node.id === id || node.filePath === id))
+      .filter((node): node is PageNode => {
+        if (!node || seen.has(node.id)) return false;
+        seen.add(node.id); return true;
+      });
+  }
+
+  private moveFavorite(node: PageNode, target: PageNode, after: boolean) {
+    if (node.id === target.id) return;
+    void this.sidebar.update(state => {
+      const source = state.favorites.find(id => id === node.id || id === node.filePath);
+      if (!source) return state;
+      const favorites = state.favorites.filter(id => id !== node.id && id !== node.filePath);
+      const index = favorites.findIndex(id => id === target.id || id === target.filePath);
+      if (index < 0) return state;
+      favorites.splice(index + (after ? 1 : 0), 0, source);
+      return {...state, favorites};
+    }).then(saved => {
+      if (saved && !this.closed) {
+        this.liveEl.textContent = '已调整 ' + node.title + ' 的置顶顺序';
+        [...this.favoritesEl.querySelectorAll<HTMLElement>('.bui-page-favorite')]
+          .find(row => row.dataset.id === node.id)?.querySelector<HTMLButtonElement>('.bui-page-favorite-open')?.focus();
+      }
+    });
   }
 
   private renderNodeIcon(host: HTMLElement, node: PageNode) {
-    // Page titles already identify their content. Keep only type distinctions;
-    // an absent icon must not leave a decorative span or a reserved icon slot.
-    if (node.kind === 'page') return;
+    // Folder-backed and ordinary pages share the same title baseline.
+    // Disclosure arrows express hierarchy without a second decorative icon.
+    if (node.kind === 'page' || node.kind === 'folder') return;
     const icon = {database: 'table-2', canvas: 'layout-dashboard', folder: 'folder', attachment: 'paperclip'}[node.kind];
     setIcon(host.createSpan({cls: 'bui-page-icon'}), icon);
+  }
+
+  private pinButton(host: HTMLElement, node: PageNode, tabIndex = 0) {
+    const pinned = this.sidebar.settings.favorites.some(id => id === node.id || id === node.filePath);
+    const button = this.iconButton(host, pinned ? 'pin-off' : 'pin', pinned ? '取消置顶' : '置顶', event => {
+      event.stopPropagation(); this.favorite(node);
+    }, tabIndex);
+    button.classList.add('bui-page-pin');
+    button.classList.toggle('is-pinned', pinned);
+    button.setAttribute('aria-pressed', String(pinned));
+    return button;
   }
 
   private iconButton(host: HTMLElement, icon: string, title: string, action: (event: MouseEvent) => void, tabIndex = 0) {
@@ -392,12 +511,44 @@ export class PageSidebarView extends ItemView {
     void this.sidebar.update(state => ({...state, expanded: wasExpanded ? state.expanded.filter(id => id !== node.id) : [...state.expanded, node.id]}));
   }
 
-  private async openNode(node: PageNode, newTab = false) {
-    if (!node.filePath) {this.toggle(node); return;}
+  private async openNode(node: PageNode, newTab = false, subpath?: string): Promise<boolean> {
+    if (!this.sidebar.isEnabled || this.closed) return false;
+    if (!node.filePath) {this.toggle(node); return false;}
     const file = this.app.vault.getAbstractFileByPath(node.filePath);
-    if (!(file instanceof TFile)) {this.sidebar.refresh(); return;}
-    try {await this.app.workspace.getLeaf(newTab ? 'tab' : false).openFile(file);}
-    catch (error) {this.sidebar.failure('无法打开页面', error);}
+    if (!(file instanceof TFile)) {this.sidebar.refresh(); return false;}
+    try {
+      const controller = this.sidebar.rightWorkspace;
+      if (controller && ['md', 'base'].includes(file.extension.toLowerCase())) {
+        const opened = await controller.openFileInMain(file, this.app.workspace.getMostRecentLeaf(this.leaf.getContainer()) ?? undefined, newTab);
+        if (!opened) return false;
+        if (subpath) opened.setEphemeralState({subpath});
+      } else await this.app.workspace.getLeaf(newTab ? 'tab' : false).openFile(file, subpath ? {eState: {subpath}} : undefined);
+      if (this.app.workspace.getActiveFile()?.path === file.path) this.sidebar.closeMobileDrawer();
+      return true;
+    }
+    catch (error) {this.sidebar.failure('无法打开页面', error); return false;}
+  }
+
+  private async openRight(node: PageNode) {
+    const file = node.filePath && this.app.vault.getAbstractFileByPath(node.filePath);
+    if (!this.sidebar.isEnabled || this.closed || !(file instanceof TFile)) return;
+    try {
+      if (this.sidebar.rightWorkspace && ['md', 'base'].includes(file.extension.toLowerCase()))
+        await this.sidebar.rightWorkspace.openFile(file, this.app.workspace.getMostRecentLeaf(this.leaf.getContainer()) ?? undefined);
+      else await this.openNode(node, true);
+    } catch (error) {this.sidebar.failure('无法打开页面', error);}
+  }
+
+  private openSearch() {
+    if (this.searchModal || !this.sidebar.isEnabled || this.closed) return;
+    this.searchModal = new SidebarSearchModal(this.app, {
+      // Hidden paths are a sidebar presentation preference, not a search
+      // restriction. Keep the tree's system/generated-folder exclusions.
+      query: this.mobileSearchQuery, pages: () => flattenPages(buildPageTree(this.app.vault.getRoot(), {...this.sidebar.settings, hiddenPaths: []})),
+      changed: value => {this.mobileSearchQuery = value;}, openPage: (node, subpath) => this.openNode(node, false, subpath),
+      closed: () => {this.searchModal = undefined;},
+    });
+    this.searchModal.open();
   }
 
   private favorite(node: PageNode) {
@@ -409,13 +560,22 @@ export class PageSidebarView extends ItemView {
   }
 
   private siblings(node: PageNode) {
-    return node.parent === this.app.vault.getRoot().path ? this.nodes : flattenPages(this.nodes).find(item => item.id === node.parent)?.children ?? [];
+    return node.parent === this.app.vault.getRoot().path ? this.nodes.filter(item => !!item.folderPath === !!node.folderPath)
+      : flattenPages(this.nodes).find(item => item.id === node.parent)?.children ?? [];
   }
 
   private move(node: PageNode, target: PageNode, after: boolean) {
     const order = reorderPages(this.siblings(node), node.id, target.id, after);
     if (!order) return;
-    void this.sidebar.update(state => ({...state, sort: 'manual', order: {...state.order, [node.parent]: order}})).then(saved => {
+    void this.sidebar.update(state => {
+      // Reorder only this visual group; retain hidden and other-group positions.
+      const all = node.parent === this.app.vault.getRoot().path ? this.nodes : this.siblings(node);
+      const previous = [...new Set([...(state.order[node.parent] ?? []).map(id =>
+        all.find(item => item.id === id || item.filePath === id)?.id ?? id), ...all.map(item => item.id)])];
+      let next = 0;
+      const complete = previous.map(id => order.includes(id) ? order[next++] : id);
+      return {...state, sort: 'manual', order: {...state.order, [node.parent]: complete}};
+    }).then(saved => {
       if (saved && !this.closed) {this.liveEl.textContent = '已调整 ' + node.title + ' 的顺序'; this.rows.find(row => row.node.id === node.id)?.el.focus();}
     });
   }
@@ -443,7 +603,7 @@ export class PageSidebarView extends ItemView {
       if (!searching && node.children.length && this.expanded(node)) this.toggle(node);
       else this.rows.find(row => row.node.id === node.parent)?.el.focus();
     } else if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault(); void this.openNode(node, event.metaKey || event.ctrlKey);
+      event.preventDefault(); void this.openNode(node);
     } else if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
       event.preventDefault();
       const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
@@ -451,14 +611,15 @@ export class PageSidebarView extends ItemView {
     }
   }
 
-  private dragEvents(row: HTMLElement, node: PageNode) {
+  private dragEvents(row: HTMLElement, node: PageNode, pinned = false) {
     // Pointer capture avoids Electron's OS drag session swallowing local drops.
     // Touch keeps ordinary scrolling; its menu offers the same ordering actions.
     row.addEventListener('pointerdown', event => {
       this.suppressClick = false;
-      if (event.button !== 0 || event.pointerType === 'touch' || (event.target as HTMLElement).closest('button')) return;
+      const button = (event.target as HTMLElement).closest('button');
+      if (event.button !== 0 || event.pointerType === 'touch' || (button && !(pinned && button.classList.contains('bui-page-favorite-open')))) return;
       this.cancelDrag(); row.focus({preventScroll: true});
-      this.pointerDrag = {pointerId: event.pointerId, source: node, row, x: event.clientX, y: event.clientY, active: false, after: false};
+      this.pointerDrag = {pointerId: event.pointerId, source: node, row, x: event.clientX, y: event.clientY, pinned, active: false, after: false};
       try {row.setPointerCapture?.(event.pointerId);} catch {this.pointerDrag = undefined;}
     });
     row.addEventListener('pointermove', event => this.pointerMove(event));
@@ -467,7 +628,10 @@ export class PageSidebarView extends ItemView {
       if (!drag || drag.pointerId !== event.pointerId) return;
       if (drag.active) {event.preventDefault(); event.stopPropagation(); this.pointerMove(event);}
       this.cancelDrag();
-      if (drag.active && drag.target) this.move(drag.source, drag.target, drag.after);
+      if (drag.active && drag.target) {
+        if (drag.pinned) this.moveFavorite(drag.source, drag.target, drag.after);
+        else this.move(drag.source, drag.target, drag.after);
+      }
     });
     row.addEventListener('pointercancel', () => this.cancelDrag());
     row.addEventListener('lostpointercapture', () => this.cancelDrag());
@@ -479,9 +643,9 @@ export class PageSidebarView extends ItemView {
     if (!drag.active && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 5) return;
     drag.active = true; this.suppressClick = true; event.preventDefault();
     drag.row.classList.add('is-dragging'); this.clearDrop(); drag.target = undefined;
-    const hit = this.contentEl.ownerDocument.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('.bui-page-row');
-    if (!hit || !this.treeEl.contains(hit)) return;
-    const target = this.siblings(drag.source).find(node => node.id === hit.dataset.id && node.id !== drag.source.id);
+    const hit = this.contentEl.ownerDocument.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>(drag.pinned ? '.bui-page-favorite' : '.bui-page-row');
+    if (!hit || !(drag.pinned ? this.favoritesEl : this.treeEl).contains(hit)) return;
+    const target = (drag.pinned ? this.favoriteNodes() : this.siblings(drag.source)).find(node => node.id === hit.dataset.id && node.id !== drag.source.id);
     if (!target) return;
     const rect = hit.getBoundingClientRect();
     drag.target = target; drag.after = event.clientY > rect.top + rect.height / 2;
@@ -499,26 +663,33 @@ export class PageSidebarView extends ItemView {
     if (this.treeEl) this.clearDrop();
   }
 
-  private clearDrop() {this.treeEl.querySelectorAll('.drop-before,.drop-after').forEach(el => el.classList.remove('drop-before', 'drop-after'));}
+  private clearDrop() {this.contentEl.querySelectorAll('.drop-before,.drop-after').forEach(el => el.classList.remove('drop-before', 'drop-after'));}
 
-  private nodeMenu(node: PageNode, event: MouseEvent) {
+  private nodeMenu(node: PageNode, event: MouseEvent, pinned = false) {
     const menu = new Menu().setUseNativeMenu(false);
     if (node.filePath) menu.addItem(item => item.setTitle('在新标签页打开').setIcon('external-link').onClick(() => this.openNode(node, true)));
+    if (node.filePath && this.sidebar.rightWorkspace && !Platform.isMobileApp)
+      menu.addItem(item => item.setTitle('在右侧新标签页打开').setIcon('panel-right-open').onClick(() => this.openRight(node)));
     const favorite = this.sidebar.settings.favorites.some(id => id === node.id || id === node.filePath);
-    menu.addItem(item => item.setTitle(favorite ? '取消收藏' : '添加到收藏').setIcon('star').onClick(() => this.favorite(node)));
+    menu.addItem(item => item.setTitle(favorite ? '取消置顶' : '置顶').setIcon('pin').onClick(() => this.favorite(node)));
     if (node.kind === 'page' || node.kind === 'folder') menu.addItem(item => item.setTitle('新建子页面').setIcon('plus').onClick(() => this.sidebar.createPage(node)));
     if (!this.search.value.trim()) {
       menu.addSeparator();
-      const siblings = this.siblings(node), index = siblings.findIndex(item => item.id === node.id);
-      menu.addItem(item => item.setTitle('上移').setIcon('arrow-up').setDisabled(index <= 0).onClick(() => this.move(node, siblings[index - 1], false)));
-      menu.addItem(item => item.setTitle('下移').setIcon('arrow-down').setDisabled(index >= siblings.length - 1).onClick(() => this.move(node, siblings[index + 1], true)));
+      const siblings = pinned ? this.favoriteNodes() : this.siblings(node), index = siblings.findIndex(item => item.id === node.id);
+      const move = (target: PageNode, after: boolean) => pinned ? this.moveFavorite(node, target, after) : this.move(node, target, after);
+      menu.addItem(item => item.setTitle('上移').setIcon('arrow-up').setDisabled(index <= 0).onClick(() => move(siblings[index - 1], false)));
+      menu.addItem(item => item.setTitle('下移').setIcon('arrow-down').setDisabled(index >= siblings.length - 1).onClick(() => move(siblings[index + 1], true)));
+    }
+    if (this.sidebar.archives) {
+      menu.addSeparator();
+      menu.addItem(item => item.setTitle('归档到外部…').setIcon('archive').onClick(() => this.sidebar.archives?.open(node)));
     }
     menu.showAtPosition({x: event.clientX, y: event.clientY});
   }
 
   private options(event: MouseEvent) {
     const menu = new Menu().setUseNativeMenu(false);
-    menu.addItem(item => item.setTitle('手动排序（拖动或 Alt + ↑ / ↓）').setChecked(this.sidebar.settings.sort === 'manual')
+    menu.addItem(item => item.setTitle('手动排序（拖动或快捷键）').setChecked(this.sidebar.settings.sort === 'manual')
       .onClick(() => {void this.sidebar.update(state => ({...state, sort: 'manual'}));}));
     menu.addItem(item => item.setTitle('按名称排序').setChecked(this.sidebar.settings.sort === 'name')
       .onClick(() => {void this.sidebar.update(state => ({...state, sort: 'name'}));}));
@@ -526,6 +697,10 @@ export class PageSidebarView extends ItemView {
     menu.addItem(item => item.setTitle('显示附件').setChecked(this.sidebar.settings.showAttachments)
       .onClick(() => {void this.sidebar.update(state => ({...state, showAttachments: !state.showAttachments}));}));
     menu.addItem(item => item.setTitle('打开原生文件列表').setIcon('folder-open').onClick(() => this.sidebar.openNative()));
+    if (this.sidebar.archives) {
+      menu.addSeparator();
+      menu.addItem(item => item.setTitle('外部归档…').setIcon('archive-restore').onClick(() => this.sidebar.archives?.browse()));
+    }
     menu.showAtPosition({x: event.clientX, y: event.clientY});
   }
 }
@@ -534,7 +709,7 @@ class NewPageModal extends Modal {
   constructor(app: App, private parentTitle: string | undefined, private create: (name: string) => Promise<void>) {super(app);}
   onOpen() {
     this.setTitle(this.parentTitle ? '新建子页面' : '新建页面');
-    this.contentEl.createEl('p', {text: this.parentTitle ? '添加到「' + this.parentTitle + '」' : '添加到工作空间', cls: 'bui-pages-caption'});
+    this.contentEl.createEl('p', {text: this.parentTitle ? '添加到「' + this.parentTitle + '」' : '添加到当前库', cls: 'bui-pages-caption'});
     const form = this.contentEl.createEl('form', {cls: 'bui-pages-new-form'});
     const input = form.createEl('input', {type: 'text', placeholder: '页面名称', attr: {'aria-label': '页面名称'}});
     const error = form.createDiv({cls: 'bui-pages-form-error', attr: {role: 'alert'}});

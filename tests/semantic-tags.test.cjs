@@ -114,6 +114,10 @@ test('unknown/new values use stable colors and refreshing or toggling preserves 
     assert.equal(input.classList.contains('bui-semantic-tag'),false);
     f.refresh();assert.equal(input.dataset.buiTone,tone);assert.equal(tone,ideaTone('用户新建的类型','内容类型'));
     assert.equal(ideaTone('e\u0301','类型'),ideaTone('\u00e9','类型'));
+    for (const value of ['constructor','toString','__proto__']) {
+      input.textContent=value;f.refresh();
+      assert.ok(['green','orange','blue','purple','yellow'].includes(input.dataset.buiTone),value);
+    }
   } finally {f.close();}
 });
 
@@ -164,15 +168,25 @@ test('empty values, unsupported renderer types and raw Markdown tables remain un
   } finally {f.close();}
 });
 
-test('native property suggestions are colored only for the active semantic field',()=>{
-  const f=fixture(metadata('发布平台','B站')+metadata('项目摘要','B站')+
-    '<div class="suggestion-container mod-property-value" data-property-key="发布平台"><div class="suggestion-item">小红书</div></div>');
+test('native suggestions preserve selection and callbacks, share new-value colors, and follow the active semantic field',()=>{
+  for (const field of [metadata('发布平台','B站'),table(text('note.发布平台','B站'))]) {
+  const f=fixture(field+metadata('项目摘要','B站')+
+    '<div class="suggestion-container mod-property-value" data-property-key="发布平台"><div class="suggestion-item is-selected">小红书</div></div>');
   try {
-    const input=f.doc.querySelector('[data-property-key="发布平台"] .metadata-input-longtext'),option=f.doc.querySelector('.suggestion-item');
+    const input=f.doc.querySelector(':is([data-property-key="发布平台"], [data-property="note.发布平台"]) .metadata-input-longtext'),option=f.doc.querySelector('.suggestion-item');
+    let clicks=0;option.addEventListener('click',()=>clicks++);
     input.focus();f.refresh();assert.equal(option.dataset.buiTone,'orange');
+    input.textContent=option.textContent='新建研究领域';f.refresh();
+    assert.equal(option.dataset.buiTone,input.dataset.buiTone);
+    assert.equal(f.doc.activeElement,input);assert.ok(option.classList.contains('is-selected'));
+    option.click();assert.equal(clicks,1);
+    input.blur();f.refresh();assert.equal(option.classList.contains('bui-native-tag'),false);
+    assert.ok(option.classList.contains('is-selected'));assert.equal(option.textContent,'新建研究领域');
+    input.focus();f.refresh();assert.ok(option.classList.contains('bui-native-tag'));
     f.doc.querySelector('[data-property-key="项目摘要"] .metadata-input-longtext').focus();f.refresh();
     assert.equal(option.classList.contains('bui-native-tag'),false);assert.equal(option.hasAttribute('data-bui-tone'),false);
   } finally {f.close();}
+  }
 });
 
 

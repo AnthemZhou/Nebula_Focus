@@ -25,16 +25,16 @@ test('a sibling and an internal note with the same title both remain reachable w
   assert.equal(nodes[0].filePath, 'A.md'); assert.equal(nodes[0].children[0].filePath, 'A/A.md');
 });
 
-test('only exact matching names merge; attachments, empty folders, bases and canvases retain their identity', () => {
+test('only exact names merge; page-only navigation hides database configs and optional attachments without changing the files', () => {
   const root = folder('/', [folder('Alpha', []), file('alpha.md'), folder('Media', [file('Media/a.png')]), file('Export.csv'), file('Data.base'), file('Board.canvas')]);
   const pages = buildPageTree(root, state());
   assert.equal(pages.find(n => n.id === 'Alpha').filePath, undefined);
   assert.ok(pages.some(n => n.id === 'alpha.md'));
   assert.ok(!pages.some(n => n.id === 'Media' || n.id === 'Export.csv'));
-  assert.equal(pages.find(n => n.id === 'Data.base').kind, 'database');
-  assert.equal(pages.find(n => n.id === 'Board.canvas').kind, 'canvas');
+  assert.ok(!pages.some(n => n.id === 'Data.base' || n.id === 'Board.canvas'));
   const all = flattenPages(buildPageTree(root, state({showAttachments: true})));
   assert.ok(all.some(n => n.id === 'Media/a.png')); assert.ok(all.some(n => n.id === 'Export.csv'));
+  assert.ok(all.some(n => n.id === 'Board.canvas')); assert.ok(!all.some(n => n.id === 'Data.base'));
 });
 
 test('manual order is per parent, supports a leaf becoming a folder note and retains new pages', () => {
@@ -63,20 +63,55 @@ test('manual sorting never accepts missing targets, self-drops or cross-parent m
   assert.equal(reorderPages([...nodes, {id: 'D', parent: 'Nested'}], 'D', 'A', false), null);
 });
 
-test('folder rename migrates favorites, expanded paths and per-folder order without touching prefix siblings', () => {
-  const initial = state({favorites: ['A/X.md', 'AB/X.md'], expanded: ['A', 'A/Child', 'AB'], order: {'/': ['A', 'AB'], A: ['A/X.md']}});
+test('folder rename migrates favorites, hidden paths, expanded paths and per-folder order without touching prefix siblings', () => {
+  const initial = state({favorites: ['A/X.md', 'AB/X.md'], hiddenPaths: ['A/X.md', 'AB'], expanded: ['A', 'A/Child', 'AB'], order: {'/': ['A', 'AB'], A: ['A/X.md']}});
   const next = remapPageSettings(initial, 'A', 'New');
   assert.deepEqual(next.favorites, ['New/X.md', 'AB/X.md']);
   assert.deepEqual(next.expanded, ['New', 'New/Child', 'AB']);
+  assert.deepEqual(next.hiddenPaths, ['New/X.md', 'AB']);
   assert.deepEqual(next.order, {'/': ['New', 'AB'], New: ['New/X.md']});
   assert.equal(initial.favorites[0], 'A/X.md');
 });
 
 test('settings tolerate partial/malformed values and filesystem-like special names', () => {
-  assert.deepEqual(state(null), {expanded: [], favorites: [], order: {}, sort: 'manual', showAttachments: false, openOnStartup: false});
+  assert.deepEqual(state(null), {expanded: [], favorites: [], order: {}, sort: 'manual', showAttachments: false, openOnStartup: false, hiddenPaths: []});
   const settings = state({expanded: ['a', 3, 'a'], favorites: false, order: JSON.parse('{"__proto__":["A"],"/":true}'), sort: 'unknown'});
   assert.deepEqual(settings.expanded, ['a']); assert.deepEqual(settings.order.__proto__, ['A']);
   assert.equal(Object.hasOwn(settings.order, '/'), false);
+});
+
+test('hidden paths remove only matching files or folder subtrees, without mutating the vault or preferences', () => {
+  const root = folder('/', [file('Home.md'), folder('Home', [file('Home/Child.md')]),
+    folder('Homeward', [file('Homeward/Keep.md')]), file('Guide.md'), file('Guide.md.bak'), file('Data.base')]);
+  const settings = state({hiddenPaths: [' Home/ ', 'Guide.md'], favorites: ['Home', 'Guide.md'], showAttachments: true,
+    futurePreference: {value: 12}});
+  const before = JSON.stringify(root), saved = JSON.stringify(settings);
+  const nodes = flattenPages(buildPageTree(root, settings));
+  assert.deepEqual(nodes.map(n => n.id).sort(), ['Guide.md.bak', 'Home.md', 'Homeward', 'Homeward/Keep.md'].sort());
+  assert.equal(JSON.stringify(root), before); assert.equal(JSON.stringify(settings), saved);
+  assert.deepEqual(settings.futurePreference, {value: 12});
+  assert.ok(flattenPages(buildPageTree(root, state({...settings, hiddenPaths: []}))).some(n => n.id === 'Home/Child.md'));
+});
+
+test('hidden internal folder notes cannot reappear as merged page aliases', () => {
+  const root = folder('/', [folder('A', [file('A/A.md'), file('A/Child.md')])]);
+  const [node] = buildPageTree(root, state({hiddenPaths: ['A/A.md']}));
+  assert.equal(node.kind, 'folder'); assert.equal(node.filePath, undefined);
+  assert.deepEqual(node.children.map(n => n.filePath), ['A/Child.md']);
+});
+
+test('all database configurations and empty config-only branches stay out of the page tree without deleting them', () => {
+  const root = folder('/', [folder('Nebula Views', [file('Nebula Views/Source.base'), folder('Nebula Views/Home', [file('Nebula Views/Home/clone.base')])]),
+    folder('Nebula Views backup', [file('Nebula Views backup/Keep.base')]), file('Manual.base'), file('Home.md'),
+    folder('Finance', [file('Finance/Dashboard.md'), file('Finance/Transactions.base')])]);
+  const before = JSON.stringify(root), nodes = flattenPages(buildPageTree(root, state({showAttachments: true})));
+  assert.deepEqual(nodes.map(n => n.id).sort(), ['Home.md', 'Finance', 'Finance/Dashboard.md'].sort());
+  assert.equal(JSON.stringify(root), before);
+});
+
+test('hidden path preferences normalize separators and duplicates without accepting traversal or URLs', () => {
+  assert.deepEqual(state({hiddenPaths: [' A\\B.md ', '/A/B.md/', 'A//C', '', '/', '../A', 'A/../B', 'https://example.com', 17]}).hiddenPaths,
+    ['A/B.md', 'A/C']);
 });
 
 test('new page names reject traversal and invalid filename characters', () => {

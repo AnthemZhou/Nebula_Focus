@@ -2,6 +2,7 @@ import {Notice, setIcon} from 'obsidian';
 
 import {IdeaView, IdeaRow, IdeaEntry, IdeaFile, isNativeTableView} from './idea-native';
 import {TableTitleProfile, tableTitleProfiles} from './table-profile';
+import {guardTouchScrollClicks} from './mobile-popover';
 type TitleView = IdeaView & {rows: IdeaRow[]};
 type TitleRow = IdeaRow & {entry: IdeaEntry};
 function titleView(value: unknown): value is TitleView {
@@ -99,12 +100,16 @@ export class IdeaTitleEditors {
     link.tabIndex = 0; if (!nativeText) link.setAttribute('role', 'button');
     link.before(icon);
     const listeners: [HTMLElement, string, EventListener, boolean][] = [];
+    // The icon is a separate navigation target from the title's gesture guard.
+    // A touch scroll can start on it and leave a synthetic click in WebViews.
+    const stopIconTouch = guardTouchScrollClicks(icon);
     const listen = <K extends keyof HTMLElementEventMap>(el: HTMLElement, name: K,
       callback: (event: HTMLElementEventMap[K]) => void, capture = false) => {
       el.addEventListener(name, callback, capture); listeners.push([el, name, callback as EventListener, capture]);
     };
     binding.cleanup = () => {
       binding.stopGesture?.();
+      stopIconTouch();
       for (const [el, name, fn, capture] of listeners) el.removeEventListener(name, fn, capture);
     };
     const blank = (target: EventTarget | null, point?: MouseEvent) => {
@@ -238,7 +243,7 @@ export class IdeaTitleEditors {
 
   private navigate(binding: Binding, event: MouseEvent) {
     if (!this.current(binding)) return;
-    if (binding.nativeText) {this.actions?.open?.(binding.view, binding.file, event); return;}
+    if (this.actions?.open) {this.actions.open(binding.view, binding.file, event); return;}
     const win = binding.link.ownerDocument.defaultView!;
     binding.forwarding = true;
     try {

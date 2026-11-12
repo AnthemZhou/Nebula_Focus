@@ -345,10 +345,10 @@ export class IdeaRowHeights {
         const clone = cell.cloneNode(true) as HTMLElement;
         // Inert clones cannot match :focus. Preserve the live editor's focus
         // typography and padding without touching the real input or its caret.
-        const edit = clone.querySelector<HTMLElement>('[contenteditable="true"], input, textarea');
+        const edit = clone.querySelector<HTMLElement>('[contenteditable="true"], [contenteditable="plaintext-only"], input, textarea');
         if (edit && active instanceof state.host.ownerDocument.defaultView!.HTMLElement) {
           const css = state.host.ownerDocument.defaultView!.getComputedStyle(active);
-          for (const name of ['font', 'line-height', 'padding', 'margin', 'white-space', 'word-break', 'overflow-wrap', 'width', 'max-width', 'box-sizing', 'display', 'flex'])
+          for (const name of ['font', 'line-height', 'letter-spacing', 'word-spacing', 'padding', 'margin', 'white-space', 'word-break', 'overflow-wrap', 'width', 'max-width', 'box-sizing', 'display', 'flex'])
             edit.style.setProperty(name, css.getPropertyValue(name), 'important');
         }
         target?.replaceWith(clone);

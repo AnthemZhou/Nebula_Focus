@@ -35,9 +35,9 @@ export class TagDragMotion {
       el.removeAttribute('id'); el.tabIndex = -1;
     }
     const computed = win.getComputedStyle(this.row);
-    for (const prop of ['display', 'align-items', 'justify-content', 'gap', 'padding', 'font-family', 'font-size', 'font-weight', 'line-height', 'color'])
+    for (const prop of ['display', 'align-items', 'justify-content', 'gap', 'padding', 'font-family', 'font-size', 'font-weight', 'line-height', 'letter-spacing', 'word-spacing', 'color'])
       ghost.style.setProperty(prop, computed.getPropertyValue(prop));
-    for (const name of ['font-size', 'font-family', 'font-weight', 'line-height']) {
+    for (const name of ['font-size', 'font-family', 'font-weight', 'line-height', 'letter-spacing', 'word-spacing']) {
       const prop = `--bui-source-tag-${name}`, value = computed.getPropertyValue(prop);
       if (value) ghost.style.setProperty(prop, value);
     }

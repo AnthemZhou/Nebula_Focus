@@ -6,7 +6,7 @@ export function inheritPopoverTypography(popup: HTMLElement, source: HTMLElement
   if (!style) return;
   // Read computed values, not inline declarations: a relative source font must
   // not be resolved again against the body-mounted popup's different parent.
-  for (const name of ['font-size', 'font-family', 'font-weight', 'line-height']) {
+  for (const name of ['font-size', 'font-family', 'font-weight', 'line-height', 'letter-spacing', 'word-spacing']) {
     const actual = style.getPropertyValue(name).trim();
     if (actual) popup.style.setProperty(`--bui-source-tag-${name}`, actual);
   }

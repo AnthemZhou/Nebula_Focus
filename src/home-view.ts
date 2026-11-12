@@ -1,5 +1,6 @@
 import {App, Component, ItemView, Menu, Modal, TFile, WorkspaceLeaf, setIcon} from 'obsidian';
 import type {HomeConfig, HomeModule} from './home-model';
+import {configId} from './config-id';
 
 export const HOME_VIEW_TYPE = 'nebula-home';
 export type HomeSource = {path: string; views: string[]; properties: string[]};
@@ -37,6 +38,21 @@ function contentKey(module: HomeModule): string {
     : [module.kind, module.source, module.view, module.basePath]);
 }
 
+/** A Chinese/Japanese candidate-confirmation Enter must not also submit the
+ * surrounding form. WebKit may end composition before dispatching that Enter. */
+function homeImeGuard(host: HTMLElement): () => boolean {
+  let composing = false, settling = false, timer = 0;
+  const win = host.ownerDocument.defaultView!;
+  const settle = () => {
+    settling = true; win.clearTimeout(timer);
+    timer = win.setTimeout(() => {settling = false;}, 0);
+  };
+  host.addEventListener('compositionstart', () => {composing = true; settling = false;}, true);
+  host.addEventListener('compositionend', () => {composing = false; settle();}, true);
+  host.addEventListener('keydown', event => {if (event.isComposing) settle();}, true);
+  return () => composing || settling;
+}
+
 /** A workspace view, not a new Bases layout. Each embedded module owns a child
  * Component; editing names, ordering and disclosure state preserves its DOM. */
 export class HomeView extends ItemView {
@@ -66,10 +82,11 @@ export class HomeView extends ItemView {
     const header = this.contentEl.createDiv({cls: 'nf-home-header'});
     this.titleEl = header.createEl('h1', {cls: 'nf-home-title'});
     this.titleForm = header.createEl('form', {cls: 'nf-home-title-form'});
+    const titleIme = homeImeGuard(this.titleForm);
     this.titleInput = this.titleForm.createEl('input', {type: 'text', attr: {'aria-label': '首页名称', maxlength: '120'}});
     this.titleInput.addEventListener('input', () => {this.titleDirty = true;});
     this.titleForm.createEl('button', {text: '保存名称', attr: {type: 'submit'}});
-    this.titleForm.addEventListener('submit', event => {event.preventDefault(); void this.saveTitle();});
+    this.titleForm.addEventListener('submit', event => {event.preventDefault(); if (!titleIme()) void this.saveTitle();});
     const actions = header.createDiv({cls: 'nf-home-header-actions'});
     this.addButton = button(actions, '添加模块', 'nf-home-add', () => this.addMenu(this.addButton));
     this.editButton = button(actions, '编辑首页', 'nf-home-edit', () => {void this.toggleEditing();});
@@ -140,7 +157,7 @@ export class HomeView extends ItemView {
     const down = iconButton(tools, 'arrow-down', '下移模块', () => {void this.move(module.id, 1);});
     button(tools, '设置', 'nf-home-module-settings', () => {
       const current = this.slots.get(module.id)?.module;
-      if (current) new HomeModuleModal(this.app, this.host, current.kind, current).open();
+      if (current) this.openModuleEditor(current.kind, current);
     });
     button(tools, '移除', 'nf-home-module-remove', () => {
       void this.update(config => ({...config, modules: config.modules.filter(item => item.id !== module.id)}));
@@ -260,9 +277,14 @@ export class HomeView extends ItemView {
     const menu = new Menu();
     for (const kind of ['view', 'summary', 'links'] as const) {
       menu.addItem(item => item.setTitle(KIND_LABELS[kind]).setIcon({view: 'table-2', summary: 'sigma', links: 'link'}[kind])
-        .onClick(() => new HomeModuleModal(this.app, this.host, kind).open()));
+        .onClick(() => this.openModuleEditor(kind)));
     }
     const rect = anchor.getBoundingClientRect(); menu.showAtPosition({x: rect.left, y: rect.bottom});
+  }
+  private openModuleEditor(kind: HomeModule['kind'], module?: HomeModule) {
+    if (this.closed) return;
+    try {new HomeModuleModal(this.app, this.host, kind, module).open();}
+    catch (error) {this.report(`模块设置未能打开：${error instanceof Error ? error.message : '请重试'}`);}
   }
 }
 
@@ -282,10 +304,11 @@ export class HomeModuleModal extends Modal {
   private propertySelect?: HTMLSelectElement;
   private groupSelect?: HTMLSelectElement;
   private currencyHint?: HTMLElement;
+  private imeActive: () => boolean = () => false;
 
   constructor(app: App, private host: HomeHost, kind: HomeModule['kind'], module?: HomeModule) {
     super(app); this.existing = !!module;
-    const common = {id: crypto.randomUUID(), title: KIND_LABELS[kind], collapsed: false};
+    const common = {id: configId(), title: KIND_LABELS[kind], collapsed: false};
     this.draft = module ? structuredClone(module) : kind === 'links' ? {...common, kind, paths: []}
       : kind === 'view' ? {...common, kind, source: '', view: '', basePath: '', height: 480}
       : {...common, kind, source: '', view: '', basePath: '', operation: 'count', property: '', groupBy: ''};
@@ -295,6 +318,7 @@ export class HomeModuleModal extends Modal {
     this.closed = false; this.setTitle(this.existing ? '编辑模块' : `添加${KIND_LABELS[this.draft.kind]}`);
     this.contentEl.classList.add('nf-home-module-modal');
     const form = this.contentEl.createEl('form', {cls: 'nf-home-module-form'});
+    this.imeActive = homeImeGuard(form);
     this.titleInput = this.field(form, '模块名称').createEl('input', {type: 'text', attr: {maxlength: '120'}});
     this.titleInput.value = this.draft.title;
     if (this.draft.kind === 'links') {this.buildLinks(form); this.ready = true;}
@@ -303,7 +327,7 @@ export class HomeModuleModal extends Modal {
     const actions = form.createDiv({cls: 'nf-home-form-actions'});
     const cancel = button(actions, '取消', '', () => {if (!this.saving) this.close();});
     this.saveButton = actions.createEl('button', {text: '保存', cls: 'mod-cta', attr: {type: 'submit'}});
-    form.addEventListener('submit', event => {event.preventDefault(); void this.save(cancel);});
+    form.addEventListener('submit', event => {event.preventDefault(); if (!this.imeActive()) void this.save(cancel);});
     if (this.draft.kind !== 'links') void this.loadSources();
   }
   onClose() {this.closed = true; this.contentEl.replaceChildren();}
@@ -429,7 +453,7 @@ export class HomeModuleModal extends Modal {
       }
     };
     const add = () => {
-      if (this.draft.kind !== 'links') return;
+      if (this.draft.kind !== 'links' || this.imeActive()) return;
       const value = input.value.trim();
       const direct = this.app.vault.getFileByPath(value) ?? this.app.vault.getFileByPath(`${value}.md`);
       const matches = files.filter(file => file.basename === value);
@@ -440,7 +464,10 @@ export class HomeModuleModal extends Modal {
     };
     button(inputRow, '添加', '', add);
     input.addEventListener('input', suggestions);
-    input.addEventListener('keydown', event => {if (event.key === 'Enter') {event.preventDefault(); add();}});
+    input.addEventListener('keydown', event => {
+      if (event.isComposing) return;
+      if (event.key === 'Enter') {event.preventDefault(); add();}
+    });
     suggestions(); render();
   }
 

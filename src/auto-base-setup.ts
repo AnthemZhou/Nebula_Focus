@@ -2,6 +2,7 @@ import {TFile, TFolder, normalizePath, parseYaml, stringifyYaml, type App, type 
 import {enhanceBaseProfiles} from './auto-base-profile';
 import {generateBaseForNote} from './generated-base';
 import {noteSource} from './note-source';
+import {configId} from './config-id';
 
 const GENERATED_FOLDER = 'Nebula Views';
 function object(value: unknown): value is Record<string, unknown> {
@@ -129,7 +130,7 @@ export class AutoBaseSetup {
         catch (error) {if (!await this.app.vault.adapter.exists(path)) throw error;}
       }
     }
-    const backup = `${folder}/${Date.now()}-${crypto.randomUUID()}.json`;
+    const backup = `${folder}/${Date.now()}-${configId()}.json`;
     if (!currentIdentity()) return;
     await this.app.vault.adapter.write(backup, JSON.stringify({path: sourcePath, content: original}));
     if (!currentIdentity()) return;

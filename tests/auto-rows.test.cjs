@@ -549,6 +549,38 @@ test('finance measurement uses the decorated title inset and unavailable badge w
   }finally{f.close();}
 });
 
+test('mobile plaintext title editing measures the live focused typography without replacing the editor',()=>{
+  const f=fixture({name:'收支流水',profile:structuredClone(financeProfile),properties:['formula.流水页面','note.税务分类']});
+  try{
+    f.doc.body.className='bui-enabled is-mobile';
+    const style=f.doc.head.appendChild(f.doc.createElement('style'));
+    style.textContent='a[contenteditable="plaintext-only"]:focus{font:400 18px/28px sans-serif;letter-spacing:0.6px;word-spacing:1.5px;padding:4px 36px}';
+    const live=f.view.rows[0].cells[0].inner;
+    live.replaceChildren();live.removeAttribute('contenteditable');
+    const editor=f.doc.createElement('a');editor.className='internal-link bui-idea-title';
+    editor.setAttribute('contenteditable','plaintext-only');editor.tabIndex=0;editor.textContent='正在修改的中文流水标题';
+    live.append(editor);editor.focus();
+    const focusedCopies=[];
+    f.adapter.readHeight=row=>{
+      const copied=row.querySelector('[contenteditable="plaintext-only"]');
+      if(copied){
+        const actual=f.dom.window.getComputedStyle(editor), measured=f.dom.window.getComputedStyle(copied);
+        focusedCopies.push({copied,actual:[actual.fontSize,actual.lineHeight,actual.letterSpacing,actual.wordSpacing,actual.padding],
+          measured:[measured.fontSize,measured.lineHeight,measured.letterSpacing,measured.wordSpacing,measured.padding]});
+        return 68;
+      }
+      return 32;
+    };
+    f.adapter.refresh(f.view);f.view.updateVirtualDisplay();
+    assert.equal(focusedCopies.length,1);assert.equal(f.doc.activeElement,editor);
+    assert.deepEqual(focusedCopies[0].measured,focusedCopies[0].actual);
+    assert.equal(focusedCopies[0].copied.textContent,'正在修改的中文流水标题');
+    assert.notEqual(focusedCopies[0].copied,editor);
+    assert.equal(f.view.rows[0].cells[0].inner.querySelector('a'),editor);
+    assert.equal(f.view.rows[0].el.style.getPropertyValue('--bases-table-row-height'),'68px');
+  }finally{f.close();}
+});
+
 test('explicit finance tag widths fit full labels and restore the original accessor after opt-out',()=>{
   const dom=new JSDOM('<!doctype html><body><div class="bases-view bui-ideas-base"><div class="bases-thead"><div class="bases-td"><div class="header-inner"><span class="bases-table-header-name">税务分类</span></div></div></div><div class="bases-table-container"><div class="bases-td"><div class="bases-table-cell" data-property-type="text"><div class="metadata-input-longtext">长期资产购置</div></div></div></div></div></body>');
   const win=dom.window,doc=win.document;loadGeometryStyles(doc);

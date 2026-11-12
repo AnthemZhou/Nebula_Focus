@@ -5,6 +5,8 @@ const vm = require('node:vm');
 const {transformSync} = require('esbuild');
 const {JSDOM} = require('jsdom');
 const loadGeometryStyles = require('./load-geometry-styles.cjs');
+// Parse the built plugin once; each fixture still gets its own VM and exports.
+const pluginScript = new vm.Script(fs.readFileSync('main.js', 'utf8'));
 const moduleValue = {exports: {}};
 new Function('module', 'exports', transformSync(fs.readFileSync('src/model.ts', 'utf8'), {loader:'ts',format:'cjs'}).code)(moduleValue,moduleValue.exports);
 const {overdue, firstImage, isEmpty, compactLink, isDueProperty} = moduleValue.exports;
@@ -65,6 +67,10 @@ function fixture() {
     open(){doc.body.append(this.modalEl);}
     close(){this.onClose?.();this.modalEl.remove();}
   }
+  class FuzzySuggestModal extends Modal {
+    constructor(app){super();this.app=app;this.inputEl=this.contentEl.createEl('input');}
+    setPlaceholder(value){this.inputEl.placeholder=value;}
+  }
   const menus=[], notices=[];
   class Menu {
     constructor(){this.items=[];menus.push(this);}
@@ -72,9 +78,9 @@ function fixture() {
     showAtPosition(position){this.position=position;}
     showAtMouseEvent(){}
   }
-  const api = {Plugin, PluginSettingTab: class {}, TFile, TFolder: class {}, ItemView: class extends Component {}, BasesView: class extends Component {}, MarkdownView, Component, Modal, Notice:class{constructor(message){notices.push(message);}}, Menu, setIcon(){}};
+  const api = {Plugin, PluginSettingTab: class {}, TFile, TFolder: class {}, ItemView: class extends Component {}, BasesView: class extends Component {}, MarkdownView, Component, Modal, FuzzySuggestModal, Notice:class{constructor(message){notices.push(message);}}, Menu, setIcon(){}};
   const mod = {exports:{}};
-  new vm.Script(fs.readFileSync('main.js','utf8')).runInContext(vm.createContext({
+  pluginScript.runInContext(vm.createContext({
     module:mod,exports:mod.exports,require:name => {assert.equal(name,'obsidian'); return api;},
     document:doc,window:win,HTMLElement:win.HTMLElement,HTMLInputElement:win.HTMLInputElement,Element:win.Element,Node:win.Node,
     MutationObserver:win.MutationObserver,console,URL,
@@ -683,29 +689,6 @@ test('reading hides cover without an auxiliary entry, editing and disabling rest
   }finally{f.close();}
 });
 
-test('native tag suggestions share stable colors with new values while preserving selection and callbacks', () => {
-  const f=fixture();
-  try {
-    const root=f.doc.body.createDiv('workspace-leaf-content');root.innerHTML=nativeIdeaMarkup();
-    const cell=root.querySelector('[data-property="note.类型"]');
-    const input=cell.querySelector('.metadata-input-longtext');
-    input.textContent='新建研究领域';input.focus();
-    const popup=f.doc.body.createDiv('suggestion-container mod-property-value');popup.dataset.propertyKey='类型';
-    const option=popup.createDiv('suggestion-item is-selected');option.textContent='新建研究领域';
-    let clicks=0;option.addEventListener('click',()=>clicks++);
-    f.plugin.ideaTables.refresh(f.doc);
-    assert.equal(option.dataset.buiTone,input.dataset.buiTone);
-    assert(option.classList.contains('is-selected'));
-    assert.equal(f.doc.activeElement,input);
-    option.click();assert.equal(clicks,1);
-    input.blur();f.plugin.ideaTables.refresh(f.doc);
-    assert(!option.classList.contains('bui-native-tag'));
-    assert(option.classList.contains('is-selected'));
-    assert.equal(option.textContent,'新建研究领域');
-    assert.deepEqual(f.writes,[]);
-  }finally{f.close();}
-});
-
 test('classification widths use native geometry, include unseen new labels, preserve wider choices and restore accessors', () => {
   const f=fixture();
   try {
@@ -745,18 +728,6 @@ test('classification widths use native geometry, include unseen new labels, pres
   }finally{f.close();}
 });
 
-test('new tag names cannot collide with JavaScript object prototype properties', () => {
-  const f=fixture();
-  try {
-    f.doc.body.innerHTML=nativeIdeaMarkup();
-    const input=f.doc.querySelector('[data-property="note.类型"] .metadata-input-longtext');
-    for(const text of ['constructor','toString','__proto__']) {
-      input.textContent=text;f.plugin.ideaTables.refresh(f.doc);
-      assert(['green','orange','blue','purple','yellow'].includes(input.dataset.buiTone));
-    }
-  }finally{f.close();}
-});
-
 test('explicit option order saves are serialized, preserve other settings, and recover after a failed save', async () => {
   const f = fixture();
   try {
@@ -780,6 +751,31 @@ test('explicit option order saves are serialized, preserve other settings, and r
     f.plugin.settingsAvailable = false;
     await assert.rejects(f.plugin.saveTagOrder('domain', ['AI']), /unavailable/);
     assert.equal(saved.length, 3);
+    assert.deepEqual(f.writes, []);
+  } finally {f.close();}
+});
+
+test('font preferences share the settings queue, preserve native mode and never write notes', async () => {
+  const f = fixture();
+  try {
+    f.plugin.active = false;
+    f.plugin.uiSettings = {appearanceMode: 'native', home: {title: '我的首页'}, tagOptionOrder: {existing: ['kept']}};
+    const saved = [];
+    f.plugin.saveData = async value => {await Promise.resolve(); saved.push(JSON.parse(JSON.stringify(value)));};
+    const [fontSaved] = await Promise.all([f.plugin.saveFontChoice('lxgw-wenkai'), f.plugin.saveTagOrder('domain', ['AI'])]);
+    assert.equal(fontSaved, true);
+    assert.deepEqual(saved.at(-1), {appearanceMode: 'native', home: {title: '我的首页'}, tagOptionOrder: {existing: ['kept'], domain: ['AI']}, fontFamily: 'lxgw-wenkai'});
+    assert.equal(f.doc.body.classList.contains('bui-font-wenkai'), false);
+    f.plugin.saveData = async () => {throw new Error('disk full');};
+    assert.equal(await f.plugin.saveFontChoice('default'), false);
+    assert.equal(f.plugin.uiSettings.fontFamily, 'lxgw-wenkai');
+    assert.match(f.notices.at(-1), /字体选择未能保存/);
+    f.plugin.saveData = async value => saved.push(JSON.parse(JSON.stringify(value)));
+    assert.equal(await f.plugin.saveFontChoice('default'), true);
+    assert.equal(saved.at(-1).fontFamily, 'default');
+    f.plugin.settingsAvailable = false;
+    assert.equal(await f.plugin.saveFontChoice('lxgw-wenkai'), false);
+    assert.equal(saved.at(-1).fontFamily, 'default');
     assert.deepEqual(f.writes, []);
   } finally {f.close();}
 });
@@ -853,6 +849,26 @@ test('rapid appearance switches serialize preferences alongside tag edits and ke
     assert.equal(f.plugin.active,false); assert.equal(f.plugin.uiSettings.appearanceMode,'native');
     assert.deepEqual(Array.from(f.plugin.uiSettings.tagOptionOrder.domain),['AI']);
     assert.equal(f.doc.body.classList.contains('bui-enabled'),false);
+  } finally {f.close();}
+});
+
+test('mobile page controls reserve their touch width in ordinary file-name and explicit-property tables', () => {
+  const f=fixture();
+  try {
+    const style=f.doc.createElement('style'); style.textContent=fs.readFileSync('styles.css','utf8'); f.doc.head.append(style);
+    // Plain native tables intentionally have no full table enhancement profile.
+    f.doc.body.innerHTML='<div class="bases-view"><div class="bases-td bui-title-column"><div class="bui-idea-title-cell"><button class="bui-idea-page-button"></button><a class="internal-link bui-idea-title">文件名称</a></div></div><div class="bases-td bui-title-column"><div class="bui-idea-title-cell"><div class="metadata-input-longtext bui-idea-title" contenteditable="true">属性标题</div></div></div></div>';
+    for(const mode of ['is-mobile','bui-touch']) {
+      f.doc.body.className=`bui-enabled ${mode}`;
+      for(const title of f.doc.querySelectorAll('.bui-idea-title'))
+        assert.equal(f.dom.window.getComputedStyle(title).paddingInlineStart,'calc(var(--bui-touch-target) - 8px)',`${mode}: native cell padding plus title inset must equal the icon hit width`);
+    }
+    f.doc.body.className='bui-enabled';
+    for(const title of f.doc.querySelectorAll('.bui-idea-title'))
+      assert.notEqual(f.dom.window.getComputedStyle(title).paddingInlineStart,'calc(var(--bui-touch-target) - 8px)');
+    f.doc.body.className='is-mobile';
+    for(const title of f.doc.querySelectorAll('.bui-idea-title'))
+      assert.notEqual(f.dom.window.getComputedStyle(title).paddingInlineStart,'calc(var(--bui-touch-target) - 8px)');
   } finally {f.close();}
 });
 

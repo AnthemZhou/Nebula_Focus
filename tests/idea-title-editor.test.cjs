@@ -158,6 +158,19 @@ test('the sole page icon and modified link clicks delegate navigation, while nat
   } finally {f.close();}
 });
 
+test('the configured page-icon route gets the owning view and live icon; title clicks remain inline edits', () => {
+  const routed=[];
+  const f=fixture({rename() {},open(view,file,event) {routed.push({view,file,source:event.currentTarget,type:event.type});}});
+  try {
+    f.titles.refresh(f.view);const icon=f.cell.querySelector('.bui-idea-page-button');
+    f.click(f.link);assert.equal(f.link.getAttribute('contenteditable'),'plaintext-only');assert.deepEqual(routed,[]);
+    f.key(f.link,'Escape');f.click(icon);
+    icon.dispatchEvent(new f.win.MouseEvent('auxclick',{bubbles:true,cancelable:true,button:1}));
+    assert.equal(routed.length,2);assert.ok(routed.every(item=>item.view===f.view && item.file===f.file && item.source===icon));
+    assert.deepEqual(f.opens,[]);assert.deepEqual(f.writes,[]);
+  } finally {f.close();}
+});
+
 test('native range selection, shift-click and pointer drags never navigate or enter editing',()=>{
   const f=fixture();try {
     f.titles.refresh(f.view);f.view.selection={top:0,bottom:1};
@@ -281,6 +294,44 @@ test('file-name drafts discard on Escape or stale file changes; failed renames r
     assert.equal(f.link.textContent,'a');assert.equal(f.notices.length,1);assert.deepEqual(f.writes,[]);
     f.click(f.link);f.edit('过期');f.file.path='Ideas/renamed.md';f.key(f.link,'Enter');
     assert.deepEqual(renames,['撞名']);
+  }finally{f.close();}
+});
+
+test('phone file-name editing keeps Chinese composition across redraws and saves once after keyboard blur',async()=>{
+  const renames=[];
+  const f=fixture({rename(view,file,basename){renames.push({view,file,basename});}});try{
+    f.doc.body.classList.add('is-mobile');filename(f);f.titles.refresh(f.view);
+    const pointer=(type,extra={})=>{
+      const event=new f.win.MouseEvent(type,{bubbles:true,cancelable:true,clientX:60,clientY:20,...extra});
+      Object.defineProperties(event,{pointerId:{value:1},pointerType:{value:'touch'}});f.link.dispatchEvent(event);
+    };
+    pointer('pointerdown');pointer('pointerup');f.click(f.link,{clientX:60,clientY:20});
+    assert.equal(f.doc.activeElement,f.link);assert.equal(f.link.getAttribute('contenteditable'),'plaintext-only');
+    f.link.dispatchEvent(new f.win.CompositionEvent('compositionstart'));f.edit('shou ji');
+    f.titles.refresh(f.view);assert.equal(f.doc.activeElement,f.link);
+    f.key(f.link,'Enter',{isComposing:true});assert.deepEqual(renames,[]);
+    f.link.blur();assert.deepEqual(renames,[]);
+    f.link.dispatchEvent(new f.win.CompositionEvent('compositionend'));f.edit('手机发布标题');
+    await Promise.resolve();assert.deepEqual(renames,[{view:f.view,file:f.file,basename:'手机发布标题'}]);
+    assert.deepEqual(f.writes,[]);assert.deepEqual(f.opens,[]);
+  }finally{f.close();}
+});
+
+test('phone page-icon swipes and cancelled touches cannot navigate through a trailing synthetic click',()=>{
+  const f=fixture({rename(){}});try{
+    f.doc.body.classList.add('is-mobile');filename(f);f.titles.refresh(f.view);
+    const icon=f.cell.querySelector('.bui-idea-page-button');
+    const pointer=(type,extra={})=>{
+      const event=new f.win.MouseEvent(type,{bubbles:true,cancelable:true,clientX:15,clientY:20,...extra});
+      Object.defineProperties(event,{pointerId:{value:1},pointerType:{value:'touch'}});icon.dispatchEvent(event);return event;
+    };
+    assert.equal(pointer('pointerdown').defaultPrevented,false);
+    assert.equal(pointer('pointermove',{clientY:100}).defaultPrevented,false);
+    pointer('pointerup',{clientY:100});f.click(icon);assert.deepEqual(f.opens,[]);
+    pointer('pointerdown');pointer('pointercancel');f.click(icon);assert.deepEqual(f.opens,[]);
+    pointer('pointerdown');pointer('pointerup');f.click(icon);assert.equal(f.opens.length,1);
+    pointer('pointerdown');pointer('pointercancel');f.key(icon,'Enter');f.click(icon);assert.equal(f.opens.length,2);
+    assert.deepEqual(f.writes,[]);
   }finally{f.close();}
 });
 

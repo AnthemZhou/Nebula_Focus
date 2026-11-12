@@ -41,6 +41,19 @@ test('drag lifts an inert visual copy while keeping the real option as a placeho
   f.rows[0].style.setProperty('--bui-source-tag-font-size', '19px');
   f.rows[0].style.setProperty('--bui-source-tag-font-family', 'Custom CJK');
   f.rows[0].style.setProperty('--bui-source-tag-line-height', '25px');
+  // A detached overlay loses selectors and inherited popup variables. Snapshot
+  // both resolved row spacing and the chip variables from computed styles.
+  const nativeComputed = f.dom.window.getComputedStyle.bind(f.dom.window);
+  const resolved = {'letter-spacing': '0.5px', 'word-spacing': '2px',
+    '--bui-source-tag-letter-spacing': '0.3px', '--bui-source-tag-word-spacing': '1px'};
+  f.dom.window.getComputedStyle = element => {
+    const computed = nativeComputed(element);
+    if (element !== f.rows[0]) return computed;
+    return new Proxy(computed, {get(target, key) {
+      if (key === 'getPropertyValue') return name => resolved[name] ?? target.getPropertyValue(name);
+      return Reflect.get(target, key);
+    }});
+  };
   f.motion.move(48, 165);
   const ghost = f.doc.querySelector('.bui-tag-drag-overlay');
   assert(ghost); assert.equal(ghost.inert, true); assert.equal(ghost.getAttribute('aria-hidden'), 'true');
@@ -53,6 +66,10 @@ test('drag lifts an inert visual copy while keeping the real option as a placeho
   assert.equal(ghost.style.getPropertyValue('--bui-source-tag-font-size'), '19px');
   assert.equal(ghost.style.getPropertyValue('--bui-source-tag-font-family'), 'Custom CJK');
   assert.equal(ghost.style.getPropertyValue('--bui-source-tag-line-height'), '25px');
+  assert.equal(ghost.style.letterSpacing, '0.5px');
+  assert.equal(ghost.style.wordSpacing, '2px');
+  assert.equal(ghost.style.getPropertyValue('--bui-source-tag-letter-spacing'), '0.3px');
+  assert.equal(ghost.style.getPropertyValue('--bui-source-tag-word-spacing'), '1px');
   f.motion.dispose();
   assert.equal(f.doc.querySelector('.bui-tag-drag-overlay'), null);
   assert.equal(f.rows[0].style.visibility, ''); assert.equal(f.rows[0].classList.contains('bui-tag-drag-placeholder'), false);

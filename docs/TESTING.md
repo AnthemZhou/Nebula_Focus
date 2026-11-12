@@ -1,4 +1,185 @@
-# Nebula Focus validation — 1.1 series
+# Nebula Focus validation
+
+## 1.3.0 release validation / 发布验证 — 2026-11-13
+
+Final local build passes strict TypeScript and bundling. The complete **51-file suite passes 729/729 tests** in 8.46 seconds, with no failures, cancellations or skips. ESLint reports **0 errors and 39 documented warnings**; no rules were disabled to reduce that count. The final subsequent change is scoped table-spacing CSS, parsed successfully and inspected in the running app; it does not change tested TypeScript behavior.
+
+Mac Obsidian **1.15.1**: sidebar page clicks and search results activate the main content group even when the destination already exists on the right. Pin/unpin creates and removes the dedicated section above Projects, and right-click retains the full action menu. The top-right magnifier opens all four search modes. Folder decoration is removed and hierarchy indentation is consistent. The native page menu no longer offers extra horizontal/vertical splits in enhanced mode; native commands remain available, and existing groups are not forcibly closed.
+
+Rounded desktop sidebar, vault footer and main/right panels were inspected in **dark and light** appearance. Native appearance restores the actual file explorer and original ribbon controls; sampled UI type returns from 14px to native 15px and custom panel borders disappear. Enhanced dark appearance and Reading view were restored. Reading paragraphs, editor paragraphs and editor blank lines measured **16px type / 25.5938px line height**. Top-level reading tables now use the same 16px native widget inset; content table dimensions match. Raw-source syntax, editor focus scrolling and duplicate-title handling remain native and are not claimed pixel-identical.
+
+Integrity: **211 Mac and 26 iPhone Markdown files are byte-identical**, with none added or removed. The Mac right-group preference now records the existing second group; phone preferences are unchanged. The runtime is installed in both existing vaults. The final desktop geometry changes are desktop-scoped; prior physical iPhone search, typography and navigation evidence is recorded below. This release pass does not add new phone light-theme, drag or direct-touch acceptance claims.
+
+中文：1.3.0 严格构建、全量 **729/729** 自动回归通过，Lint **0 错误 / 39 项已记录警告**。Mac 实测侧栏及搜索回主区、独立置顶、右键菜单、四模式搜索、圆角区域、明暗主题和原生外观还原；结束恢复增强暗色及阅读模式。正文实测两种模式均为 **16px / 25.5938px**，阅读表格的额外间距已与原生编辑控件对齐。两端共 **237 篇 Markdown** 无内容变化。手机已有真机结果保留其原测试范围，不以桌面或自动回归替代新的触摸验收。
+
+Local screenshots, hashes and logs stay in ignored `dist/sidebar-polish-2026-11-13/`; they are not release assets. Earlier checkpoints below describe the builds tested at those times, including their then-unreleased status.
+
+## Sidebar navigation, mobile search and spacing / 侧栏导航、手机搜索与间距 — 2026-11-13
+
+Development build; no release. Build and the full suite passed **721/721** tests before the final search-mode and input-method edge fixes; the final focused `workspace sidebar` run passed **170/170 across 9 files**. Changed TypeScript modules pass ESLint and strict compilation. The added behavior coverage checks main-group routing/focus, hidden-page discovery without changing sidebar settings, IME candidate-key protection, explicit clicks after a missing composition-end event, and preserving the pressed result through compositionend → input → blur → click.
+
+Mac Obsidian 1.15.1: with the right group focused, clicking the sidebar's existing finance page reused and activated the main-group tab, preserving the right page. The footer contains only New page; node archive menus remain. Disclosure spacing is reduced. Reminder titles, date/source metadata and section spacing were inspected in dark and light themes; the renderer's extra paragraph margin around embedded Bases was removed. Native appearance restores the file explorer and removes the enhancement body class; enhanced dark mode was restored afterwards.
+
+Physical iPhone mirroring, same vault: black drawer, retained native vault selector at top left, glass-like search button at top right, floating accent-colored New page, bottom settings control and rounded exposed main content were observed. The persistent native mode selector is hidden only in the custom page drawer. Search displayed 26 Markdown records including sidebar-hidden samples; choosing a result closed the drawer and opened the note. A stale IME state blocked mode buttons during mirroring; the final build clears it on blur and does not block explicit pointer choices, while keeping Enter/Escape candidate guards. The user confirmed direct-touch Chinese input/filtering/keyboard layout, but reported native file browsing replaced the sidebar. The final search architecture keeps direct search, tags, bookmarks and file browsing in the same modal. After a cold restart, physical mirroring verified all four mode switches, folder descent/back, empty tag/bookmark states, cancel/reopen with the top search preserved, and result opening with drawer dismissal. The final IME commit/tap guard is covered automatically; it has no new direct-touch acceptance claim. See `mobile-testing.md`.
+
+Integrity: Mac 211 and iPhone 26 Markdown files remain byte-identical, with no added/deleted notes. Both installed runtime directories match the build. Mac sidebar expansion changed during navigation checks; phone plugin preferences remain unchanged. Local evidence is in ignored `dist/mobile-sidebar-2026-11-13/`. Existing ResizeObserver notifications remain outside a warning-free renderer claim.
+
+
+## Scheduled dates and sidebar type / 计划日期与侧栏字号 — 2026-11-13
+
+Latest scoped update, not released: build and **130/130 focused tests in 8 files** pass (2.22s); ESLint for the changed reminder modules reports no issues. This focused run replaces no earlier full-suite result. It covers calendar-date sections, year boundaries, leap days, a real DST timezone, stable collapse keys, display-only date markers, and existing sidebar behavior.
+
+Mac Obsidian 1.15.1: measured page labels and reminder entry **14px / 400**, section captions **13px / 400**. Dark and light reminder layouts were inspected: overdue dates sit below their titles in smaller red type; missing-date tasks remain collapsed. The dark theme was restored. Changes are proportional to the user text-size preference, not a claim to use Codex's internal CSS values.
+
+Physical iPhone, same existing vault: after iCloud upload and application restart, dark-mode mirroring showed the new overdue date below its title and a full `2030年12月31日 星期二` date heading, without right-edge clipping. The existing idea Base remained embedded. Tapping the reminder sidebar entry closed the drawer. This was a visual/layout check, not a new keyboard, drag, or iPhone light-theme acceptance run.
+
+中文：桌面页面名称及操作统一 14px 常规字重，项目／页面分组标题维持 13px。提醒采用今天、明天、后续具体日期分组；逾期日期移到标题下方，跨年保留年份。明暗主题均检查，结束恢复暗色。日期分组和标题去除日期标记只发生在显示层。Mac 211 篇及手机 26 篇 Markdown 的 SHA-256 对比均无变化，无新增或删除笔记。两个库的运行文件匹配构建；本地证据位于 `dist/scheduled-ui-2026-11-13/`。
+
+
+## Reminders and Codex-like navigation / 提醒事项与导航 — 2026-11-13
+
+Development build, installed in the existing Mac and iPhone vaults; not released. Build and **706/706 tests across 51 files** pass (8.18s, no skips). ESLint has zero errors and 39 pre-existing warnings. The focused `reminders` test area exercises parsed task/deadline reads, stale async cache invalidation, source rename/delete, serialized preferences, unchanged note bodies, embedded Base ownership, deferred views and cold startup.
+
+Mac Obsidian **1.15.1** observations:
+
+- Reminders displays two actual overdue page dates and 75 undated tasks. Undated items initially collapse. Adding the existing idea database renders its 21 records from the original Base; removing a reference does not delete its file.
+- Normal reminder-source click opens in the right content group, repeat click reuses it, and Command-click opens in the main group. Sidebar hides standalone Bases; the native file explorer retains them.
+- Rail width measured 40px and sidebar text 15px. Native Help/Settings move to its bottom, and the actual Settings control opens the settings window. Light/dark appearance inspected; native appearance restores the real explorer, 44px rail and original footer controls.
+- Cold-reload testing caught a traversal bug: returning `Array.push()` from `iterateRootLeaves` stops Obsidian at the first leaf. The callback now returns nothing, and the fixture models the real early-exit contract. Existing deferred views load through the public lifecycle API. Two subsequent reloads each retained one reminder tab and had empty renderer error logs. A later tab-switch check recorded an existing ResizeObserver notification; this is not a claim of a warning-free renderer.
+- Reminder startup can be disabled in settings. Plugin hot reload does not redirect the current view. The prior Home configuration is retained.
+
+中文：新提醒首页、右侧／主区导航和收紧后的侧栏已装入现有两个库，未发布。全量 706 项通过。真实 Mac 验证了自动读取、原数据库引用、目标标签复用、Command 主区打开、明暗主题和原生还原。冷启动重复首页问题经过实机复现、根因修复及回归。手机结束旧进程并重新启动后，已实际显示新版提醒页；深色真机镜像确认日期分组、点击提醒入口自动收栏、手动添加原有想法收集箱、打开来源笔记及返回后保留同一数据库引用。未重新验收中文软键盘、标签拖动及手机浅色主题。
+
+SHA-256 comparison confirms all **211 Mac / 26 iPhone Markdown files** are unchanged, with no added notes. Both previous Home configurations are identical. Both vaults' three runtime files match the build. The idea database reference was added through each device's reminder UI; the final Mac-side iCloud settings copy had not yet received that phone preference. Temporary Mac navigation preferences returned to their previous values after closing the test tabs. Opening the existing phone source note also generated its normal automatic Base configuration, without changing Markdown.
+
+Local ignored evidence and runtime backups: `dist/codex-navigation-2026-11-13/`. Prior checkpoints below describe earlier builds, not additional guarantees for this one.
+
+## Previous workspace checkpoint / 前一工作区检查点 — 2026-11-13
+
+The simplified workspace is installed in the existing Mac and iPhone test vaults, not released. Build passes; the final full suite passes **676/676 across 49 files in 8.41s**, with no skipped tests. ESLint remains at **0 errors / 39 existing warnings**. Tests added for this change cover ribbon preference persistence/restoration, early settings registration, retired Home migration, source-window page-icon routing and stale queued files. No Home data or Markdown is deleted.
+
+- Mac Obsidian **1.15.1**: no standalone Home entry or command; compact sidebar toolbar and native bottom-left vault menu verified. The four default ribbon tools measured **22px** icons. Show all displayed nine; selecting Graph displayed five; restoring compact defaults returned four. The actual settings panel exposes these controls.
+- Clicking a finance-table page icon added its note to the right content group while retaining the left finance workspace. Clicking its title instead produced an inline text field; Escape cancelled without changes. Reload retained the workspace tree and active record.
+- Desktop light/dark presentation inspected. Native appearance removed the enhancement scope, restored native file-explorer navigation and ribbon visibility, with sampled icons back to **16px** and native UI text **15px**. Enhanced sidebar text sampled **14px**, row height **33px**. These are samples, not measurements of every theme or of Codex internals.
+- Physical iPhone: restarted Obsidian through Mirroring and observed the new build. Home/header removed, drawer visibly narrower, native vault control retained. Selecting Finance closed the drawer and displayed its table; the page icon opened its record. Dark typography and background inspected. Mirroring then ended because the phone was in use; **phone tab-grid retention and light-theme appearance were not directly verified in this run**. Mobile ordinary-tab behavior also has automated coverage.
+- SHA-256 confirms all **211 Mac / 26 iPhone Markdown files** unchanged, with none added. Both Home configurations remain unchanged. Runtime files match the build in both existing vaults. iCloud reported uploaded runtime files with no unresolved conflicts. Only Mac right-workspace/ribbon preferences changed.
+- The desktop error log retained an earlier ResizeObserver undelivered-notifications entry. This is not a claim of a warning-free renderer.
+
+中文：本轮开发版已原处安装到 Mac 与唯一 iPhone 测试库，未发布。构建及 **49 个文件、676/676** 全量测试通过（8.41 秒、零跳过）；Lint **0 错误 / 39 项既有警告**。Mac 实测精简侧栏、左下角库菜单、四个默认 22px 图标、全部显示／单项开关／恢复精简、表格图标右侧打开、标题原位编辑、重载保留页面及明暗主题。原生切换恢复文件列表、原始颜色和工具栏，采样图标回到 16px、UI 字号 15px。iPhone 重启后已实际显示去除 Home 的窄侧栏、暗色表格和记录；点击 Finance 自动收栏，页面图标能打开记录。随后因手机使用中镜像断开，**本轮没有完成手机标签总览保留与浅色真机确认**，不将自动回归等同真机验收。两库共 237 篇 Markdown 和 Home 配置保持原样，未新增笔记。详见 [工作区说明](workspace-layout.md)。
+
+Local ignored evidence: `dist/simplified-workspace-2026-11-13/` contains pre-deployment snapshots, runtime backups, light screenshot, reload workspace comparison, sync status and final integrity report. These are not release assets.
+
+## Previous development checkpoint / 前一开发检查点 — 2026-11-12
+
+The latest integrated build passes, and the full local suite passes **665/665 tests in 8.77s**. Lint reports **0 errors and 39 existing warnings**, with no new warning from the right-workspace module. Two archive warnings are intentionally retained: verified archive operations use recoverable local trash instead of following a preference that could permanently delete files. The preceding archive checkpoint passed 643/643 tests across 47 files in 8.74s, followed by a 31/31 focused archive run in 1.70s; those are historical results for that earlier code.
+
+This checkpoint includes bundled fonts, shared mobile database typography, focused plaintext-title measurement, compact final-row creation, reversible sidebar hidden paths, desktop external archiving and test-suite consolidation. It now also includes screenshot-inspired typography and native right-hand work tabs for notes, Bases and Home. Earlier 590/599/606-test checkpoints remain historical evidence for their respective builds. These changes are not published. The scoped Mac workspace cases below now pass; iPhone new-tab commands and phone pinning remain unverified. Earlier observations are not a substitute for those remaining cases. See [workspace layout](workspace-layout.md), [mobile testing](mobile-testing.md), [page sidebar](page-sidebar.md), [font validation](fonts.md) and the [test-suite audit](test-suite-audit.md).
+
+中文：最新整合构建通过，全量自动测试 **665/665 通过，耗时 8.77 秒**。Lint 为 **0 错误、39 项既有警告**，右侧工作标签页模块没有新增警告；其中 2 项归档相关警告有意保留，用可恢复的本地回收站避免永久删除。此前归档检查点的 47 个文件、643/643、8.74 秒及后续专项 31/31、1.70 秒保留为历史结果。本检查点在字体、手机排版、标题测量、末行新建、侧栏隐藏路径、桌面外部归档及测试精简之上，增加截图参考排版和用于笔记、数据库、首页的原生右侧工作标签页，尚未发布。下述 Mac 工作区实际场景已通过；iPhone 新标签页命令及手机置顶仍未验证，不用较早观察代替。
+
+### Workspace automated scope / 工作区自动测试范围
+
+- Right-workspace tests cover one managed split per window, sibling-tab reuse, retained left content, mobile ordinary tabs, stale saved layout markers, cancelled selection, native/unload cleanup and asynchronous closure without stealing focus.
+- Home controller tests cover opening the shared dashboard in a specified leaf, retaining another Home, deferred non-Home replacement, concurrent requests, late navigation and error propagation. These navigation operations do not save Home settings or create `.base` or Markdown files.
+- The layout proportions are derived from the user's Obsidian text size. Screenshot reference is not a claim to have obtained Codex's internal font values. Scoped desktop measurements are below; this iteration's mobile minimum sizes have no new measurement result.
+
+中文：自动测试覆盖每窗口工作分栏复用、保留左侧内容、手机普通标签页、失效布局标识、取消选择、原生／卸载清理和异步关闭；首页专项验证指定标签页使用共享配置、保留另一个首页、替换 deferred 非首页、并发、后续导航及错误传播。导航本身不保存首页设置、不新建 `.base` 或 Markdown。排版按用户字号计算，截图参考不等于取得 Codex 内部参数；本轮桌面有限测量见下，手机最低字号暂无新的实测数值。
+
+### Workspace UI observations / 工作区实际界面观察 — 2026-11-12
+
+- Mac, Obsidian **1.15.0**: the sidebar new-tab button opened the selector; selecting a Base and a Markdown note worked. The right group's native plus button appended a tab in that group. Opening Home on the right retained the left workspace, and the root content area remained at **two tab groups**.
+- Light and dark screenshots were inspected. Native appearance removed `bui-enabled`, replaced the custom sidebar with the real file explorer, and restored custom start pages to native empty pages. Already-open notes, Bases and Home remained open. Enhanced appearance and the dark theme were restored.
+- The sampled visible `.bui-idea-title` text was **14px**. Its `.bases-td` ancestor measured 16px, which does not describe the nested title. Native navigation measured **13px**. These are sampled elements, not proof that every view or third-party theme matches.
+- The physical iPhone reloaded the plugin, showed existing Home modules and the sidebar, and closed the sidebar on Home navigation. Mirroring then disconnected because the phone was in use. **Mobile new-tab commands remain unverified**; this is not complete phone acceptance or a direct-touch pass for those commands.
+- SHA-256 comparisons confirmed all **211 Mac Markdown files** and **26 phone Markdown files** unchanged. Home settings were unchanged on both devices. Mac settings changed only `pageSidebar` expansion state and `rightWorkspace`; phone settings were unchanged.
+- Desktop developer-error records contained **seven ResizeObserver undelivered messages**. Lint's zero-error result does not mean the renderer had zero runtime errors or warnings.
+
+中文：Mac 的 Obsidian **1.15.0** 已通过侧栏新标签按钮、选择器打开数据库与笔记、右侧原生 ＋ 同组追加，以及右侧 Home 保留左侧工作台，内容区始终为 **2 个标签组**。明暗主题均已截图检查；原生切换移除增强作用域、恢复真实文件列表和空白起始页，已打开笔记／数据库／Home 保留，最后恢复增强与暗色。可见表格标题为 **14px**，外层单元格容器的 16px 不代表内部标题字号；原生导航为 **13px**，这些是有限采样。iPhone 已重载并显示原有 Home、侧栏，点击首页后收起抽屉；因手机使用中镜像再次断开，**手机新标签命令尚未验证**。Mac **211 篇**、手机 **26 篇** Markdown 哈希完全一致，Home 设置未改；Mac 仅侧栏展开与工作组状态变化，手机设置无变化。开发错误记录有 **7 条 ResizeObserver undelivered** 消息，不声称运行时零错误。
+
+Earlier scoped iPhone font observation remains valid for its tested build: settings preview, sidebar and native test-table titles/dates/tags changed to LXGW WenKai and restored through Follow Obsidian. It does not establish acceptance of the latest layout or archive changes. 中文：此前字体切换与恢复的真机有限证据保留，不扩展为本轮最新排版或归档功能通过。详见 [fonts.md](fonts.md)。
+
+### Earlier sidebar/archive UI observations / 工作区更新前的侧栏与归档 UI 观察 — 2026-11-12
+
+These observations precede the typography/right-workspace update above. They preserve the earlier data and settings checks without treating its runtime hashes as evidence for the newest build.
+以下观察早于上述排版与右侧工作区更新，保留当时的数据和设置保护记录；其中运行文件哈希不作为最新构建已加载的证据。
+
+- Physical iPhone: the updated runtime is visibly loaded, including the `项目 2` group. Tapping Home twice closed the sidebar each time and retained existing Home modules. Neither the sidebar footer nor the finance-example row menu exposed archiving.
+- Phone pinning remains **unverified**. A Mirroring menu click passed through and opened the New-page dialog; it was cancelled without creating a note. This is neither a successful pin operation nor evidence of reliable direct-touch behavior.
+- Desktop: pin/unpin passed. The archive manager was checked in dark and light themes; the original dark theme was restored.
+- A temporary desktop note, `Nebula归档验证-20261112.md`, completed UI archive → restore. The restored text and archive payload matched the original bytes/hash, and the manifest reached `restored`. The temporary note was then trashed and its external test package moved to ignored `dist/sidebar-archives-2026-11-12/archive-ui-sample`. User data was not altered.
+- At 21:51, `main.js`, `styles.css` and `manifest.json` in both test vaults matched the repository build. At 21:52, iCloud reported those three files and `data.json` uploaded, with no conflicts. These are timestamped synchronization checks, separate from the observed device behavior.
+- Final comparison confirms the phone test vault's Home and page-sidebar settings in `data.json` match the pre-deployment backup. The temporary restored note is absent, and runtime files still match the repository build.
+- Desktop `dev:errors` still contains ResizeObserver-loop warnings associated with plugin reloads. No archive-related exception was observed; the console is **not** warning-free.
+
+中文：真实 iPhone 已显示新代码及「项目 2」分组；两次点击首页均自动收起侧栏，原有 Home 模块保留。侧栏底部与财务示例行菜单均无归档入口。手机置顶没有可靠触摸通过证据：镜像菜单点击穿透，误开新建弹窗后已取消，未创建笔记。桌面置顶／取消置顶通过；归档管理器检查了明暗主题并恢复原暗色。临时笔记完成 UI 归档与恢复，原文、恢复结果及归档包字节／哈希一致，清单状态为 `restored`；随后测试笔记移入回收站、测试包移入上述本地 `dist`，用户数据未动。21:51 两个测试库的三项运行文件与仓库一致；21:52 iCloud 的三项运行文件及 `data.json` 均上传完成、无冲突。桌面重载仍有 ResizeObserver-loop 警告，未见归档异常，不表述为控制台零警告。
+
+最终复核确认手机测试库 `data.json` 的 Home 与页面侧栏配置和本轮部署前备份完全一致，临时恢复笔记已不存在，运行文件仍与仓库构建匹配。
+
+Local ignored evidence / 本地忽略目录证据：[round trip](../dist/sidebar-archives-2026-11-12/archive-ui-roundtrip.json), [dark manager](../dist/sidebar-archives-2026-11-12/archive-manager-dark-final.png), [light manager](../dist/sidebar-archives-2026-11-12/archive-manager-light-final.png). These artifacts are local validation material, not release assets.
+
+## Post-1.2.0 mobile candidate / 后续手机适配候选 — 2026-11-12
+
+The published 1.2.0 is unchanged. These subsequent local mobile fixes are not yet
+released. Testing reuses **Nebula-Focus-iPhone**, preserving its settings and notes;
+11 fictional finance records and a plain file-name Base were added to the same vault.
+
+- Home forms guard Chinese/Japanese composition confirmation against premature
+  submission, including WebKit's composition-end/Enter sequence. Automated
+  regressions pass. The user directly confirmed Chinese module-name input and
+  candidate selection on the iPhone without premature saving.
+- Shared `configId` detects `randomUUID`, then `getRandomValues`, then a
+  time/random/counter fallback for non-security configuration IDs only. Home
+  modules, Home `.base` files and automatic Base backups use the helper. Module
+  construction errors appear in the Home status area. Automated regressions pass;
+  this compatibility issue is not established as the Mirroring menu failure's cause.
+- Page icons reject a trailing click after a touch scroll or cancellation, while
+  retaining normal taps and keyboard activation. This is automated coverage, not
+  a new real-touch verdict.
+- Ordinary `file.name` title-only tables reserve the 44px mobile icon target.
+  Actual iPhone Mirroring confirmed the corrected spacing after disabling and
+  re-enabling the plugin to clear stale CSS. Native tags and row heights are retained.
+- Mirroring confirmed short-title alignment, long-title wrapping, no extra phone
+  history row and the New action directly after the last idea-table row. The
+  light-theme column-label popup fits the screen and follows header typography;
+  popup saving and keyboard interaction still need direct touch.
+- Home's empty state and add-module menu are visible. The empty-state title,
+  description and purple add button remain readable in light mode and after the
+  system automatically switched to dark mode; other modules are not covered by
+  that observation. Earlier Mirroring clicks on Data view dismissed the menu without
+  a modal. The user subsequently confirmed Add first module → Data view → choose
+  Idea inbox → Save directly on the phone; “想法收集箱 测试一下” is now visible.
+- The user's remaining Home feedback was excessive module-title spacing. Home-only
+  CSS reduces heading spacing from 10px to 6px and embed spacing from 8px to zero;
+  the native toolbar now uses automatic height with mobile targets of at least
+  44px. Actual light-theme desktop styles confirm the Home embed margin is `0px` instead of
+  `8px 0 12px` and toolbar height is 32px instead of 40px; the screenshot layout
+  is normal. After the user fully restarted Obsidian, physical-iPhone Mirroring
+  in dark mode confirmed tighter spacing: with the module title staying near
+  y=412, the toolbar center moved from about y=513 to y=491 and the header top
+  from y=560 to y=535 in matching 708×1564 screenshots. These are screenshot
+  coordinates, not CSS measurements. Collapse/expand restored the complete table
+  and retained the user's module name. Module height and Markdown are unchanged.
+  This is a scoped light-desktop/dark-iPhone spacing pass, not all-phone acceptance.
+- After the JavaScript fixes, the strict build and **590/590** full automated tests
+  pass, with **zero skipped tests**. Lint has **zero errors and 38 existing warnings**.
+  The subsequent Home-spacing-only CSS adjustment passes **44/44** reading/style
+  tests; this is not a new full-suite run. The runtime files are
+  synchronized to the same iCloud test vault: `main.js`, `styles.css` and
+  `manifest.json` hashes match the current build. The plugin was disabled/re-enabled
+  on the phone; that retained the previous spacing until a full application restart.
+  The new spacing is now visually confirmed on the physical phone. Individual
+  remaining touch checks are recorded separately. Runtime hashes are recorded
+  in [mobile-testing.md](mobile-testing.md).
+- In the phone's dark theme, the fictional finance table's column-label popup,
+  tag picker and summary text remained readable at matching text sizes. Mirrored
+  popup clicks still reached underlying cells, so save/selection is not a pass.
+  Home's title-edit form opened and closed without saving; data-module creation
+  and Chinese module-name entry were subsequently confirmed by direct touch.
+- Initial, post-spacing and final phone collapse/expand checks confirm all **15 pre-existing Markdown files**
+  remain byte-identical by SHA-256. Added
+  fictional fixtures are separate from that check. No UI code was added to bodies.
+
+中文：以上是 1.2.0 发布后的本地候选修复，尚未发布。复用唯一手机测试库，已确认普通文件名标题避让图标、想法表格布局和浅色列名弹窗；用户已直接触摸确认 Home 添加想法收集箱数据模块及模块名称中文输入正常，手机显示「想法收集箱 测试一下」。此前镜像菜单未显示配置弹窗的现象不代表真实触摸故障。Home 标题间距已通过浅色桌面和深色真实 iPhone 的有限视觉复测；手机须彻底重启 Obsidian 后才显示新样式，折叠／展开后内容完整恢复。其他触摸与主题场景保留各自的证据限制。详细记录见 [mobile-testing.md](mobile-testing.md)。
 
 ## 1.1.2 质量检查 / Quality checks（2026-11-04）
 

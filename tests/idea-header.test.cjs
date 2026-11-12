@@ -5,6 +5,13 @@ const vm = require('node:vm');
 const {transformSync} = require('esbuild');
 const {JSDOM} = require('jsdom');
 const loadGeometryStyles = require('./load-geometry-styles.cjs');
+// Cache immutable bytecode, never fixture exports or DOM-dependent modules.
+const scripts = new Map();
+function compiled(name) {
+  if (!scripts.has(name)) scripts.set(name, new vm.Script(
+    transformSync(fs.readFileSync(`src/${name}.ts`, 'utf8'), {loader:'ts',format:'cjs'}).code));
+  return scripts.get(name);
+}
 
 function fixture(manage, {foreignRealm=false}={}) {
   const dom = new JSDOM('<!doctype html><body><div class="bases-thead"></div></body>');
@@ -16,8 +23,7 @@ function fixture(manage, {foreignRealm=false}={}) {
   function load(name) {
     if (loaded.has(name)) return loaded.get(name);
     const mod = {exports:{}};
-    new vm.Script(transformSync(fs.readFileSync(`src/${name}.ts`,'utf8'), {loader:'ts',format:'cjs'}).code)
-      .runInContext(vm.createContext({module:mod,exports:mod.exports,HTMLElement:primary.window.HTMLElement,Element:primary.window.Element,
+    compiled(name).runInContext(vm.createContext({module:mod,exports:mod.exports,HTMLElement:primary.window.HTMLElement,Element:primary.window.Element,
         require:dependency => dependency === 'obsidian' ? {setIcon(el, icon){el.dataset.icon=icon;}} : load(dependency.slice(2))}));
     loaded.set(name, mod.exports);return mod.exports;
   }
@@ -85,12 +91,12 @@ test('header rename popover snapshots the clicked label typography rather than b
   try {
     const label=f.cell('formula.想法').nameEl;
     f.doc.body.style.fontSize='30px';
-    label.style.cssText='font-family: "Example CJK", serif; font-size: 17.5px; font-weight: 500; line-height: 24px';
+    label.style.cssText='font-family: "Example CJK", serif; font-size: 17.5px; font-weight: 500; line-height: 24px; letter-spacing: 0.5px; word-spacing: 2px';
     const original=label.getAttribute('style');
     const container=f.doc.body.appendChild(f.doc.createElement('div'));f.view.containerEl=container;
     container.innerHTML='<div class="bases-td" data-property="formula.想法"><span class="bases-rendered-value" style="font-size:42px">Other value</span></div>';
     f.headers.attach(f.view);f.click(label);
-    for(const name of ['font-size','font-family','font-weight','line-height'])
+    for(const name of ['font-size','font-family','font-weight','line-height','letter-spacing','word-spacing'])
       assert.equal(panel(f).style.getPropertyValue(`--bui-source-tag-${name}`),f.win.getComputedStyle(label).getPropertyValue(name));
     assert.equal(panel(f).style.getPropertyValue('--bui-source-tag-font-size'),'17.5px');
     assert.equal(panel(f).style.getPropertyValue('--bui-source-tag-line-height'),'24px');
@@ -105,15 +111,18 @@ test('header rename popover snapshots the clicked label typography rather than b
 test('relative header font declarations are copied as resolved metrics without scaling again in the popup',()=>{
   const f=fixture();
   try {
-    const label=f.cell('formula.想法').nameEl;label.style.fontSize='1.2em';label.style.lineHeight='1.5';
-    const native=f.win.getComputedStyle.bind(f.win),resolved={'font-size':'18px','font-family':'Source CJK','font-weight':'400','line-height':'27px'};
+    const label=f.cell('formula.想法').nameEl;label.style.fontSize='1.2em';label.style.lineHeight='1.5';label.style.letterSpacing='0.1em';label.style.wordSpacing='0.2em';
+    const native=f.win.getComputedStyle.bind(f.win),resolved={'font-size':'18px','font-family':'Source CJK','font-weight':'400','line-height':'27px','letter-spacing':'1.8px','word-spacing':'3.6px'};
     // JSDOM does not resolve em/unitless computed values; supply the browser's
     // resolved CSSOM metrics while retaining the source's relative declarations.
     f.win.getComputedStyle=el=>el===label?{getPropertyValue:name=>resolved[name]??''}:native(el);
     f.headers.attach(f.view);f.click(label);
     assert.equal(panel(f).style.getPropertyValue('--bui-source-tag-font-size'),'18px');
     assert.equal(panel(f).style.getPropertyValue('--bui-source-tag-line-height'),'27px');
+    assert.equal(panel(f).style.getPropertyValue('--bui-source-tag-letter-spacing'),'1.8px');
+    assert.equal(panel(f).style.getPropertyValue('--bui-source-tag-word-spacing'),'3.6px');
     assert.equal(label.style.fontSize,'1.2em');assert.equal(label.style.lineHeight,'1.5');
+    assert.equal(label.style.letterSpacing,'0.1em');assert.equal(label.style.wordSpacing,'0.2em');
   } finally {f.headers.clear();f.close();}
 });
 

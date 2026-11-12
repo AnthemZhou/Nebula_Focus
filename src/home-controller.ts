@@ -3,6 +3,7 @@ import {HOME_VIEW_TYPE, HomeView, type HomeHost, type HomeSource} from './home-v
 import {cloneHomeBase, readHomeConfig, remapHomePaths, type HomeConfig, type HomeModule} from './home-model';
 import {homeQueryEntries, renderHomeSummary, summarizeHome} from './home-summary';
 import {nativeHTMLElement} from './native-presentation';
+import {configId} from './config-id';
 
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const MODULE_FOLDER = 'Nebula Views/Home';
@@ -20,6 +21,7 @@ export class HomeController extends Component implements HomeHost {
   private layoutReady = false;
   private restoring = new Map<WorkspaceLeaf, Promise<void>>();
   private opening?: Promise<void>;
+  private openingInto = new Map<WorkspaceLeaf, Promise<void>>();
 
   constructor(readonly plugin: Plugin, initial: unknown, private save: (config: HomeConfig) => Promise<void>) {
     super();
@@ -71,6 +73,45 @@ export class HomeController extends Component implements HomeHost {
     const operation = this.openHome().finally(() => {this.opening = undefined;});
     this.opening = operation;
     return operation;
+  }
+
+  /** Open the shared dashboard in this exact leaf. Right-hand tabs must not
+   * navigate back to another Home or clone its module configuration. Errors
+   * belong to the caller's navigation UI rather than a second notice here. */
+  openInto(leaf: WorkspaceLeaf): Promise<void> {
+    if (this.stopped) return Promise.resolve();
+    const running = this.openingInto.get(leaf);
+    if (running) return running;
+    const operation = this.openSpecificHome(leaf).finally(() => {this.openingInto.delete(leaf);});
+    this.openingInto.set(leaf, operation);
+    return operation;
+  }
+
+  private liveLeaf(leaf: WorkspaceLeaf): boolean {
+    let present = false;
+    this.app.workspace.iterateAllLeaves(candidate => {if (candidate === leaf) present = true;});
+    return present;
+  }
+
+  private async openSpecificHome(leaf: WorkspaceLeaf): Promise<void> {
+    if (this.stopped || !this.liveLeaf(leaf)) return;
+    if (this.loadError) throw this.loadError instanceof Error ? this.loadError : new Error('首页配置无法读取');
+    const restoring = this.restoring.get(leaf);
+    if (restoring) await restoring;
+    else if (leaf.getViewState().type === HOME_VIEW_TYPE) await this.restoreLeaf(leaf);
+    else {
+      // setViewState handles replacing a deferred non-Home view itself. Loading
+      // the old view first could mistake that intentional navigation for a
+      // cancelled ghost-Home restoration. Never carry over its file/group state.
+      const mounting = leaf.setViewState({type: HOME_VIEW_TYPE, state: {}, active: false})
+        .finally(() => {if (this.restoring.get(leaf) === mounting) this.restoring.delete(leaf);});
+      this.restoring.set(leaf, mounting);
+      await mounting;
+    }
+    // A later user navigation, leaf closure or unload wins over this request.
+    if (this.stopped || !this.liveLeaf(leaf) || leaf.getViewState().type !== HOME_VIEW_TYPE) return;
+    if (!(leaf.view instanceof HomeView) || leaf.view.host !== this) throw new Error('首页视图未能加载');
+    await this.app.workspace.revealLeaf(leaf);
   }
 
   private async openHome() {
@@ -147,7 +188,7 @@ export class HomeController extends Component implements HomeHost {
           if (this.stopped) throw new Error('插件已关闭');
           // New source/view gets a new file: never overwrite an existing edited
           // module view or an unrelated path, including a cross-device collision.
-          target.basePath = `${MODULE_FOLDER}/${crypto.randomUUID()}.base`;
+          target.basePath = `${MODULE_FOLDER}/${configId()}.base`;
           await this.app.vault.create(target.basePath, stringifyYaml(cloned));
         }
       }
@@ -297,5 +338,5 @@ export class HomeController extends Component implements HomeHost {
     console.error('[Nebula Focus] ' + message, error);
     new Notice(message + '：' + (error instanceof Error ? error.message : String(error)));
   }
-  onunload() {this.stopped = true; window.clearTimeout(this.restoreTimer); this.views.clear();}
+  onunload() {this.stopped = true; window.clearTimeout(this.restoreTimer); this.views.clear(); this.openingInto.clear();}
 }

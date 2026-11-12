@@ -23,19 +23,38 @@ export interface PageTreeSettings {
   sort: 'manual' | 'name';
   showAttachments: boolean;
   openOnStartup: boolean;
+  hiddenPaths: string[];
 }
 
 const strings = (value: unknown): string[] => Array.isArray(value)
   ? [...new Set(value.filter((item): item is string => typeof item === 'string'))] : [];
 
+/** Preferences use vault-relative paths, never filesystem locations or globs. */
+export function readHiddenPagePaths(value: unknown): string[] {
+  return [...new Set(strings(value).flatMap(value => {
+    const path = value.trim().replace(/\\/g, '/').replace(/\/+/g, '/').replace(/^\/|\/$/g, '');
+    const parts = path.split('/');
+    if (!path || parts.some(part => part === '..' || part === '.') || /^[a-z][a-z\d+.-]*:/i.test(path)) return [];
+    return [path];
+  }))];
+}
+
+function hiddenPagePath(path: string, settings: PageTreeSettings): boolean {
+  // Generated view configurations remain usable by embeds, links and Home.
+  // Only this presentation tree excludes their implementation directory.
+  return ['Nebula Views', ...settings.hiddenPaths].some(hidden => path === hidden || path.startsWith(hidden + '/'));
+}
+
 export function readPageTreeSettings(value: unknown): PageTreeSettings {
-  const raw = value && typeof value === 'object' ? value as Partial<PageTreeSettings> : {};
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value as Partial<PageTreeSettings> : {};
   return {
+    ...raw,
     expanded: strings(raw.expanded), favorites: strings(raw.favorites),
     order: Object.fromEntries(Object.entries(raw.order && typeof raw.order === 'object' ? raw.order : {})
       .filter(([, values]) => Array.isArray(values)).map(([key, values]) => [key, strings(values)])),
     sort: raw.sort === 'name' ? 'name' : 'manual', showAttachments: raw.showAttachments === true,
     openOnStartup: raw.openOnStartup === true,
+    hiddenPaths: readHiddenPagePaths(raw.hiddenPaths),
   };
 }
 
@@ -45,7 +64,7 @@ const compare = new Intl.Collator('zh-CN', {numeric: true, sensitivity: 'base'})
 
 export function buildPageTree(root: TreeEntry, settings: PageTreeSettings): PageNode[] {
   function visit(folder: TreeEntry, excluded?: TreeEntry): PageNode[] {
-    const children = (folder.children ?? []).filter(entry => entry !== excluded && !entry.name.startsWith('.'));
+    const children = (folder.children ?? []).filter(entry => entry !== excluded && !entry.name.startsWith('.') && !hiddenPagePath(entry.path, settings));
     const notes = new Map(children.filter(entry => !entry.children && extension(entry) === 'md')
       .map(entry => [stem(entry), entry]));
     const consumed = new Set<TreeEntry>();
@@ -53,19 +72,23 @@ export function buildPageTree(root: TreeEntry, settings: PageTreeSettings): Page
     for (const entry of children) {
       if (!entry.children) continue;
       const sibling = notes.get(entry.name);
-      const inside = entry.children.find(child => !child.children && extension(child) === 'md' && stem(child) === entry.name);
+      const inside = entry.children.find(child => !child.children && !hiddenPagePath(child.path, settings) && extension(child) === 'md' && stem(child) === entry.name);
       const page = sibling ?? inside;
       if (sibling) consumed.add(sibling);
       const descendants = visit(entry, page === inside ? inside : undefined);
-      // Attachment-only directories stay accessible through “显示附件”.
-      if (!page && !descendants.length && entry.children.length && !settings.showAttachments) continue;
+      // No empty configuration-only branches. Actual empty folders remain
+      // available for creating a page; optional attachments can reveal media.
+      if (!page && !descendants.length && entry.children.length) continue;
       nodes.push({id: entry.path, parent: folder.path, title: entry.name, folderPath: entry.path,
         filePath: page?.path, kind: page ? 'page' : 'folder', children: descendants});
     }
     for (const entry of children) {
       if (entry.children || consumed.has(entry)) continue;
       const ext = extension(entry);
-      const kind = ext === 'md' ? 'page' : ext === 'base' ? 'database' : ext === 'canvas' ? 'canvas' : 'attachment';
+      // Bases are view configuration, not extra pages. They remain accessible
+      // through native files, links, embeds and the explicit file picker.
+      if (ext === 'base') continue;
+      const kind = ext === 'md' ? 'page' : 'attachment';
       if (kind === 'attachment' && !settings.showAttachments) continue;
       nodes.push({id: entry.path, parent: folder.path, title: kind === 'attachment' ? entry.name : stem(entry),
         filePath: entry.path, kind, children: []});
@@ -104,7 +127,7 @@ export function reorderPages(nodes: PageNode[], source: string, target: string, 
 /** Preserve preferences for renamed files/folders, with a path-boundary check. */
 export function remapPageSettings(settings: PageTreeSettings, oldPath: string, newPath: string): PageTreeSettings {
   const remap = (path: string) => path === oldPath ? newPath : path.startsWith(oldPath + '/') ? newPath + path.slice(oldPath.length) : path;
-  return {...settings, expanded: settings.expanded.map(remap), favorites: settings.favorites.map(remap),
+  return {...settings, expanded: settings.expanded.map(remap), favorites: settings.favorites.map(remap), hiddenPaths: settings.hiddenPaths.map(remap),
     order: Object.fromEntries(Object.entries(settings.order).map(([key, ids]) => [remap(key), ids.map(remap)]))};
 }
 

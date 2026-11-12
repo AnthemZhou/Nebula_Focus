@@ -1,4 +1,23 @@
-# 首页 / Home
+# 提醒事项首页与历史 Home / Reminders and historical Home
+
+## 1.3.0：提醒事项 / Reminders in 1.3.0
+
+首页改为「提醒事项」，只读汇总库内 Markdown 中由 Obsidian 识别的未完成任务与支持的截止日期属性，参考 Apple 提醒事项「计划」按日期分组：逾期、今天、明天、后续各个具体日期、未设日期。逾期日期放在标题下方；同一天的后续事项共用日期标题，同年省略年份，跨年保留年份。未设日期默认折叠。点击提醒进入来源笔记；任务会定位到原行。它不接入苹果提醒事项，也不复制任务或改变笔记的完成状态。
+
+默认在冷启动时打开提醒事项，同时保留原有笔记标签；插件热重载不会抢走当前页面。关闭「设置 → Nebula Focus → 提醒事项 → 启动时打开提醒事项」，即可继续由 Obsidian 恢复上次页面。也可从侧栏的「提醒事项」或同名命令进入。
+
+「添加数据库」引用已有 `.base`，直接嵌入同一来源，不复制数据库配置或记录。移除此引用只调整首页显示，不删除数据库。数据库保留原生操作；用户主动编辑属性仍会保存到源 Markdown。启动偏好与数据库路径列表存于插件 `data.json` 的 `reminders`，没有 UI 代码写入正文。
+
+The landing page is now Reminders, a read-only aggregation of unfinished Markdown tasks recognized by Obsidian and supported page-deadline properties. Following the Scheduled list pattern in Apple Reminders, it groups items into overdue, today, tomorrow, each later calendar date, and undated. Overdue dates sit under their titles; upcoming items share a date heading. Years appear for dates outside the current year. Undated items start collapsed. Clicking an item opens its source note and locates the task line. It does not connect to Apple Reminders, duplicate tasks or change completion states.
+
+Cold startup opens Reminders by default and preserves existing note tabs; plugin hot reload does not take focus. Turn off **启动时打开提醒事项** under Settings → Nebula Focus → 提醒事项 to let Obsidian resume the previous page. The sidebar and command palette also provide access.
+
+Add database references an existing `.base` and embeds the same source without copying configurations or records. Removing a reference only changes this landing page. Native database operations remain available, so explicit property edits still save to source Markdown. Startup preferences and database paths live under `reminders` in plugin `data.json`; no UI code is written into note bodies.
+
+## 历史功能：模块化 Home（1.2.0） / Historical modular Home (1.2.0)
+
+> 以下为已发布 1.2.0 的旧模块化首页记录。1.3.0 不再提供该 Home 入口；现有 `home` 配置和生成的数据视图文件保留，与新的提醒事项配置分开保存。
+> The following documents the modular Home from release 1.2.0. Version 1.3.0 no longer exposes that Home entry. Its existing `home` configuration and generated views remain stored separately from Reminders.
 
 ## 中文
 

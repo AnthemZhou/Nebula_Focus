@@ -3,12 +3,11 @@ const assert=require('node:assert/strict');
 const {buildSync}=require('esbuild');
 class TFile {constructor(path,content=''){this.path=path;this.basename=path.split('/').pop().replace(/\.[^.]+$/,'');this.extension=path.split('.').pop();this.stat={mtime:1};this.content=content;}}
 class TFolder {constructor(path){this.path=path;this.children=[];}}
-const mod={exports:{}};
 const getFrontMatterInfo=content=>{const m=/^---\r?\n([^]*?)\r?\n---(?:\r?\n|$)/.exec(content);return {exists:!!m,frontmatter:m?.[1]??'',contentStart:m?.[0].length??0};};
-new Function('require','module','exports',buildSync({entryPoints:['src/auto-base-setup.ts'],bundle:true,write:false,platform:'node',format:'cjs',external:['obsidian']}).outputFiles[0].text)(()=>({TFile,TFolder,getFrontMatterInfo,normalizePath:p=>p,parseYaml:JSON.parse,stringifyYaml:JSON.stringify}),mod,mod.exports);
-const {AutoBaseSetup}=mod.exports;
+const compiled=buildSync({entryPoints:['src/auto-base-setup.ts'],bundle:true,write:false,platform:'node',format:'cjs',external:['obsidian']}).outputFiles[0].text;
+function load(environment){const mod={exports:{}};new Function('require','module','exports','crypto',compiled)(()=>({TFile,TFolder,getFrontMatterInfo,normalizePath:p=>p,parseYaml:JSON.parse,stringifyYaml:JSON.stringify}),mod,mod.exports,environment.crypto);return mod.exports.AutoBaseSetup;}
 const legacy=()=>({formulas:{想法:'file.asLink(if(note["这里写想法"], note["这里写想法"], file.name))'},views:[{type:'table',name:'想法收集箱',order:['formula.想法','领域','类型'],sort:[{property:'领域',direction:'DESC'}],columnSize:{'note.领域':153}}]});
-function fixture(){
+function fixture(environment=globalThis){
  const nodes=new Map(),caches=new Map(),backups=new Map(),dirs=new Set(),writes=[];let enabled=true;
  const add=(path,content='# Original',cache={})=>{const file=new TFile(path,content);nodes.set(path,file);caches.set(path,cache);return file;};
  const app={vault:{configDir:'.obsidian',getFileByPath:p=>nodes.get(p) instanceof TFile?nodes.get(p):null,getFolderByPath:p=>nodes.get(p) instanceof TFolder?nodes.get(p):null,getAbstractFileByPath:p=>nodes.get(p)||null,
@@ -17,9 +16,17 @@ function fixture(){
   createFolder:async p=>{const f=new TFolder(p);nodes.set(p,f);return f;},
   adapter:{exists:async p=>dirs.has(p)||backups.has(p),mkdir:async p=>dirs.add(p),write:async(p,text)=>backups.set(p,text)}},
  metadataCache:{getFileCache:f=>caches.get(f.path),getFirstLinkpathDest:p=>nodes.get(p)||null}};
- const setup=new AutoBaseSetup(app,'nebula-focus',()=>enabled);
+ const AutoBaseSetup=load(environment),setup=new AutoBaseSetup(app,'nebula-focus',()=>enabled);
  return {app,setup,nodes,caches,backups,writes,add,disable:()=>{enabled=false;}};
 }
+test('Base upgrades keep independent backups without mobile Web Crypto',async()=>{
+ const f=fixture({}),original=JSON.stringify(legacy()),first=f.add('First.base',original),second=f.add('Second.base',original);
+ await Promise.all([f.setup.ensure(first),f.setup.ensure(second)]);
+ assert.equal(f.backups.size,2);assert.equal(new Set(f.backups.keys()).size,2);
+ assert.deepEqual([...f.backups.values()].map(raw=>JSON.parse(raw).content),[original,original]);
+ assert.equal(JSON.parse(first.content).views[0].nebulaTable.titleProperty,'这里写想法');
+ assert.equal(JSON.parse(second.content).views[0].nebulaTable.titleProperty,'这里写想法');
+});
 test('an existing embedded inbox is upgraded in place, preserves view settings, and never writes Markdown',async()=>{
  const f=fixture(),source=f.add('收集箱.md','# Collection\n![[Bases/Ideas.base#想法收集箱]]',{embeds:[{link:'Bases/Ideas.base#想法收集箱'}]}),base=f.add('Bases/Ideas.base',JSON.stringify(legacy()));
  const result=await f.setup.ensure(source);assert.deepEqual(result,[base]);

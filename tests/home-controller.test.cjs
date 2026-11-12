@@ -8,7 +8,7 @@ const SOURCE={filters:{and:['file.inFolder("Records")','note.状态 != "归档"'
   views:[{name:'工作视图',type:'table',order:['formula.标题','note.状态','note.金额'],filters:{and:['note.类型 == "项目"']},
     sort:[{property:'note.金额',direction:'DESC'}],columnSize:{'formula.标题':340},nebulaTable:{titleColumn:'formula.标题',titleProperty:'名称',tags:{状态:'single'},wrap:true,attachments:[]}},
     {name:'另一视图',type:'cards',order:['formula.标题'],groupBy:{property:'note.状态'}}],extra:{preserved:['unknown-settings']}};
-function fixture(initial){
+function fixture(initial,environment){
   const dom=new JSDOM('<main></main>',{pretendToBeVisual:true}),win=dom.window,doc=win.document;doc.win=win;
   win.createEl=tag=>doc.createElement(tag);win.createFragment=()=>doc.createDocumentFragment();
   win.HTMLElement.prototype.createDiv=function(options={}){const el=doc.createElement('div');el.className=options.cls??'';el.textContent=options.text??'';this.append(el);return el;};
@@ -60,7 +60,7 @@ function fixture(initial){
     if(name==='obsidian')return api;
     if(name==='./home-view')return{HOME_VIEW_TYPE:'nebula-home',HomeView};
     throw Error(`Unexpected dependency ${name}`);
-  },mod,mod.exports,{randomUUID:()=>`test-clone-${++nextId}`},{error:(...args)=>errors.push(args)},win.MutationObserver,win);
+  },mod,mod.exports,environment?environment.crypto:{randomUUID:()=>`test-clone-${++nextId}`},{error:(...args)=>errors.push(args)},win.MutationObserver,win);
   const controller=new mod.exports.HomeController(plugin,initial,async config=>{if(failSave)throw Error('settings unavailable');saved.push(copy(config));});
   const source=put('Bases/项目.base',SOURCE),note=put('Records/示例.md','# 原始笔记\n\n内容保持原样。');
   const module=(id='module_a',extra={})=>({kind:'view',id,title:'项目模块',collapsed:false,source:source.path,view:'工作视图',basePath:'',height:420,...extra});
@@ -77,6 +77,15 @@ function fixture(initial){
     setFailSave:value=>{failSave=value;},setFailCreate:value=>{failCreate=value;},setRenderHook:hook=>{renderHook=hook;},
     close(){controller.unload();dom.window.close();}};
 }
+
+test('Home source clones can be created repeatedly when mobile Web Crypto is unavailable',async()=>{
+  const f=fixture(undefined,{});try{
+    assert.deepEqual(await Promise.all([f.controller.saveModule(f.module('one')),f.controller.saveModule(f.module('two'))]),[true,true]);
+    assert.equal(f.creates.length,2);assert.notEqual(f.current('one').basePath,f.current('two').basePath);
+    assert.deepEqual(f.read(f.current('one').basePath).filters,SOURCE.filters);
+    assert.equal(f.content.get(f.note.path),'# 原始笔记\n\n内容保持原样。');
+  }finally{f.close();}
+});
 
 test('saving a view module clones one independent Base and preserves source filters, profile and every Markdown byte',async()=>{
   const f=fixture();try{
@@ -308,4 +317,91 @@ test('concurrent first opens create one Home tab, and unloading cancels deferred
     for(const ready of stopped.layoutReady)ready();stopped.controller.unload();await stopped.tick();
     assert.equal(ghost.view,original);assert.deepEqual(stopped.states,[]);await stopped.controller.open();assert.equal(stopped.leaves.length,1);
   }finally{stopped.close();}
+});
+
+test('openInto opens exactly the requested leaf while preserving an existing Home and sharing its configuration',async()=>{
+  const initial={version:1,title:'My dashboard',modules:[{kind:'links',id:'links',title:'Useful pages',collapsed:false,paths:['Records/示例.md']}]};
+  const f=fixture(initial);try{
+    f.controller.onload();const left=f.addLeaf('nebula-home',true),leftView=left.view,target=f.addLeaf();
+    const config=f.controller.config,before=copy(config),files=[...f.content];
+    await f.controller.openInto(target);
+    assert.equal(f.leaves.length,2);assert.equal(left.view,leftView);assert.ok(target.view instanceof f.HomeView);
+    assert.equal(target.view.host,leftView.host);assert.equal(target.view.host.config,config);assert.deepEqual(config,before);
+    assert.deepEqual(f.states.map(item=>item.leaf),[target]);assert.deepEqual(f.revealed,[target]);
+    assert.deepEqual([...f.content],files);assert.deepEqual(f.saved,[]);assert.deepEqual(f.creates,[]);
+    const targetView=target.view;await f.controller.openInto(target);
+    assert.equal(target.view,targetView);assert.equal(f.states.length,1,'an already loaded Home is not rebuilt');
+  }finally{f.close();}
+});
+
+test('openInto replaces a deferred non-Home destination without loading its old content or inheriting its state',async()=>{
+  const f=fixture();try{
+    f.controller.onload();const target=f.addLeaf('markdown');target.isDeferred=true;
+    target.state={type:'markdown',state:{file:'Notes/Old.md',mode:'source'},pinned:true,group:'old-group'};
+    target.loadIfDeferred=async()=>{throw Error('The discarded deferred file must not load');};
+    await f.controller.openInto(target);
+    assert.ok(target.view instanceof f.HomeView);
+    assert.deepEqual(f.states.map(item=>item.state),[{type:'nebula-home',state:{},active:false}]);
+    assert.deepEqual(f.revealed,[target]);assert.deepEqual(f.saved,[]);assert.deepEqual(f.creates,[]);
+  }finally{f.close();}
+});
+
+test('openInto deduplicates one target without merging separate targets or racing layout recovery',async()=>{
+  const f=fixture();let release;try{
+    f.controller.onload();for(const ready of f.layoutReady)ready();const one=f.addLeaf(),two=f.addLeaf();
+    const pause=new Promise(resolve=>{release=resolve;});
+    f.setStateHook(async(leaf,state)=>{if(leaf===one&&state.type==='nebula-home')await pause;});
+    const first=f.controller.openInto(one),duplicate=f.controller.openInto(one);assert.equal(first,duplicate);
+    f.workspaceEvent('layout-change');await f.tick();
+    await f.controller.openInto(two);assert.deepEqual(f.revealed,[two]);assert.equal(f.states.length,2);
+    release();await Promise.all([first,duplicate]);
+    assert.ok(one.view instanceof f.HomeView);assert.ok(two.view instanceof f.HomeView);
+    assert.equal(f.states.filter(item=>item.leaf===one).length,1);assert.deepEqual(f.revealed,[two,one]);
+  }finally{release?.();f.close();}
+});
+
+test('openInto joins an in-flight ghost repair and reveals only that specific Home',async()=>{
+  const f=fixture();let release;try{
+    const left=f.addLeaf('nebula-home',true),target=f.addLeaf('nebula-home'),pause=new Promise(resolve=>{release=resolve;});
+    f.controller.onload();f.setStateHook(async(leaf,state)=>{if(leaf===target&&state.type==='empty')await pause;});
+    for(const ready of f.layoutReady)ready();await f.tick();
+    assert.equal(target.state.type,'empty');const opening=f.controller.openInto(target);release();await opening;
+    assert.ok(target.view instanceof f.HomeView);assert.ok(left.view instanceof f.HomeView);
+    assert.deepEqual(f.states.map(item=>item.state.type),['empty','nebula-home']);assert.deepEqual(f.revealed,[target]);
+  }finally{release?.();f.close();}
+});
+
+test('openInto never reveals a replaced or closed target and never continues after unloading',async()=>{
+  for(const interruption of ['navigate','close','unload']){
+    const f=fixture();let release;try{
+      f.controller.onload();const target=f.addLeaf(),pause=new Promise(resolve=>{release=resolve;});
+      f.setStateHook(async(leaf,state)=>{if(leaf===target&&state.type==='nebula-home')await pause;});
+      const opening=f.controller.openInto(target);
+      if(interruption==='navigate')await target.setViewState({type:'markdown',state:{file:'Chosen.md'},active:true});
+      if(interruption==='close')f.leaves.splice(f.leaves.indexOf(target),1);
+      if(interruption==='unload')f.controller.unload();
+      release();await opening;assert.deepEqual(f.revealed,[]);assert.deepEqual(f.saved,[]);assert.deepEqual(f.creates,[]);
+      if(interruption==='navigate')assert.equal(target.state.state.file,'Chosen.md');
+      if(interruption==='unload'){
+        const other=f.addLeaf(),count=f.states.length;await f.controller.openInto(other);
+        assert.equal(f.states.length,count);assert.equal(other.state.type,'empty');
+      }
+    }finally{release?.();f.close();}
+  }
+});
+
+test('openInto propagates mount/config failures to its caller and allows a later retry',async()=>{
+  const f=fixture();try{
+    f.controller.onload();const target=f.addLeaf();
+    f.setStateHook(async()=>{throw Error('mount failed');});
+    await assert.rejects(f.controller.openInto(target),/mount failed/);
+    assert.deepEqual(f.revealed,[]);assert.deepEqual(f.notices,[]);
+    f.setStateHook(undefined);await f.controller.openInto(target);
+    assert.ok(target.view instanceof f.HomeView);assert.deepEqual(f.revealed,[target]);assert.deepEqual(f.saved,[]);
+  }finally{f.close();}
+  const invalid=fixture({version:99,title:'Future',modules:[]});try{
+    invalid.controller.onload();const target=invalid.addLeaf();
+    await assert.rejects(invalid.controller.openInto(target),/版本/);
+    assert.deepEqual(invalid.states,[]);assert.deepEqual(invalid.saved,[]);assert.deepEqual(invalid.notices,[]);
+  }finally{invalid.close();}
 });

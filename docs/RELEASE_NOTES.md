@@ -1,35 +1,61 @@
-# Nebula Focus 1.2.0 — Home and linked data views
+# Nebula Focus 1.3.0 — Codex-like workspace and reminders
 
 [中文](#中文) · [English](#english)
 
 ## 中文
 
-1.2.0 增加可配置首页、自动数据视图和 Markdown 记录关联，并统一原生外观切换。最低要求 Obsidian **1.14.5**；数据视图需要启用 **Bases** 核心插件。
+1.3.0 将页面导航、提醒事项与原生 Bases 整合为 Codex-like 工作区，支持桌面和 iPhone。最低要求 Obsidian **1.14.5**；数据库视图需要启用 **Bases** 核心插件。
 
-- **模块化首页。** 从侧栏或「打开首页」命令进入，添加数据视图、数据摘要和快捷入口。模块支持折叠、上下移动和移除，桌面也可拖动排列。摘要按原生查询的完整筛选结果计算记录数、合计或平均值；涉及不同币种时须明确按币种分组。每个数据模块在 `Nebula Views/Home/<UUID>.base` 保存独立配置，记录仍来自原 Markdown。源视图后续修改不自动同步到模块；移除模块保留 Base 与记录。
-- **自动准备 Base。** 打开 Markdown 时优先复用已有视图，或在 `Nebula Views/` 创建外部配置。新视图只查询当前笔记或同名目录中的直接 Markdown 子文件；标题和标签只按明确字段识别。旧想法收集箱的映射保存为通用 `nebulaTable` 配置，重命名视图仍保留交互；已有显式配置和用户修改继续保留。
-- **通用表格与关联记录。** 标题编辑、标签面板、内容行高与紧凑附件可用于已配置的数据表。财务账本继续使用原生表格和视图管理；旧「财务关联」布局转换时保留已有筛选、排序、分组、列宽和视图。只读记录详情可按配置显示指标与关联表格，沿本地 Markdown 链接追溯记录。收支汇总按币种分别计算，缺失值与来源快照有明确标识。
-- **更完整的原生外观切换。** **⌘⌥U / Ctrl+Alt+U** 恢复正文与表格的原生字体、间距和布局，左侧页面栏原位切为真正的原生文件列表。选择跨重载和重启保存；切回增强外观保留侧栏收藏、顺序和展开状态。这是外观切换，不是停用插件。
-- **统一文字与导航。** 页面侧栏采用原生导航字号、字重和间距，普通页面不重复显示文档图标；数据表格仍保留用于打开记录的笔记图标。表头跟随原生字体设置，已配置的标签列不拆字换行，详情中的「未取得」与表格文字保持协调。桌面单独按住 Command / Ctrl 可查看快捷键速查，松开收起。
+### 新增与调整
 
-**数据边界。** 浏览、外观和布局调整不向 Markdown 正文插入 UI 代码；主动编辑标题、标签等仍会更新源笔记属性；编辑原生文件名列会重命名笔记，并遵循 Obsidian 的链接更新设置。首页配置保存在插件 `data.json`，查询与字段映射在 `.base`，记录详情配置在独立 JSON。任意 Markdown 不会自动变成完整 Notion 数据库；导入的 Notion 公式与汇总结果仍是快照，不自动在本地重算。缺失结果不当作零，也不从局部样例推算完整资金余额。公开示例全部为虚构数据。
+- **提醒事项取代旧 Home 入口。** 只读汇总 Markdown 未完成任务与支持的截止日期，按逾期、今天、明天、后续日期和未设日期排列；点击回到来源。可添加已有 `.base` 数据库引用，不复制记录。默认冷启动打开，关闭启动选项后恢复上次页面。旧 `home` 配置与 `Nebula Views/Home/` 文件保留。
+- **侧栏统一搜索与置顶。** 桌面和手机均从顶部右侧放大镜进入「直接搜索、标签、书签、文件列表」，切换模式不替换侧栏。原有收藏成为项目上方的置顶区域，页面和项目可直接点击图钉置顶或取消；完整操作改用右键菜单。去除文件夹装饰图标，统一层级缩进。长标题右侧渐隐，悬停约 300 毫秒后滚动，不再弹出重复全称。
+- **明确主区与右侧导航。** 侧栏页面、置顶和搜索结果打开主内容区。正文内部链接、提醒来源与表格页面图标默认打开右侧标签区，Command / Ctrl 点击改为主区。根据实际布局定位主区，复用已有目标页面和第二个内容组，避免插件继续增加分栏或创建上下分屏；旧布局不会被强制关闭。
+- **统一阅读与字体。** 参考 Codex 调整正文、表格、侧栏、滚动条和工具栏；桌面侧栏、底部仓库区及主／右内容区改用圆角边界，协调阅读与编辑模式的行距基线。可选离线内置 **霞鹜文楷 / LXGW WenKai**，默认仍跟随 Obsidian；代码保留等宽字体。原生外观恢复颜色、排版、左侧工具和实际文件列表。
+- **桌面外部归档。** 从页面右键菜单归档到库外，复制并校验后才将源文件移入库内回收站；管理器支持浏览与恢复。手机不显示该入口，侧栏底部也不重复放置归档按钮。
+- **iPhone 导航与编辑修复。** 黑色侧栏保留顶部库切换、搜索及底部新建页面，露出的主区使用圆角。搜索支持连续中文输入，处理输入法确认与点击结果交错时的刷新，进入文件列表后仍保留搜索入口。成功打开结果后收起侧栏。表格图标间距、字号与末行新建更紧凑；继续复用同一个测试库。
 
-**验证范围。** 严格构建与 578 项自动测试通过；lint 为 0 个错误、38 个既有警告。桌面实测覆盖深浅主题下的列名编辑字号、页面图标导航、原生切换与重载；原生模式抽查样式与禁用插件时一致。  新首页、自动 Base 与财务关联没有单独完成 iPhone 真机复测；早期 iPhone 核心流程的验证记录不代表本轮新增功能全部通过。功能与历史测试边界见[首页](https://github.com/AnthemZhou/Nebula_Focus/blob/1.2.0/docs/home.md)、[自动数据视图](https://github.com/AnthemZhou/Nebula_Focus/blob/1.2.0/docs/automatic-bases.md)、[财务验证](https://github.com/AnthemZhou/Nebula_Focus/blob/1.2.0/docs/finance-validation.md)和[测试记录](https://github.com/AnthemZhou/Nebula_Focus/blob/1.2.0/docs/TESTING.md)。
+原有通用表格、自动 Base、关联记录、按币种收支汇总、标签管理和数据库撤销继续保留。手机隐藏额外撤销／重做按钮行，内部历史与命令入口仍在；外观切换快捷键仍为 **⌘⌥U / Ctrl+Alt+U**。桌面单独按住 Command / Ctrl 可打开快捷键速查。
 
-更新时保留现有 `data.json`，替换 `.obsidian/plugins/nebula-focus/` 下的 `main.js`、`manifest.json`、`styles.css` 并重载插件。Release 附件另含安装 ZIP、公开源码 ZIP、虚构示例 ZIP 和校验文件。GitHub 发布与官方目录扫描、客户端更新同步分别进行；本说明不代表官方审核已经完成。
+### 数据与升级
+
+浏览、外观和布局不向 Markdown 正文插入 UI 代码。主动编辑内容仍更新源笔记；查询与列配置保存在 `.base`，偏好保存在插件 `data.json`。导入的 Notion 公式与汇总是来源快照，不会因外观增强自动在本地重算；缺失值不当作零。公开示例全部为虚构数据。
+
+更新时保留现有 `data.json`，替换 `.obsidian/plugins/nebula-focus/` 下的 `main.js`、`manifest.json`、`styles.css`，然后重载。iPhone 等待同步完成后重新打开 Obsidian，必要时彻底关闭并重开以清理旧代码缓存。内置字体随 `main.js` 分发，不需要额外下载。
+
+Release 附件提供安装 ZIP、公开源码 ZIP、虚构示例 ZIP 和校验文件。GitHub 发布、官方社区目录审核与客户端更新同步分别进行，本说明不代表目录审核已经完成。
+
+### 验证范围
+
+构建、自动回归、桌面明暗主题检查和手机证据分别记录于[测试记录](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/TESTING.md)。iPhone 记录区分直接触摸与镜像检查；已有连续中文输入、字体切换、搜索模式切换和结果导航等实际证据，不代表 Android、iPad、第三方主题或所有移动生命周期均完成验证。详见[iPhone 测试](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/mobile-testing.md)。
+
+使用说明：[提醒事项](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/home.md) · [页面侧栏](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/page-sidebar.md) · [工作区规则](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/workspace-layout.md) · [字体](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/fonts.md) · [外部归档](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/external-archives.md)
 
 ## English
 
-Version 1.2.0 adds a configurable Home, automatic data views and linked Markdown records, with a more complete native-appearance toggle. It requires Obsidian **1.14.5** and the **Bases** core plugin for data views.
+Version 1.3.0 brings page navigation, Reminders and native Bases into a Codex-like workspace for desktop and iPhone. It requires Obsidian **1.14.5** and the **Bases** core plugin for database views.
 
-- **Modular Home.** Open Home from the sidebar or command palette, then add data views, summaries and note shortcuts. Collapse, move or remove modules; desktop users can also drag them. Summaries use the complete native filtered query for Count, Sum or Average. Explicitly group by currency for mixed-currency amounts. Each data module stores independent configuration under `Nebula Views/Home/<UUID>.base` while using the original Markdown records. Later source-view changes do not automatically update a module. Removing a module preserves its Base and records.
-- **Automatic Base setup.** Opening Markdown reuses an existing view where possible, or creates an external configuration under `Nebula Views/`. New views query only the current note or a same-stem folder’s direct Markdown children. Titles and tags use explicit field detection. Legacy idea-inbox mappings become reusable `nebulaTable` profiles and survive view renaming; existing explicit profiles and user changes are preserved.
-- **Reusable tables and linked records.** Configured tables gain title editing, tag panels, content-driven row heights and compact attachments. Finance books retain native tables and view management. Converting legacy Linked finance layouts preserves filters, sorting, groups, widths and views. A read-only inspector displays configured metrics and related tables, following local Markdown links. Cash-flow summaries separate currencies and identify unavailable values and source snapshots.
-- **Native appearance throughout.** **⌘⌥U / Ctrl+Alt+U** restores native note and table typography, spacing and layout, and replaces the Pages sidebar with a real file explorer in place. The choice persists across reloads and restarts. Switching back retains sidebar favorites, order and expanded state. This changes appearance rather than disabling the plugin.
-- **Consistent text and navigation.** Sidebar typography and spacing follow native navigation tokens. Ordinary page entries omit repetitive document icons, while data tables retain the note icon used to open a record. Headers follow native font settings, configured tag columns keep unbroken text, and unavailable-value labels stay proportional to table text. Hold Command / Ctrl alone on desktop to show shortcut help; release to dismiss it.
+### Features and changes
 
-**Data boundaries.** Browsing and layout changes never insert UI markup into Markdown bodies. Explicit title, tag or other property edits still update the source notes. Editing a native file-name column renames its note through Obsidian’s link-aware file manager. Home settings live in plugin `data.json`, queries and field mappings in `.base`, and record layouts in separate JSON. Arbitrary Markdown does not automatically become a complete Notion database. Imported Notion formulas and rollups remain snapshots rather than executable local formulas. Missing values are not zero, and a partial sample cannot establish a complete financial balance. All public examples are fictional.
+- **Reminders replaces the old Home entry.** Read unfinished Markdown tasks and supported page deadlines, grouped into overdue, today, tomorrow, later dates and undated items. Open each source or add references to existing `.base` databases without copying records. Reminders opens on cold startup by default; disable that option to resume the previous page. Existing `home` preferences and `Nebula Views/Home/` files remain stored.
+- **Unified sidebar search and pins.** The top-right magnifier on desktop and mobile opens Direct Search, Tags, Bookmarks and Files without replacing the sidebar. Existing favorites appear in a dedicated section above Projects. Pin or unpin projects and pages directly; full actions stay in context menus. Decorative folder icons are removed, child indentation is consistent, and overflowing titles fade then scroll after about 300ms without duplicate tooltips.
+- **Clear main/right navigation.** Sidebar pages, pins and search results open the main content region. Internal content links, reminder sources and table page icons open on the right; Command / Ctrl-click targets the main region. Routing uses the actual layout, reusing existing destination pages and the second content group rather than adding more groups or top/bottom splits. Older layouts are not forcibly closed.
+- **Consistent reading and fonts.** Notes, tables, the sidebar, scrollbars and tools take cues from Codex. Desktop sidebar, vault footer and main/right content groups have rounded boundaries, with a shared text-leading baseline across reading and editing. Optional bundled **LXGW WenKai** works offline; Follow Obsidian remains the default and code stays monospace. Native appearance restores colors, typography, left tools and the actual file explorer.
+- **Desktop external archives.** Archive through page context menus to a location outside the vault. Files are copied and verified before sources move to vault trash; the manager can browse and restore them. Mobile exposes no archive controls, and the sidebar footer does not duplicate the action.
+- **iPhone navigation and editing fixes.** The black drawer retains vault switching and search at the top, with a compose action below and rounded exposed content. Search supports continuous Chinese input, preserves tapped results during IME commits, and retains its entry after file browsing. Successful result navigation closes the drawer. Table icon spacing, typography and final-row creation are more compact, while testing reuses the same vault.
 
-**Validation scope.** Strict build and all 578 automated tests pass. Lint reports zero errors and 38 pre-existing warnings. Desktop checks cover column-editor typography in both themes, page-icon navigation, native appearance and reload; sampled native-mode styles match the plugin-disabled baseline.  The new Home, automatic Base and finance features have not received a separate physical-iPhone retest. Earlier core iPhone checks do not establish that every new feature passes. See [Home](https://github.com/AnthemZhou/Nebula_Focus/blob/1.2.0/docs/home.md), [automatic data views](https://github.com/AnthemZhou/Nebula_Focus/blob/1.2.0/docs/automatic-bases.md), [finance validation](https://github.com/AnthemZhou/Nebula_Focus/blob/1.2.0/docs/finance-validation.md) and [testing](https://github.com/AnthemZhou/Nebula_Focus/blob/1.2.0/docs/TESTING.md) for behavior and historical evidence.
+Reusable tables, automatic Bases, linked records, per-currency cash-flow summaries, tag management and database undo remain available. Mobile hides the extra undo/redo row while retaining history and commands. **⌘⌥U / Ctrl+Alt+U** still switches appearance; hold Command / Ctrl alone on desktop for shortcut help.
 
-Keep your existing `data.json`, replace `main.js`, `manifest.json` and `styles.css` in `.obsidian/plugins/nebula-focus/`, then reload. Release assets also include installation, public-source and fictional-example ZIPs plus checksums. GitHub publication is separate from official directory review and in-app update synchronization; these notes do not claim that directory review has completed.
+### Data and updating
+
+Browsing and layout never insert UI markup into Markdown bodies. Explicit edits still update source notes; `.base` files store queries and columns, while plugin `data.json` stores preferences. Imported Notion formulas and rollups remain snapshots rather than becoming executable local formulas through visual enhancement. Missing values are not zero. All public examples are fictional.
+
+Keep `data.json`, replace `main.js`, `manifest.json` and `styles.css` in `.obsidian/plugins/nebula-focus/`, then reload. On iPhone, wait for synchronization and reopen Obsidian; fully quit and restart if older code remains cached. The optional font ships inside `main.js`, with no extra download.
+
+Release assets include installation, public-source and fictional-example ZIPs plus checksums. GitHub publication, official community-directory review and client update synchronization are separate stages; these notes do not claim that directory review has completed.
+
+### Validation scope
+
+Build results, automated regression checks, desktop theme checks and mobile evidence are recorded separately in [testing](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/TESTING.md). The iPhone record distinguishes direct touch from Mirroring, including observed Chinese input, font switching, search modes and result navigation. This does not establish coverage of Android, iPad, third-party themes or every mobile lifecycle boundary. See [iPhone testing](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/mobile-testing.md).
+
+Guides: [Reminders](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/home.md) · [Page sidebar](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/page-sidebar.md) · [Workspace rules](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/workspace-layout.md) · [Fonts](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/fonts.md) · [External archives](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/external-archives.md)

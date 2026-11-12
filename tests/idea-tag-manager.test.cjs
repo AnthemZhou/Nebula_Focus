@@ -60,11 +60,13 @@ test('catalog typography follows a value in its column instead of the header fon
   const f=fixture();try{
     f.head.querySelector('[data-property="note.领域"]').style.fontSize='11px';
     f.doc.querySelector('.bases-tbody [data-property="note.领域"] .metadata-input-longtext').style.cssText=
-      'font-size:18px;font-family:"Custom CJK";font-weight:400;line-height:24px';
+      'font-size:18px;font-family:"Custom CJK";font-weight:400;line-height:24px;letter-spacing:0.3px;word-spacing:1.5px';
     const popup=f.open();
     assert.equal(popup.style.getPropertyValue('--bui-source-tag-font-size'),'18px');
     assert.equal(popup.style.getPropertyValue('--bui-source-tag-font-family'),'"Custom CJK"');
     assert.equal(popup.style.getPropertyValue('--bui-source-tag-line-height'),'24px');
+    assert.equal(popup.style.getPropertyValue('--bui-source-tag-letter-spacing'),'0.3px');
+    assert.equal(popup.style.getPropertyValue('--bui-source-tag-word-spacing'),'1.5px');
     assert.deepEqual(f.writes,[]);assert.deepEqual(f.saved,[]);
   }finally{f.close();}
 });

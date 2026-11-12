@@ -76,12 +76,14 @@ test('popover snapshots the actual cell typography once and preserves mobile tex
   const f=fixture();try{
     f.doc.body.classList.add('is-mobile');
     const value=f.anchor('类型').querySelector('.metadata-input-longtext');
-    value.style.cssText='font-size:19px;font-family:"Source Han Sans";font-weight:400;line-height:25px';
+    value.style.cssText='font-size:19px;font-family:"Source Han Sans";font-weight:400;line-height:25px;letter-spacing:0.4px;word-spacing:1px';
     const popup=f.open();
     assert.equal(popup.style.getPropertyValue('--bui-source-tag-font-size'),'19px');
     assert.equal(popup.style.getPropertyValue('--bui-source-tag-font-family'),'"Source Han Sans"');
     assert.equal(popup.style.getPropertyValue('--bui-source-tag-font-weight'),'400');
     assert.equal(popup.style.getPropertyValue('--bui-source-tag-line-height'),'25px');
+    assert.equal(popup.style.getPropertyValue('--bui-source-tag-letter-spacing'),'0.4px');
+    assert.equal(popup.style.getPropertyValue('--bui-source-tag-word-spacing'),'1px');
     value.style.fontSize='22px';
     f.win.dispatchEvent(new f.win.Event('resize'));
     assert.equal(popup.style.getPropertyValue('--bui-source-tag-font-size'),'19px','viewport movement does not remeasure fonts');

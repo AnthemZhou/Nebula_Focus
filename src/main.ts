@@ -1,4 +1,4 @@
-import {Plugin, TFile, Notice, MarkdownView, Component, Menu, Modal, Platform, setIcon} from 'obsidian';
+import {Plugin, TFile, Notice, MarkdownView, Component, Menu, Modal, Platform, FileSystemAdapter, setIcon} from 'obsidian';
 import {compactLink, firstImage, isDueProperty, isEmpty, overdue, propertyName} from './model';
 import {IdeaTables} from './idea-table';
 import {IdeaColumnWidths} from './idea-widths';
@@ -11,8 +11,11 @@ import {BaseCreationHistory} from './creation-history';
 import {TableRenderSync} from './table-render-sync';
 import {MobileHistoryActions} from './mobile-actions';
 import {PageSidebar} from './page-sidebar';
-import {HomeController} from './home-controller';
-import type {HomeConfig} from './home-model';
+import {RightWorkspaceController, type RightWorkspaceState} from './right-workspace';
+import {RibbonController, type RibbonPreferences} from './ribbon-controller';
+import {RemindersController} from './reminders';
+import type {ReminderPreferences} from './reminder-model';
+import {ArchiveController, type ArchivePreferences} from './archive-controller';
 import {migrateFinanceBases} from './finance-native-migration';
 import {AutoBaseSetup} from './auto-base-setup';
 import {noteSource} from './note-source';
@@ -24,6 +27,8 @@ import {NativeFinanceSummary} from './native-finance-summary';
 import {openRecordInspector} from './record-links';
 import {APPEARANCE_HOTKEY, ShortcutGuide, shortcutHints} from './shortcut-guide';
 import type {PageTreeSettings} from './page-tree';
+import {FontAppearance, readFontChoice, type FontChoice} from './font-appearance';
+import wenkaiFont from '../assets/fonts/LXGWWenKai-Regular.woff2';
 import {record, callable, unknownArray, presentationView, renderedValue, groupsValid, nativeAppField, nativeText, nativeElement, nativeHTMLElement, displayProperties} from './native-presentation';
 import type {Entry, Group, NativeCall, PresentationView, DisplayProperty} from './native-presentation';
 
@@ -71,11 +76,20 @@ export default class NebulaFocus extends Plugin {
   });
   private financeSummary = new NativeFinanceSummary(file => this.app.metadataCache.getCache(file.path)?.frontmatter);
   private autoBases?: AutoBaseSetup;
-  private home?: HomeController;
+  private ribbon?: RibbonController;
+  private reminders?: RemindersController;
+  private rightWorkspace?: RightWorkspaceController;
   private pageSidebar?: PageSidebar;
   private presentationDocs = new Set<Document>();
+  private trackedFontDocs = new WeakSet<Document>();
+  private fontAppearance = new FontAppearance(wenkaiFont, () => {
+    if (this.disposed) return;
+    this.ideaWidths.invalidate(); this.ideaRows.invalidate(); this.schedule();
+    this.app.workspace.trigger('css-change');
+  }, error => {console.warn('[Nebula Focus] 内置字体未加载，继续使用原字体', error);});
 
   async onload() {
+    const coldStart = !this.app.workspace.layoutReady;
     try {
       const saved: unknown = await this.loadData();
       if (record(saved) && !Array.isArray(saved)) this.uiSettings = saved;
@@ -105,8 +119,26 @@ export default class NebulaFocus extends Plugin {
         if (!checking) openRecordInspector(this.app, file);
         return true;
       }});
-    this.home = this.addChild(new HomeController(this, this.uiSettings.home, config => this.saveHome(config)));
-    this.pageSidebar = this.addChild(new PageSidebar(this, this.uiSettings.pageSidebar, settings => this.savePageSidebar(settings), () => this.home!.open(), this.active));
+    this.rightWorkspace = this.addChild(new RightWorkspaceController(this, {
+      enabled: this.active, state: this.uiSettings.rightWorkspace,
+      saveState: state => this.saveRightWorkspace(state),
+    }));
+    this.reminders = this.addChild(new RemindersController(this, this.uiSettings.reminders,
+      settings => this.saveReminderPreferences(settings), this.rightWorkspace, this.active, coldStart));
+    // addSettingTab() indexes definitions immediately in Obsidian 1.15.
+    // Attach optional controllers before loading the sidebar/settings tab.
+    this.pageSidebar = new PageSidebar(this, this.uiSettings.pageSidebar, settings => this.savePageSidebar(settings), this.active,
+      {get: () => readFontChoice(this.uiSettings.fontFamily), set: value => this.saveFontChoice(value), mount: doc => this.trackFontDocument(doc)});
+    this.pageSidebar.rightWorkspace = this.rightWorkspace;
+    this.pageSidebar.openReminders = () => this.reminders!.open();
+    this.pageSidebar.reminders = this.reminders;
+    this.ribbon = this.addChild(new RibbonController(this, this.uiSettings.ribbon, settings => this.saveRibbonPreferences(settings), this.active));
+    this.pageSidebar.ribbon = this.ribbon;
+    if (Platform.isDesktopApp && !Platform.isMobile && this.app.vault.adapter instanceof FileSystemAdapter) {
+      this.pageSidebar.archives = this.addChild(new ArchiveController(this, this.uiSettings.externalArchive,
+        settings => this.saveArchivePreferences(settings), () => this.pageSidebar?.refresh()));
+    }
+    this.addChild(this.pageSidebar);
     this.ideaTags = new IdeaTagEditors({
       read: key => {
         const value = this.settingsRecord('tagOptionOrder')[key];
@@ -127,7 +159,12 @@ export default class NebulaFocus extends Plugin {
         if (!this.creationHistory) throw new Error('数据库历史尚未就绪');
         await this.creationHistory.rename(view, file, basename);
       },
-      open: (_view, file, event) => this.app.workspace.openLinkText(file.path, '', event.metaKey || event.ctrlKey),
+      open: (_view, file, event) => {
+        const target = this.app.vault.getFileByPath(file.path);
+        const source = event.currentTarget;
+        if (!target || !nativeHTMLElement(source)) return;
+        return this.rightWorkspace?.openFileFromElement(target, source, event);
+      },
     });
     // Phone UI stays compact; hiding these controls does not discard history.
     if (!nativeAppField(this.app, 'isMobile')) this.mobileActions = new MobileHistoryActions(this.creationHistory);
@@ -143,10 +180,11 @@ export default class NebulaFocus extends Plugin {
       this.presentationDocs.add(win.document); this.syncAppearanceDocuments();
     }));
     this.registerEvent(this.app.workspace.on('window-close', (_workspace, win) => {
+      this.fontAppearance.forget(win.document);
       win.document.body?.classList.remove('bui-enabled', 'bui-touch'); this.presentationDocs.delete(win.document);
     }));
     this.edgeObserver = new ResizeObserver(() => this.schedule());
-    this.addCommand({id: 'toggle-reading-ui', name: '切换 Notion-like / 原生外观',
+    this.addCommand({id: 'toggle-reading-ui', name: '切换增强 / 原生外观',
       hotkeys: [APPEARANCE_HOTKEY], callback: () => this.setAppearance(!this.active)});
     this.app.workspace.onLayoutReady(() => {
       if (this.disposed) return;
@@ -225,6 +263,11 @@ export default class NebulaFocus extends Plugin {
       // still syncing. Explicit menu/command use presents the actionable error.
       console.warn('[Nebula Focus] 数据视图自动配置未完成', error);
     });
+  }
+
+  async openPageFromElement(file: TFile, source: HTMLElement, event: MouseEvent) {
+    if (this.rightWorkspace?.isEnabled) return this.rightWorkspace.openFileFromElement(file, source, event);
+    return this.app.workspace.openLinkText(file.path, '', event.metaKey || event.ctrlKey);
   }
 
   private async openNoteDatabase(file: TFile) {
@@ -324,7 +367,32 @@ export default class NebulaFocus extends Plugin {
       doc.body?.classList.toggle('bui-enabled', this.active && !this.disposed);
       doc.body?.classList.toggle('bui-touch', this.active && !this.disposed &&
         (!!nativeAppField(this.app, 'isMobile') || !!doc.defaultView?.matchMedia?.('(any-pointer: coarse)').matches));
+      this.fontAppearance.sync(doc, this.active && !this.disposed && readFontChoice(this.uiSettings.fontFamily) === 'lxgw-wenkai');
     }
+  }
+
+  private trackFontDocument(doc: Document) {
+    this.presentationDocs.add(doc);
+    // Settings can live in a separate renderer without a workspace leaf.
+    if (!this.trackedFontDocs.has(doc) && doc.defaultView) {
+      this.trackedFontDocs.add(doc);
+      this.registerDomEvent(doc.defaultView, 'pagehide', () => {
+        this.fontAppearance.forget(doc); this.presentationDocs.delete(doc);
+      });
+    }
+    this.syncAppearanceDocuments();
+  }
+
+  private async saveFontChoice(fontFamily: FontChoice): Promise<boolean> {
+    const write = this.settingsWrite.then(async () => {
+      if (!this.settingsAvailable) throw new Error('Plugin settings unavailable');
+      const next = {...this.uiSettings, fontFamily};
+      await this.saveData(next); this.uiSettings = next;
+      if (!this.disposed) this.syncAppearanceDocuments();
+    });
+    this.settingsWrite = write.catch(() => {});
+    try {await write; return true;}
+    catch {new Notice('字体选择未能保存，已保留原设置'); return false;}
   }
 
   private async setAppearance(enabled: boolean) {
@@ -333,6 +401,9 @@ export default class NebulaFocus extends Plugin {
     if (!enabled) this.clearPresentation();
     else this.prepareNoteDatabase(this.app.workspace.getActiveFile());
     const sidebar = this.pageSidebar?.setEnabled(enabled);
+    const workspace = this.rightWorkspace?.setEnabled(enabled);
+    this.ribbon?.setEnabled(enabled);
+    this.reminders?.setEnabled(enabled);
     this.schedule();
     this.app.workspace.trigger('css-change');
     const write = this.settingsWrite.then(async () => {
@@ -342,6 +413,7 @@ export default class NebulaFocus extends Plugin {
     });
     this.settingsWrite = write.catch(() => {});
     await sidebar;
+    await workspace;
     try {await write;}
     catch {new Notice('外观已切换，但偏好未能保存；重新加载后可能恢复之前的模式');}
   }
@@ -389,10 +461,37 @@ export default class NebulaFocus extends Plugin {
     return write;
   }
 
-  private saveHome(config: HomeConfig): Promise<void> {
+  private saveRibbonPreferences(settings: RibbonPreferences): Promise<void> {
     const write = this.settingsWrite.then(async () => {
       if (!this.settingsAvailable) throw new Error('Plugin settings unavailable');
-      const next = {...this.uiSettings, home: config};
+      const next = {...this.uiSettings, ribbon: {...this.settingsRecord('ribbon'), ...settings}};
+      await this.saveData(next); this.uiSettings = next;
+    });
+    this.settingsWrite = write.catch(() => {}); return write;
+  }
+
+  private saveReminderPreferences(settings: ReminderPreferences): Promise<void> {
+    const write = this.settingsWrite.then(async () => {
+      if (!this.settingsAvailable) throw new Error('Plugin settings unavailable');
+      const next = {...this.uiSettings, reminders: {...this.settingsRecord('reminders'), ...settings}};
+      await this.saveData(next); this.uiSettings = next;
+    });
+    this.settingsWrite = write.catch(() => {}); return write;
+  }
+
+  private saveArchivePreferences(settings: ArchivePreferences): Promise<void> {
+    const write = this.settingsWrite.then(async () => {
+      if (!this.settingsAvailable) throw new Error('Plugin settings unavailable');
+      const next = {...this.uiSettings, externalArchive: {...this.settingsRecord('externalArchive'), ...settings}};
+      await this.saveData(next); this.uiSettings = next;
+    });
+    this.settingsWrite = write.catch(() => {}); return write;
+  }
+
+  private saveRightWorkspace(state: RightWorkspaceState): Promise<void> {
+    const write = this.settingsWrite.then(async () => {
+      if (!this.settingsAvailable) throw new Error('Plugin settings unavailable');
+      const next = {...this.uiSettings, rightWorkspace: state};
       await this.saveData(next); this.uiSettings = next;
     });
     this.settingsWrite = write.catch(() => {}); return write;
@@ -773,6 +872,7 @@ export default class NebulaFocus extends Plugin {
 
   onunload() {
     this.disposed = true;
+    this.fontAppearance.destroy();
     this.creationHistory?.clear();
     this.mobileActions?.clear();
     this.active = false;
@@ -982,8 +1082,8 @@ class Presentation {
     more.addEventListener('click', event => {event.preventDefault(); event.stopPropagation(); this.showMenu(this.cardMenu(entry), more);});
     const title = content.createEl('a', {cls: 'bui-card-title internal-link', text: entry.file.basename,
       attr: {href: entry.file.path, 'data-href': entry.file.path}});
-    const openNote = async (newLeaf: boolean) => {
-      try {await app.workspace.openLinkText(entry.file.path, '', newLeaf);}
+    const openNote = async (event: MouseEvent) => {
+      try {await this.plugin.openPageFromElement(entry.file, card, event);}
       catch (error) {
         console.error('[Nebula Focus] 无法打开笔记', error);
         new Notice('无法打开笔记，请重试');
@@ -991,11 +1091,11 @@ class Presentation {
     };
     title.addEventListener('click', event => {
       event.preventDefault();
-      void openNote(event.metaKey || event.ctrlKey);
+      void openNote(event);
     });
     card.addEventListener('click', event => {
       if ((event.target as Element).closest('a,button,input')) return;
-      void openNote(event.metaKey || event.ctrlKey);
+      void openNote(event);
     });
     card.addEventListener('contextmenu', event => {
       event.preventDefault();

@@ -4,6 +4,10 @@
 
 ## 中文
 
+### 1.3.0 检查与外部归档
+
+外部归档有两处 `vault.trash(..., false)`：经过校验的源文件，以及归档后空的项目目录。这里刻意固定使用本地回收站，避免用户的宿主删除偏好设置为永久删除时违背归档的可恢复保证；对应的两项 API 偏好警告保持可见，不抑制规则。1.3.0 本地 Lint 为 **0 错误、39 项警告**；以下 1.1.2 数量属于历史版本，不代表当前版本的总数。
+
 ### 1.1.2 本地检查结果
 
 2026-11-04，使用与官方检查相同的 `eslint-plugin-obsidianmd@0.4.2` 比较修改前后源码：**1,570 项诊断 → 38 项警告、0 项错误**。不安全的赋值、调用、成员访问等类型诊断已清除；原生 Bases 边界改用明确结构与运行时校验，无法识别时保留原生处理。严格构建与 **308/308** 自动测试通过。
@@ -52,6 +56,10 @@ npm test
 插件由 Obsidian 的社区插件更新功能安装新版，不自行下载、替换执行代码。手机同步库仍可原处更新，继续复用同一个测试库。
 
 ## English
+
+### 1.3.0 checks and archive API choice
+
+External archives deliberately use `vault.trash(..., false)` for verified sources and emptied project directories. This keeps removal recoverable even when the host's deletion preference is permanent. The two API-preference warnings remain visible; no rule is suppressed. Local 1.3.0 lint reports **zero errors and 39 warnings**. The 1.1.2 counts below describe that historical release, not the current total.
 
 ### Local 1.1.2 results
 
