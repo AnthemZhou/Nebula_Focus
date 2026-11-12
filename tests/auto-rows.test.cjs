@@ -21,11 +21,15 @@ test('variable-height boundaries agree for hit testing, clipped viewports and em
   assert.deepEqual([...geometry.visibleRowRange(offsets,196,230)],[0,0]);
   assert.deepEqual([...geometry.visibleRowRange([0],0,100)],[0,0]);
 });
-function fixture() {
+function fixture({name='想法收集箱',profile,properties=['formula.想法','note.领域']}={}) {
   const dom = new JSDOM('<!doctype html><body><div class="bases-view"><div class="bases-thead"></div><div class="bases-table-container"></div></div></body>', {pretendToBeVisual:true});
   const win=dom.window, doc=win.document;
   loadGeometryStyles(doc);
   win.ResizeObserver=class {observe(){}disconnect(){}};
+  win.HTMLElement.prototype.createSpan=function({cls,text}={}) {
+    const span=this.ownerDocument.createElement('span');span.className=cls??'';span.textContent=text??'';
+    this.append(span);return span;
+  };
   win.HTMLElement.prototype.setChildrenInPlace=function(nodes) {
     for (const child of [...this.children]) if (!nodes.includes(child)) child.remove();
     nodes.forEach((child,i)=>{if(this.children[i]!==child)this.insertBefore(child,this.children[i]??null);});
@@ -39,7 +43,7 @@ function fixture() {
   const host=doc.querySelector('.bases-view'),container=doc.querySelector('.bases-table-container'),thead=doc.querySelector('.bases-thead');
   box(host,400,300);box(container,400,()=>parseFloat(container.style.height)||300);box(thead,400,30);
   const entries=[32,56,76,32,100].map((height,id)=>({height,file:{path:`${id}.md`},getValue(){return `row ${id}:${this.height}`;}}));
-  const props=['formula.想法','note.领域'];
+  const props=properties;
   class Row {
     constructor(view){this.view=view;this.el=doc.createElement('div');this.el.className='bases-tr';this.cells=[];}
     render(entry,properties){
@@ -66,7 +70,7 @@ function fixture() {
     getCellRect(){nativeCalls.rect++;return 'native';},
     getClosestCellIndexWithinGroup(){nativeCalls.closest++;return 'native';}
   };
-  const view={...original,type:'table',_loaded:true,config:Object.freeze({name:'想法收集箱'}),
+  const view={...original,type:'table',_loaded:true,config:Object.freeze({name,nebulaTable:profile}),
     queryController:{viewContainerEl:host},containerEl:container,scrollEl:host,theadEl:thead,
     data:{properties:props,data:entries,groupedData:[{entries}]},rows:[],unusedRows:[],cellLookup:new WeakMap(),
     groups:[{tableEl:table,tbodyEl:tbody,virtualize(){}}],columnInfo:Object.fromEntries(props.map(prop=>[prop,{customWidth:200,getWidth(){return this.customWidth;}}])),
@@ -191,6 +195,27 @@ test('unsupported native group changes restore all geometry methods together',()
   } finally {f.close();}
 });
 
+test('disabling automatic heights restores the original native multiline class, including unloaded views',()=>{
+  for(const originalMultiline of [false,true])for(const loaded of [false,true]){
+    const f=fixture();
+    try {
+      f.container.classList.toggle('mod-multiline',originalMultiline);
+      f.view.getRowHeightMult=()=>originalMultiline?2:1;
+      assert.equal(f.adapter.refresh(f.view),true);f.view.updateVirtualDisplay();
+      assert.equal(f.container.classList.contains('mod-multiline'),true);
+      f.view._loaded=loaded;f.adapter.clear();
+      assert.equal(f.container.classList.contains('mod-multiline'),originalMultiline);
+      assert.equal(f.view.updateVirtualDisplay,f.original.updateVirtualDisplay);
+      assert.equal(f.nativeCalls.update,loaded?1:0,'class restoration does not depend on a native redraw');
+      // A later enable captures the current native appearance, not an old
+      // presentation's state from a previous switch.
+      f.view._loaded=true;f.container.classList.toggle('mod-multiline',!originalMultiline);
+      assert.equal(f.adapter.refresh(f.view),true);f.view.updateVirtualDisplay();f.adapter.clear();
+      assert.equal(f.container.classList.contains('mod-multiline'),!originalMultiline);
+    } finally {f.close();}
+  }
+});
+
 test('page navigation nearest scrolling preserves header margins and handles oversized rows',()=>{
   assert.equal(geometry.nearestScroll(100,120,180,200,1000),100);
   assert.equal(geometry.nearestScroll(100,60,90,200,1000),60);
@@ -281,6 +306,75 @@ test('invalid rows are mounted together before dimension reads; unchanged select
     f.view.updateVirtualDisplay();f.view.updateVirtualDisplay();
     assert.equal(fragmentWrites,1);assert.equal(reads,f.entries.length);
     assert.equal(f.container.querySelectorAll('[aria-hidden="true"]').length,0);
+  } finally {f.close();}
+});
+
+function controlledFrames(f) {
+  const frames=new Map();let next=0;
+  f.dom.window.requestAnimationFrame=callback=>{const id=++next;frames.set(id,callback);return id;};
+  f.dom.window.cancelAnimationFrame=id=>frames.delete(id);
+  return {
+    get pending(){return frames.size;},
+    async flush(){
+      await Promise.resolve();
+      const callbacks=[...frames.values()];frames.clear();
+      for(const callback of callbacks)callback(f.dom.window.performance.now());
+      await Promise.resolve();
+      return callbacks.length;
+    },
+  };
+}
+
+test('measurement probes and native selection or focus chrome do not invalidate every row',async()=>{
+  const f=fixture(),frames=controlledFrames(f);
+  try {
+    f.adapter.refresh(f.view);f.view.updateVirtualDisplay();
+    const before=f.adapter.stats()[0];
+    for(const cls of ['bui-tag-width-measure','bui-text-width-measure','bui-row-height-measure']){
+      const probe=f.container.appendChild(f.doc.createElement('div'));probe.className=cls;
+      const text=probe.appendChild(f.doc.createElement('span'));
+      text.textContent='measurement';text.style.width='1000px';
+      // Probe descendants may be observed and then removed as a separate record.
+      text.remove();probe.remove();
+    }
+    const cell=f.view.rows[0].cells[0];
+    cell.el.classList.add('is-selected');cell.inner.classList.add('is-focused');
+    f.container.classList.add('has-focus');
+    f.tbody.append(f.view.activeCellEl,f.view.selectionEl);
+    f.view.activeCellEl.classList.add('mod-selection');f.view.activeCellEl.style.height='56px';
+    f.view.selectionEl.style.top='12px';f.view.selectionEl.appendChild(f.doc.createElement('span'));
+    assert.equal(await frames.flush(),0);
+    assert.equal(frames.pending,0);
+    assert.equal(f.adapter.stats()[0].measurementBatches,before.measurementBatches);
+    cell.el.classList.remove('is-selected');cell.inner.classList.remove('is-focused');
+    f.container.classList.remove('has-focus');f.view.activeCellEl.remove();f.view.selectionEl.remove();
+    assert.equal(await frames.flush(),0);
+    f.view.updateVirtualDisplay();
+    assert.equal(f.adapter.stats()[0].measurementBatches,before.measurementBatches);
+  } finally {f.close();}
+});
+
+test('real text, tags, editor structure and geometry styles still invalidate after filtering chrome mutations',async()=>{
+  const f=fixture(),frames=controlledFrames(f);
+  try {
+    f.adapter.refresh(f.view);f.view.updateVirtualDisplay();
+    const cell=f.view.rows[0].cells[0];
+    const mutations=[
+      ()=>{cell.inner.textContent='edited title';},
+      ()=>{cell.inner.firstChild.data='typed character';},
+      ()=>{const pill=cell.inner.appendChild(f.doc.createElement('span'));pill.className='multi-select-pill';pill.textContent='new tag';},
+      ()=>{cell.inner.classList.add('mod-editing','is-focused');},
+      ()=>{cell.inner.style.padding='4px';},
+      ()=>{const probe=f.container.appendChild(f.doc.createElement('div'));probe.className='bui-tag-width-measure';probe.remove();cell.inner.textContent='real change beside a probe';},
+      ()=>{const editor=cell.inner.appendChild(f.doc.createElement('textarea'));editor.value='native editor';},
+    ];
+    for(const mutate of mutations){
+      const before=f.adapter.stats()[0];mutate();
+      assert.equal(await frames.flush(),1);
+      assert.equal(f.adapter.stats()[0].measurementBatches,before.measurementBatches+1);
+      assert.equal(f.adapter.stats()[0].measuredRows,before.measuredRows+f.entries.length);
+      assert.equal(frames.pending,0,'the content update settles after one layout');
+    }
   } finally {f.close();}
 });
 
@@ -406,4 +500,211 @@ test('unrecognized native layout shapes fall back without wrapping geometry meth
     assert.equal(f.host.classList.contains('bui-ideas-auto'),false);
     assert.equal(f.container.querySelector('[aria-hidden="true"]'),null);
   }finally{f.close();}
+});
+
+const financeProfile={titleColumn:'formula.流水页面',titleProperty:'流水摘要',tags:{税务分类:'multi'},wrap:true,attachments:[]};
+test('profiled finance tables use natural content heights and restore native layout when wrapping is disabled',()=>{
+  const profile=structuredClone(financeProfile),f=fixture({name:'收支流水',profile,properties:['formula.流水页面','note.税务分类']});
+  try{
+    assert.equal(f.adapter.refresh(f.view),true);f.view.updateVirtualDisplay();
+    assert.ok(f.host.classList.contains('bui-ideas-auto'));
+    assert.equal(f.view.rows.find(row=>row.entry===f.entries[1]).el.style.getPropertyValue('--bases-table-row-height'),'56px');
+    assert.equal(f.view.rows.find(row=>row.entry===f.entries[2]).el.style.getPropertyValue('--bases-table-row-height'),'76px');
+    assert.equal(f.view.getClosestCellIndexWithinGroup({clientX:20,clientY:120},0).row,2);
+    profile.wrap=false;assert.equal(f.adapter.refresh(f.view),true);
+    assert.equal(f.view.updateVirtualDisplay,f.original.updateVirtualDisplay);
+    assert.equal(f.host.classList.contains('bui-ideas-auto'),false);
+  }finally{f.close();}
+});
+
+test('ordinary finance-named tables without an explicit profile keep native row geometry',()=>{
+  const f=fixture({name:'收支流水'});try{
+    assert.equal(f.adapter.refresh(f.view),false);assert.equal(f.view.updateVirtualDisplay,f.original.updateVirtualDisplay);
+  }finally{f.close();}
+});
+
+test('finance measurement uses the decorated title inset and unavailable badge without mutating native rows',()=>{
+  const f=fixture({name:'资金总览',profile:structuredClone(financeProfile),properties:['formula.流水页面','note.税务分类']});
+  try{
+    let unavailable=true;
+    for(const entry of f.entries) entry.getRawProperty=property=>property==='nf_unavailable_fields'?(unavailable?['税务分类']:[]):undefined;
+    const prototype=f.view.rows[0].constructor.prototype,render=prototype.render;
+    prototype.render=function(entry,properties){
+      render.call(this,entry,properties);
+      const title=this.cells[0].inner;title.textContent='';
+      const link=f.doc.createElement('a');link.className='internal-link';link.textContent=entry.file.path;title.append(link);
+      this.cells[1].inner.textContent='formulaResult://pending';
+    };
+    let reads=0;
+    f.adapter.readHeight=row=>{
+      reads++;
+      assert.ok(row.querySelector('.bui-title-column .bui-idea-title-cell .bui-idea-title'));
+      assert.equal(row.querySelector('.bui-unavailable-value')?.textContent,unavailable?'未取得':undefined);
+      assert.equal(row.querySelector('.bui-unavailable-cell')!==null,unavailable);
+      return 32;
+    };
+    f.adapter.refresh(f.view);f.view.updateVirtualDisplay();assert.equal(reads,f.entries.length);
+    assert.equal(f.view.rows.some(row=>row.el.querySelector('.bui-unavailable-value')),false,'only inert measurement clones are changed');
+    unavailable=false;f.view.updateVirtualDisplay();assert.equal(reads,f.entries.length*2,'unavailable metadata participates in the row-height cache');
+  }finally{f.close();}
+});
+
+test('explicit finance tag widths fit full labels and restore the original accessor after opt-out',()=>{
+  const dom=new JSDOM('<!doctype html><body><div class="bases-view bui-ideas-base"><div class="bases-thead"><div class="bases-td"><div class="header-inner"><span class="bases-table-header-name">税务分类</span></div></div></div><div class="bases-table-container"><div class="bases-td"><div class="bases-table-cell" data-property-type="text"><div class="metadata-input-longtext">长期资产购置</div></div></div></div></div></body>');
+  const win=dom.window,doc=win.document;loadGeometryStyles(doc);
+  win.HTMLElement.prototype.getBoundingClientRect=function(){
+    if(this.classList.contains('bases-view'))return {width:700,height:300};
+    if(win.getComputedStyle(this).position==='fixed')return {width:[...this.textContent].length*16,height:20};
+    return {width:0,height:20};
+  };
+  const host=doc.querySelector('.bases-view'),container=doc.querySelector('.bases-table-container'),cell=container.firstElementChild,header=doc.querySelector('.bases-thead .bases-td');
+  const property='税务"分类';cell.dataset.property=`note.${property}`;
+  const profile={...financeProfile,tags:{[property]:'single'}};
+  const info={customWidth:30,getWidth(){return this.customWidth;}},original=info.getWidth;
+  const entry={file:{path:'entry.md',extension:'md'},getValue:()=>({data:'长期资产购置'}),getRawProperty:()=> '长期资产购置'};
+  const view={type:'table',_loaded:true,queryController:{viewContainerEl:host},containerEl:container,
+    config:{name:'收支流水',get:key=>key==='nebulaTable'?profile:undefined},
+    data:{properties:[`note.${property}`],data:[entry]},rows:[],columnInfo:{[`note.${property}`]:info},
+    header:{cells:[{prop:`note.${property}`,el:header,innerEl:header.firstElementChild}]},updateVirtualDisplay(){}};
+  const module={exports:{}};
+  new vm.Script(widthsSource).runInContext(vm.createContext({module,exports:module.exports,HTMLElement:win.HTMLElement}));
+  const widths=new module.exports.IdeaColumnWidths();
+  try{
+    assert.equal(widths.refresh(view),true);assert.ok(info.getWidth()>96);assert.equal(info.customWidth,30);
+    profile.tags={};assert.equal(widths.refresh(view),true);assert.equal(info.getWidth,original);assert.equal(info.customWidth,30);
+  }finally{widths.clear();dom.window.close();}
+});
+
+
+test('stale missing-result metadata does not hide zero, newly entered values, or local formula columns',()=>{
+  const profile={titleColumn:'formula.流水页面',titleProperty:'流水摘要',tags:{},wrap:true,attachments:[]};
+  const f=fixture({name:'资金总览',profile,properties:['formula.流水页面','note.金额','formula.本地汇总']});
+  try{
+    let raw='formulaResult://pending',expectBadge=true;
+    for(const entry of f.entries) entry.getRawProperty=property=>property==='nf_unavailable_fields'?['金额','本地汇总']:property==='金额'?raw:'formulaResult://pending';
+    let reads=0;
+    f.adapter.readHeight=row=>{
+      reads++;
+      assert.equal(row.querySelector('[data-property="note.金额"] .bui-unavailable-value')!==null,expectBadge);
+      assert.equal(row.querySelector('[data-property="formula.本地汇总"] .bui-unavailable-value'),null);
+      return 32;
+    };
+    f.adapter.refresh(f.view);f.view.updateVirtualDisplay();assert.equal(reads,f.entries.length);
+    for(const value of [0,1200,'已确认','formula.本地汇总',false]){
+      raw=value;expectBadge=false;const before=reads;f.view.updateVirtualDisplay();assert.equal(reads-before,f.entries.length);
+    }
+    for(const value of [null,undefined,'',[], 'formulaResult://missing']){
+      raw=value;expectBadge=true;const before=reads;f.adapter.invalidate();f.view.updateVirtualDisplay();assert.equal(reads-before,f.entries.length);
+    }
+  }finally{f.close();}
+});
+
+test('first-pass asynchronous title rendering cannot cache an empty or previous finance title height',()=>{
+  const f=fixture({name:'收支流水',profile:structuredClone(financeProfile),properties:['formula.流水页面','note.税务分类']});
+  try{
+    for(const entry of f.entries) entry.getRawProperty=property=>property==='流水摘要'?`不同的较长标题 ${entry.file.path}`:undefined;
+    const prototype=f.view.rows[0].constructor.prototype,render=prototype.render;
+    prototype.render=function(entry,properties){
+      render.call(this,entry,properties);
+      this.cells[0].inner.replaceChildren(); // The native asynchronous formula renderer has not committed its link yet.
+    };
+    const titles=[];
+    f.adapter.readHeight=row=>{
+      const title=row.querySelector('.bui-title-column .bui-idea-title');
+      assert.ok(title);assert.ok(title.dataset.href);titles.push(title.textContent);return 54;
+    };
+    f.adapter.refresh(f.view);f.view.updateVirtualDisplay();
+    assert.deepEqual(titles,f.entries.map(entry=>`不同的较长标题 ${entry.file.path}`));
+    assert.equal(f.view.rows.every(row=>row.el.style.getPropertyValue('--bases-table-row-height')==='54px'),true);
+    assert.equal(f.view.rows.some(row=>row.el.querySelector('.bui-idea-title')),false,'the synthesized content exists only in inert measurement clones');
+    titles.length=0;f.entries[0].getRawProperty=property=>property==='流水摘要'?'更新后的标题':undefined;
+    f.view.updateVirtualDisplay();assert.deepEqual(titles,['更新后的标题'],'source-title changes invalidate a still-pending formula render');
+  }finally{f.close();}
+});
+
+test('measurement clones keep native column widths when a narrow table is inside a wider viewport',()=>{
+  const f=fixture({name:'资金总览',profile:structuredClone(financeProfile),properties:['formula.流水页面','note.税务分类']});
+  try{
+    const css=f.doc.createElement('style');css.textContent='.bases-tr{display:flex;min-width:100%}.bases-td{display:flex;flex:1 0 auto}';f.doc.head.append(css);
+    f.adapter.readHeight=(row,width)=>{
+      const rowStyle=f.dom.window.getComputedStyle(row);
+      assert.equal(rowStyle.width,`${width}px`);assert.equal(rowStyle.minWidth,'0');assert.equal(rowStyle.maxWidth,`${width}px`);
+      for(const cell of row.children){
+        const style=f.dom.window.getComputedStyle(cell);
+        assert.equal(style.width,'200px');assert.equal(style.maxWidth,'200px');
+        assert.equal(style.flexGrow,'0');assert.equal(style.flexShrink,'0');assert.equal(style.flexBasis,'200px');
+      }
+      return 50;
+    };
+    f.adapter.refresh(f.view);f.view.updateVirtualDisplay();
+    assert.equal(f.view.rows.every(row=>row.el.style.getPropertyValue('--bases-table-row-height')==='50px'),true);
+    assert.equal(f.view.rows[0].cells[0].el.style.flex,'','native cell flex behavior stays untouched');
+  }finally{f.close();}
+});
+
+test('inert finance measurement distinguishes classifications and attachments from relation text',()=>{
+  const profile={...financeProfile,attachments:['票据附件']};
+  const f=fixture({name:'收支流水',profile,properties:['formula.流水页面','note.税务分类','note.票据附件','note.关联项目']});
+  try{
+    const prototype=f.view.rows[0].constructor.prototype,render=prototype.render;
+    prototype.render=function(entry,properties){
+      render.call(this,entry,properties);
+      this.cells[3].inner.innerHTML='<div class="multi-select-container"><div class="multi-select-pill internal-link"><span class="multi-select-pill-content">关联项目的完整名称</span></div></div>';
+    };
+    f.adapter.readHeight=row=>{
+      assert.equal(row.querySelector('[data-property="note.税务分类"]').classList.contains('bui-tag-column'),true);
+      assert.equal(row.querySelector('[data-property="note.票据附件"]').classList.contains('bui-attachment-column'),true);
+      assert.equal(row.querySelector('[data-property="note.关联项目"]').classList.contains('bui-attachment-column'),false);
+      const relation=row.querySelector('[data-property="note.关联项目"]');
+      assert.equal(relation.classList.contains('bui-tag-column'),false);
+      assert.equal(relation.classList.contains('bui-relation-column'),true);
+      assert.ok(relation.querySelector('.bui-relation-pill .bui-relation-link'));
+      assert.equal(relation.querySelector('.bui-semantic-tag, .bui-native-tag'),null);
+      return 50;
+    };
+    f.adapter.refresh(f.view);f.view.updateVirtualDisplay();
+  }finally{f.close();}
+});
+
+test('relationship minima measure the displayed alias plus link icon, without turning prose or attachments into tags',()=>{
+  const dom=new JSDOM(`<!doctype html><body><style>
+    .multi-select-container{padding:6px 8px;gap:0}
+    .multi-select-pill{padding:0;gap:0}
+    .bui-relation-link{font-size:14px;padding-left:20px}
+    .multi-select-input{font-size:14px;min-width:8px}
+    .bui-relation-property .multi-select-pill-remove-button{visibility:hidden}
+  </style><div class="bases-view bui-ideas-base"><div class="bases-thead"><div class="bases-td"><div class="header-inner"><span class="bases-table-header-name" style="font-size:14px">关联项目</span></div></div></div><div class="bases-table-container"><div class="bases-td" data-property="note.关联项目"><div class="bases-table-cell" data-property-type="multitext"><div class="multi-select-container"><div class="multi-select-pill internal-link"><span class="multi-select-pill-content">短名</span><span class="multi-select-pill-remove-button"></span></div><div class="multi-select-input"></div></div></div></div></div></div></body>`);
+  const win=dom.window,doc=win.document;loadGeometryStyles(doc);
+  const measured=[];
+  win.HTMLElement.prototype.getBoundingClientRect=function(){
+    if(this.classList.contains('bases-view'))return {width:700,height:300};
+    if(win.getComputedStyle(this).position==='fixed'){measured.push(this.textContent);return {width:[...this.textContent].length*8,height:18};}
+    return {width:this.classList.contains('multi-select-pill-remove-button')?12:0,height:18};
+  };
+  const host=doc.querySelector('.bases-view'),container=doc.querySelector('.bases-table-container'),header=doc.querySelector('.bases-thead .bases-td');
+  const info=()=>({getWidth(){return 20;}}),relation=info(),prose=info(),media=info(),original=relation.getWidth;
+  const alias='相关项目的完整显示名称',wiki=`[[Projects/一段完全不应该显示的很长路径/项目记录.md|${alias}]]`;
+  const profile={titleColumn:'file.name',titleProperty:'标题',tags:{},wrap:true,attachments:['附件']};
+  const view={type:'table',_loaded:true,queryController:{viewContainerEl:host},containerEl:container,config:{name:'财务',nebulaTable:profile},
+    data:{properties:['note.关联项目','note.说明','note.附件'],data:[{getValue:property=>({data:property==='note.说明'?['普通长文本，不应该被限制列宽']:[wiki]})}]},
+    columnInfo:{'note.关联项目':relation,'note.说明':prose,'note.附件':media},
+    header:{cells:[{prop:'note.关联项目',el:header,innerEl:header.firstElementChild}]},updateVirtualDisplay(){}};
+  const module={exports:{}};new vm.Script(widthsSource).runInContext(vm.createContext({module,exports:module.exports,HTMLElement:win.HTMLElement}));
+  const widths=new module.exports.IdeaColumnWidths();
+  try{
+    assert.equal(widths.refresh(view),true);
+    assert.ok(measured.includes(alias));assert.equal(measured.includes(wiki),false);
+    assert.ok(relation.getWidth()>alias.length*8+20,'the icon and native cell padding count toward the minimum');
+    assert.ok(relation.getWidth()<wiki.length*8,'raw wiki markup and path do not create excess whitespace');
+    assert.equal(prose.getWidth(),20);assert.equal(media.getWidth(),20);
+    // A custom relationship name and an empty first cell still use the column's
+    // actual wiki values, keeping the same complete-label clamp.
+    const initial=relation.getWidth();container.firstElementChild.dataset.property='note.来源单据';
+    container.querySelector('.multi-select-pill').remove();
+    view.data.properties[0]='note.来源单据';view.header.cells[0].prop='note.来源单据';
+    view.columnInfo['note.来源单据']=relation;delete view.columnInfo['note.关联项目'];
+    widths.refresh(view);assert.equal(relation.getWidth(),initial);
+    assert.equal(container.querySelector('.bui-relation-pill'),null,'only the inert clone receives presentation classes');
+    widths.clear();assert.equal(relation.getWidth,original);
+  }finally{widths.clear();dom.window.close();}
 });

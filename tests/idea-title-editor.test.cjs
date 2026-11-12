@@ -6,7 +6,7 @@ const {buildSync}=require('esbuild');
 const code=buildSync({entryPoints:['src/idea-title-editor.ts'],bundle:true,write:false,
   platform:'node',format:'cjs',external:['obsidian']}).outputFiles[0].text;
 
-function fixture() {
+function fixture(actions) {
   const dom=new JSDOM('<!doctype html><body><div class="bases-view"><div class="bases-table-container"><div class="bases-tr"><div class="bases-td" data-property="formula.想法"><div class="bases-table-cell"><span class="internal-link" data-href="Ideas/a.md" draggable="true">原来的想法</span></div></div></div></div></div></body>');
   const win=dom.window,doc=win.document;
   const host=doc.querySelector('.bases-table-container'),cell=doc.querySelector('.bases-table-cell'),link=cell.firstElementChild;
@@ -32,7 +32,7 @@ function fixture() {
   new vm.Script(code)
     .runInContext(vm.createContext({module:mod,exports:mod.exports,HTMLElement:win.HTMLElement,Element:win.Element,
       require:name=>{assert.equal(name,'obsidian');return {setIcon(el,name){el.dataset.icon=name;},Notice:class{constructor(text){notices.push(text);}}};}}));
-  const titles=new mod.exports.IdeaTitleEditors();
+  const titles=new mod.exports.IdeaTitleEditors(actions);
   const click=(el,options={})=>el.dispatchEvent(new win.MouseEvent('click',{bubbles:true,cancelable:true,...options}));
   const key=(el,key,options={})=>el.dispatchEvent(new win.KeyboardEvent('keydown',{key,bubbles:true,cancelable:true,...options}));
   const edit=text=>{link.textContent=text;link.dispatchEvent(new win.InputEvent('input',{bubbles:true,inputType:'insertText'}));};
@@ -144,7 +144,7 @@ test('the sole page icon and modified link clicks delegate navigation, while nat
     assert.equal(f.cell.querySelector('.bui-idea-open-button'),null);
     assert.equal(f.cell.lastElementChild,f.link);
     assert.equal(f.cell.querySelectorAll('button').length,1);
-    assert.equal(icon.tagName,'BUTTON');assert.equal(icon.type,'button');assert.equal(icon.getAttribute('aria-label'),'打开想法笔记');
+    assert.equal(icon.tagName,'BUTTON');assert.equal(icon.type,'button');assert.equal(icon.getAttribute('aria-label'),'打开笔记');
     icon.focus();assert.equal(f.doc.activeElement,icon);
     // A native button's Enter/Space activation dispatches a click; preserve its zero-detail navigation.
     f.click(icon,{detail:0});f.click(icon,{metaKey:true});f.click(f.link,{metaKey:true});
@@ -249,5 +249,111 @@ test('failed native saves report failure without retaining a false successful la
     f.view.updateProperty=()=>Promise.reject(new Error('read-only file'));
     f.titles.refresh(f.view);f.click(f.link);f.edit('失败');f.key(f.link,'Enter');await new Promise(resolve=>f.win.setTimeout(resolve,0));
     assert.equal(f.notices.length,1);assert.equal(f.link.textContent,'原来的想法');assert.equal(f.link.hasAttribute('contenteditable'),false);
+  } finally {f.close();}
+});
+
+function filename(f) {
+  f.view.config.name='发布记录';f.view.config.getOrder=()=>['file.name'];
+  f.row.cells[0].prop='file.name';f.cell.parentElement.dataset.property='file.name';f.link.textContent='a';
+}
+
+test('plain publishing and grouped native file-name tables get one page icon and use the rename adapter rather than frontmatter',()=>{
+  const renames=[];
+  const f=fixture({rename(view,file,basename){renames.push({view,file,basename});}});try{
+    filename(f);f.titles.refresh(f.view);f.titles.refresh(f.view);
+    assert.equal(f.cell.querySelectorAll('.bui-idea-page-button').length,1);
+    f.click(f.link);assert.equal(f.link.getAttribute('contenteditable'),'plaintext-only');assert.deepEqual(f.opens,[]);
+    f.edit('新的发布标题');f.key(f.link,'Enter');
+    assert.deepEqual(renames,[{view:f.view,file:f.file,basename:'新的发布标题'}]);assert.deepEqual(f.writes,[]);
+    assert.equal(f.raw['file.name'],undefined);assert.equal(f.raw[''],undefined);
+    f.click(f.cell.querySelector('.bui-idea-page-button'));assert.equal(f.opens.length,1);
+    f.view.config.name='按平台分组';f.titles.refresh(f.view);f.click(f.cell);
+    assert.equal(f.link.getAttribute('contenteditable'),'plaintext-only');f.key(f.link,'Escape');
+    assert.equal(renames.length,1);assert.equal(f.view.config.nebulaTable,undefined);
+  }finally{f.close();}
+});
+
+test('file-name drafts discard on Escape or stale file changes; failed renames restore the display',async()=>{
+  const renames=[];
+  const f=fixture({rename(view,file,basename){renames.push(basename);return Promise.reject(Error('duplicate filename'));}});try{
+    filename(f);f.titles.refresh(f.view);f.click(f.link);f.edit('不保存');f.key(f.link,'Escape');assert.deepEqual(renames,[]);
+    f.click(f.link);f.edit('撞名');f.key(f.link,'Enter');await new Promise(resolve=>f.win.setTimeout(resolve,0));
+    assert.equal(f.link.textContent,'a');assert.equal(f.notices.length,1);assert.deepEqual(f.writes,[]);
+    f.click(f.link);f.edit('过期');f.file.path='Ideas/renamed.md';f.key(f.link,'Enter');
+    assert.deepEqual(renames,['撞名']);
+  }finally{f.close();}
+});
+
+test('plain current-record title formulas edit their declared source and reject related or scalar-derived links',()=>{
+  const f=fixture();try{
+    f.view.config.name='其他数据库';f.view.config.getOrder=()=>['formula.想法'];
+    f.view.config.query.formulas={想法:{text:'link(file.path, note["这里写想法"])'}};
+    f.titles.refresh(f.view);assert.ok(f.cell.querySelector('.bui-idea-page-button'));
+    f.click(f.link);f.edit('公式标题');f.key(f.link,'Enter');assert.equal(f.writes[0].key,'这里写想法');
+    f.link.dataset.href='Projects/other.md';f.titles.refresh(f.view);
+    assert.equal(f.cell.querySelector('.bui-idea-page-button'),null);f.click(f.link);assert.equal(f.opens.length,1);
+    f.link.dataset.href=f.file.path;f.view.config.query.formulas.想法.text='link(file.path, note["这里写想法"] + "!")';
+    f.titles.refresh(f.view);assert.equal(f.cell.querySelector('.bui-idea-page-button'),null);
+    f.view.config.query.formulas.想法.text='link(file.path, note["这里写想法"])';f.raw['这里写想法']=['非标量'];
+    f.titles.refresh(f.view);f.click(f.link);assert.equal(f.link.hasAttribute('contenteditable'),false);assert.equal(f.writes.length,1);
+  }finally{f.close();}
+});
+
+test('explicit native note-title editors retain native input saving and use only the page icon for opening',()=>{
+  const opened=[];
+  const f=fixture({rename(){throw Error('Not a filename');},open(view,file,event){opened.push({view,file,meta:event.metaKey});}});try{
+    f.view.config.name='属性标题';f.view.config.titleProperty='这里写想法';f.view.config.getOrder=()=>['note.这里写想法'];
+    f.row.cells[0].prop='note.这里写想法';f.row.cells[0].renderer.propertyEditor={};
+    f.cell.parentElement.dataset.property='note.这里写想法';f.link.remove();
+    const native=f.doc.createElement('div');native.className='metadata-input-longtext';native.setAttribute('contenteditable','true');native.textContent='原生标题';native.tabIndex=0;f.cell.append(native);
+    let inputs=0;native.addEventListener('input',()=>inputs++);
+    f.titles.refresh(f.view);assert.ok(f.cell.querySelector('.bui-idea-page-button'));
+    f.click(native);native.textContent='原生编辑';native.dispatchEvent(new f.win.InputEvent('input',{bubbles:true}));
+    assert.equal(inputs,1);assert.equal(native.getAttribute('contenteditable'),'true');assert.deepEqual(f.writes,[]);
+    f.click(f.cell.querySelector('.bui-idea-page-button'),{metaKey:true});
+    assert.deepEqual(opened,[{view:f.view,file:f.file,meta:true}]);
+    f.click(f.cell);assert.equal(f.doc.activeElement,native);
+    f.titles.clear();assert.equal(native.getAttribute('contenteditable'),'true');assert.equal(native.textContent,'原生编辑');
+    assert.equal(f.cell.querySelector('.bui-idea-page-button'),null);
+  }finally{f.close();}
+});
+
+function finance(f) {
+  const profile={titleColumn:'formula.Nebula流水',titleProperty:'流水摘要',tags:{收支类型:'single'},wrap:true,attachments:[]};
+  f.view.config.name='收支流水';f.view.config.nebulaTable=profile;
+  f.row.cells[0].prop=profile.titleColumn;
+  f.cell.parentElement.dataset.property=profile.titleColumn;
+  f.raw['流水摘要']='原来的想法';delete f.raw['这里写想法'];
+  return profile;
+}
+
+test('opted-in financial tables edit the mapped source property and keep icon navigation and native undo',()=>{
+  const f=fixture();try {
+    finance(f);f.titles.refresh(f.view);
+    f.click(f.link);assert.equal(f.link.getAttribute('contenteditable'),'plaintext-only');assert.deepEqual(f.opens,[]);
+    f.edit('新的流水摘要');f.key(f.link,'Enter');
+    assert.deepEqual(f.writes,[{file:f.file,key:'流水摘要',value:'新的流水摘要'}]);
+    assert.equal(f.raw['这里写想法'],undefined);
+    f.key(f.link,'z',{ctrlKey:true});assert.equal(f.raw['流水摘要'],'原来的想法');
+    f.click(f.cell.querySelector('.bui-idea-page-button'));assert.equal(f.opens.length,1);
+    f.click(f.cell.parentElement);assert.equal(f.link.getAttribute('contenteditable'),'plaintext-only');
+    const expected=f.doc.createRange();expected.selectNodeContents(f.link);expected.collapse(false);
+    assert.equal(f.doc.getSelection().getRangeAt(0).compareBoundaryPoints(0,expected),0);
+  } finally {f.close();}
+});
+
+test('profile changes, concurrent mapped-property changes and readOnly flags cannot commit stale financial edits',()=>{
+  const f=fixture();try {
+    const profile=finance(f);f.titles.refresh(f.view);f.click(f.link);f.edit('不可写入');
+    f.raw['流水摘要']='另一窗口修改';f.link.blur();assert.deepEqual(f.writes,[]);
+    f.click(f.link);f.edit('不可写入其他字段');profile.titleProperty='项目名称';f.key(f.link,'Enter');
+    assert.deepEqual(f.writes,[]);assert.equal(f.link.hasAttribute('contenteditable'),false);
+    profile.titleProperty='流水摘要';f.titles.refresh(f.view);f.view.readOnly=true;f.click(f.link);
+    assert.equal(f.link.hasAttribute('contenteditable'),false);f.view.readOnly=false;
+    f.click(f.link);f.edit('不可写入卸载视图');f.view.queryController={view:{}};f.link.blur();assert.deepEqual(f.writes,[]);
+    delete f.view.queryController;f.titles.refresh(f.view);f.click(f.link);f.edit('失去授权');
+    delete f.view.config.nebulaTable;f.titles.refresh(f.view);
+    assert.deepEqual(f.writes,[]);assert.equal(f.cell.querySelector('button'),null);
+    f.click(f.link);assert.equal(f.opens.length,1);
   } finally {f.close();}
 });

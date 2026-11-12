@@ -1,3 +1,5 @@
+import {tableProfile} from './table-profile';
+
 type RecordValue = Record<string, unknown>;
 function record(value: unknown): value is RecordValue {return !!value && typeof value === 'object';}
 function callable(value: unknown): value is (...args: unknown[]) => unknown {return typeof value === 'function';}
@@ -20,7 +22,7 @@ const READ_ONLY = '[disabled], [aria-disabled="true"], [aria-readonly="true"], [
 export async function ensureCreationOrder(view: unknown): Promise<boolean> {
   if (!record(view) || !record(view.config) || !record(view.config.query)) return false;
   const config = view.config, query = view.config.query, controller = view.queryController;
-  if (view.type !== 'table' || config.name !== '想法收集箱' || view._loaded === false ||
+  if (view.type !== 'table' || !tableProfile(view) || view._loaded === false ||
       !callable(config.getSort) || !callable(query.saveFn)) return false;
   if ([view, config, query, controller].some(readOnly)) return false;
   if (closestReadOnly(view.containerEl) || closestReadOnly(view.theadEl)) return false;

@@ -6,9 +6,10 @@ const {transformSync} = require('esbuild');
 const {JSDOM} = require('jsdom');
 const loadGeometryStyles = require('./load-geometry-styles.cjs');
 
-function fixture(manage) {
+function fixture(manage, {foreignRealm=false}={}) {
   const dom = new JSDOM('<!doctype html><body><div class="bases-thead"></div></body>');
   const win = dom.window, doc = win.document;
+  const primary = foreignRealm ? new JSDOM('<!doctype html><body></body>') : dom;
   loadGeometryStyles(doc);
   const writes = [], notices = [];
   const loaded = new Map();
@@ -16,7 +17,7 @@ function fixture(manage) {
     if (loaded.has(name)) return loaded.get(name);
     const mod = {exports:{}};
     new vm.Script(transformSync(fs.readFileSync(`src/${name}.ts`,'utf8'), {loader:'ts',format:'cjs'}).code)
-      .runInContext(vm.createContext({module:mod,exports:mod.exports,HTMLElement:win.HTMLElement,Element:win.Element,
+      .runInContext(vm.createContext({module:mod,exports:mod.exports,HTMLElement:primary.window.HTMLElement,Element:primary.window.Element,
         require:dependency => dependency === 'obsidian' ? {setIcon(el, icon){el.dataset.icon=icon;}} : load(dependency.slice(2))}));
     loaded.set(name, mod.exports);return mod.exports;
   }
@@ -41,12 +42,25 @@ function fixture(manage) {
   const click = (el,options={})=>el.dispatchEvent(new win.MouseEvent('click',{bubbles:true,cancelable:true,...options}));
   const key = (el,key,options={})=>el.dispatchEvent(new win.KeyboardEvent('keydown',{key,bubbles:true,cancelable:true,...options}));
   const edit = (el,text)=>{el.value=text;el.dispatchEvent(new win.InputEvent('input',{bubbles:true,inputType:'insertText'}));};
-  return {win,doc,view,head,headers,cell,click,key,edit,writes,notices,get sorts(){return sorts;},close:()=>dom.window.close()};
+  return {win,doc,view,head,headers,cell,click,key,edit,writes,notices,get sorts(){return sorts;},close:()=>{dom.window.close();if(primary!==dom)primary.window.close();}};
 }
 
 const input = f => f.doc.querySelector('.bui-header-editor input');
 const panel = f => f.doc.querySelector('.bui-header-editor');
 const tick = async () => {await Promise.resolve();await Promise.resolve();};
+
+test('opted-in finance table headers keep display-label editing and stop sorting; removing the profile restores native behavior',async()=>{
+  const f=fixture();try {
+    f.view.config.name='收支流水';f.view.config.nebulaTable={titleColumn:'formula.想法',titleProperty:'流水摘要',tags:{领域:'multi'},wrap:true,attachments:[]};
+    f.headers.attach(f.view);const label=f.cell('formula.想法').nameEl;
+    f.click(label);assert.ok(panel(f));assert.equal(f.sorts,0);
+    f.edit(input(f),'流水摘要');f.key(input(f),'Enter');await tick();
+    assert.deepEqual(f.writes,[{prop:'formula.想法',value:'流水摘要'}]);
+    f.click(label);f.edit(input(f),'不要保存');delete f.view.config.nebulaTable;f.headers.attach(f.view);
+    assert.equal(panel(f),null);assert.equal(label.hasAttribute('role'),false);
+    f.click(label);assert.equal(f.sorts,1);assert.equal(f.writes.length,1);
+  } finally {f.headers.clear();f.close();}
+});
 
 test('classification columns delegate to tag manager while title text and blank header area open the same anchored rename style',()=>{
   const calls=[];
@@ -63,6 +77,57 @@ test('classification columns delegate to tag manager while title text and blank 
     assert.ok(panel(f).querySelector('[data-icon="x"]'));
     assert.equal(f.cell('formula.想法').nameEl.hasAttribute('contenteditable'),false);
     f.key(input(f),'Escape');f.click(f.cell('formula.想法').el);assert.ok(panel(f));assert.equal(f.sorts,0);
+  } finally {f.headers.clear();f.close();}
+});
+
+test('header rename popover snapshots the clicked label typography rather than body or column values',()=>{
+  const f=fixture();
+  try {
+    const label=f.cell('formula.想法').nameEl;
+    f.doc.body.style.fontSize='30px';
+    label.style.cssText='font-family: "Example CJK", serif; font-size: 17.5px; font-weight: 500; line-height: 24px';
+    const original=label.getAttribute('style');
+    const container=f.doc.body.appendChild(f.doc.createElement('div'));f.view.containerEl=container;
+    container.innerHTML='<div class="bases-td" data-property="formula.想法"><span class="bases-rendered-value" style="font-size:42px">Other value</span></div>';
+    f.headers.attach(f.view);f.click(label);
+    for(const name of ['font-size','font-family','font-weight','line-height'])
+      assert.equal(panel(f).style.getPropertyValue(`--bui-source-tag-${name}`),f.win.getComputedStyle(label).getPropertyValue(name));
+    assert.equal(panel(f).style.getPropertyValue('--bui-source-tag-font-size'),'17.5px');
+    assert.equal(panel(f).style.getPropertyValue('--bui-source-tag-line-height'),'24px');
+    assert.ok(panel(f).querySelector('.bui-tag-manager-title'));assert.ok(input(f));
+    assert.equal(label.getAttribute('style'),original);assert.equal(f.doc.body.style.fontSize,'30px');
+    f.key(input(f),'Escape');label.style.fontSize='21px';label.style.lineHeight='31.5px';
+    f.click(label);assert.equal(panel(f).style.getPropertyValue('--bui-source-tag-font-size'),'21px');
+    assert.equal(panel(f).style.getPropertyValue('--bui-source-tag-line-height'),'31.5px');
+  } finally {f.headers.clear();f.close();}
+});
+
+test('relative header font declarations are copied as resolved metrics without scaling again in the popup',()=>{
+  const f=fixture();
+  try {
+    const label=f.cell('formula.想法').nameEl;label.style.fontSize='1.2em';label.style.lineHeight='1.5';
+    const native=f.win.getComputedStyle.bind(f.win),resolved={'font-size':'18px','font-family':'Source CJK','font-weight':'400','line-height':'27px'};
+    // JSDOM does not resolve em/unitless computed values; supply the browser's
+    // resolved CSSOM metrics while retaining the source's relative declarations.
+    f.win.getComputedStyle=el=>el===label?{getPropertyValue:name=>resolved[name]??''}:native(el);
+    f.headers.attach(f.view);f.click(label);
+    assert.equal(panel(f).style.getPropertyValue('--bui-source-tag-font-size'),'18px');
+    assert.equal(panel(f).style.getPropertyValue('--bui-source-tag-line-height'),'27px');
+    assert.equal(label.style.fontSize,'1.2em');assert.equal(label.style.lineHeight,'1.5');
+  } finally {f.headers.clear();f.close();}
+});
+
+test('popout headers accept their own realm label and SVG targets, save locally, and restore native clicks on clear',async()=>{
+  const f=fixture(undefined,{foreignRealm:true});
+  try {
+    f.headers.attach(f.view);const cell=f.cell('formula.想法');
+    const svg=f.doc.createElementNS('http://www.w3.org/2000/svg','svg');
+    const path=svg.appendChild(f.doc.createElementNS('http://www.w3.org/2000/svg','path'));cell.el.prepend(svg);
+    f.click(path);assert.ok(panel(f));assert.equal(panel(f).ownerDocument,f.doc);assert.equal(f.sorts,0);
+    f.edit(input(f),'弹出窗口列名');f.key(input(f),'Enter');await tick();
+    assert.deepEqual(f.writes,[{prop:'formula.想法',value:'弹出窗口列名'}]);
+    f.key(cell.nameEl,'Enter');assert.ok(panel(f));f.headers.clear();assert.equal(panel(f),null);
+    assert.equal(cell.nameEl.hasAttribute('role'),false);f.click(cell.nameEl);assert.equal(f.sorts,1);
   } finally {f.headers.clear();f.close();}
 });
 

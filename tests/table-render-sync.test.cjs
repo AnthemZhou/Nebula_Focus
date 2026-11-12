@@ -4,10 +4,11 @@ const vm = require('node:vm');
 const {buildSync} = require('esbuild');
 const {JSDOM} = require('jsdom');
 const code = buildSync({entryPoints:['src/table-render-sync.ts'],bundle:true,write:false,platform:'node',format:'cjs'}).outputFiles[0].text;
-function fixture(prepare) {
+function fixture(prepare, {foreignRealm=false}={}) {
   const dom = new JSDOM('<!doctype html><body><div class="bases-view"><div class="bases-table-container"></div></div></body>',{pretendToBeVisual:true});
+  const primary = foreignRealm ? new JSDOM('<!doctype html><body></body>') : dom;
   const doc = dom.window.document, mod = {exports:{}};
-  new vm.Script(code).runInContext(vm.createContext({module:mod,exports:mod.exports,HTMLElement:dom.window.HTMLElement}));
+  new vm.Script(code).runInContext(vm.createContext({module:mod,exports:mod.exports,HTMLElement:primary.window.HTMLElement}));
   const root = doc.querySelector('.bases-view'), container = root.firstElementChild;
   const view = {type:'table',_loaded:true,containerEl:container,scrollEl:root,updateVirtualDisplay(value) {
     const row = doc.createElement('div'); row.className='native-row'; row.textContent=value;
@@ -22,7 +23,7 @@ function fixture(prepare) {
     }
   },()=>enabled,prepare ? view => prepare(view,doc,sync) : undefined);
   const native = view.updateVirtualDisplay;
-  return {dom,doc,root,container,view,sync,native,get paints(){return paints;},disable(){enabled=false;},close(){sync.clear();dom.window.close();}};
+  return {dom,doc,root,container,view,sync,native,get paints(){return paints;},disable(){enabled=false;},close(){sync.clear();dom.window.close();if(primary!==dom)primary.window.close();}};
 }
 const microtasks = async () => {await Promise.resolve();await Promise.resolve();};
 
@@ -36,6 +37,25 @@ test('new virtual rows are decorated synchronously before native update returns,
     for(let i=0;i<20;i++) f.view.updateVirtualDisplay(`row ${i}`);
     assert.equal(f.container.querySelectorAll('.icon').length,1);
     await microtasks();assert.equal(f.paints,initial+21);
+  }finally{f.close();}
+});
+
+test('tables and explicit scroll roots in a second window render, observe and tear down in their own DOM realm',async()=>{
+  const f=fixture(undefined,{foreignRealm:true});
+  try {
+    // No matching fallback ancestor: the explicit foreign-realm scrollEl must
+    // be accepted, not silently replaced with the narrower table container.
+    f.root.className='popout-table-scroll';
+    f.sync.attach(f.view);assert.notEqual(f.view.updateVirtualDisplay,f.native);
+    assert.equal(f.sync.owns(f.root),true);const initial=f.paints;
+    assert.equal(f.view.updateVirtualDisplay('popout'),'native result');
+    assert.ok(f.container.querySelector('.icon'));assert.equal(f.paints,initial+1);
+    await microtasks();assert.equal(f.paints,initial+1);
+    f.container.innerHTML='<div class="native-row">async popout data</div>';
+    await microtasks();assert.equal(f.paints,initial+2);assert.ok(f.container.querySelector('.icon'));
+    f.sync.clear();assert.equal(f.view.updateVirtualDisplay,f.native);assert.equal(f.sync.owns(f.root),false);
+    f.view.updateVirtualDisplay('native after clear');await microtasks();
+    assert.equal(f.container.querySelector('.icon'),null);assert.equal(f.paints,initial+2);
   }finally{f.close();}
 });
 

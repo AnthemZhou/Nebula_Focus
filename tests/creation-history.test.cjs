@@ -32,8 +32,8 @@ function fixture(t, options = {}) {
   const dom = new JSDOM('<!doctype html><body><button id="outside">Outside</button><div class="workspace-leaf mod-active"><div class="bases-table-container" tabindex="0"></div></div></body>', {pretendToBeVisual:true});
   const win=dom.window, doc=win.document, container=doc.querySelector('.bases-table-container');
   class StringValue {constructor(data){this.data=data;} toString(){return this.data;}}
-  const files=new Map(), folders=new Map(), content=new Map(), calls={open:0, create:[], trash:[], nativeUndo:0, nativeRedo:0, notices:[], notify:0, save:0, frontmatter:0, groupCreate:0, phoneOpen:[], nativeCreateArgs:[]};
-  let number=0, readHook, trashHook, createHook, openFileHook;
+  const files=new Map(), folders=new Map(), content=new Map(), calls={open:0, create:[], trash:[], rename:[], nativeUndo:0, nativeRedo:0, notices:[], notify:0, save:0, frontmatter:0, groupCreate:0, phoneOpen:[], nativeCreateArgs:[]};
+  let number=0, readHook, trashHook, createHook, openFileHook, renameHook;
   const put=(path, text='')=>{const file={path, extension:'md', basename:path.split('/').pop().replace(/\.md$/,''), stat:{ctime:100+number, mtime:200+number}}; files.set(path,file); content.set(file,text); return file;};
   const app={vault:{
     getAbstractFileByPath:path=>files.get(path)??null,
@@ -45,7 +45,12 @@ function fixture(t, options = {}) {
   },fileManager:{async createNewFile(...args){
     assert.equal(this,app.fileManager,'native creation keeps its real file-manager receiver');calls.nativeCreateArgs.push(args);
     const [folder,name]=args;return app.vault.create(`${folder.path}/${name||'Untitled'} ${++number}.md`,'');
-  },async createNewMarkdownFile(folder){return app.vault.create(`${folder.path}/Untitled ${++number}.md`,'');}, async processFrontMatter(file,callback) {
+  },async createNewMarkdownFile(folder){return app.vault.create(`${folder.path}/Untitled ${++number}.md`,'');}, async renameFile(file,toPath){
+    assert.equal(this,app.fileManager,'rename keeps the native link-aware file-manager receiver');
+    calls.rename.push({file,fromPath:file.path,toPath});if(renameHook)await renameHook(file,toPath);
+    assert.equal(files.get(file.path),file);assert(!files.has(toPath)||files.get(toPath)===file,'rename never overwrites');
+    files.delete(file.path);file.path=toPath;file.basename=toPath.split('/').pop().replace(/\.md$/,'');files.set(toPath,file);
+  }, async processFrontMatter(file,callback) {
     assert.equal(this,app.fileManager,'frontmatter keeps its real file-manager receiver');
     assert.equal(files.get(file.path),file,'frontmatter transaction uses a live TFile');
     const note=splitNote(content.get(file)), properties=note.properties;
@@ -101,7 +106,7 @@ function fixture(t, options = {}) {
   t.after(()=>{history.clear();dom.window.close();});
   return {dom,win,doc,container,app,view,menu,controller,original,history,files,folders,StringValue,content,calls,put,edit,created,key,leaves,changed,
     same:module.exports.sameCreatedContent,props:file=>splitNote(content.get(file)).properties,
-    setReadHook:fn=>{readHook=fn;},setTrashHook:fn=>{trashHook=fn;},setCreateHook:fn=>{createHook=fn;},setOpenFileHook:fn=>{openFileHook=fn;}};
+    setReadHook:fn=>{readHook=fn;},setTrashHook:fn=>{trashHook=fn;},setCreateHook:fn=>{createHook=fn;},setOpenFileHook:fn=>{openFileHook=fn;},setRenameHook:fn=>{renameHook=fn;}};
 }
 
 test('native property → creation → native property undo and redo share chronological history and restored TFiles', async t=>{
@@ -1060,4 +1065,155 @@ test('partially initialized native config getters cannot abort creation and are 
   ready=true;f.history.attach(f.view);assert.notEqual(f.menu.open,f.original.open);
   const file=await f.created();await f.view.undoTransaction();assert.equal(f.files.has(file.path),false);
   await f.view.redoTransaction();assert.equal(f.files.has(file.path),true);
+});
+
+test('newly profiled and renamed tables keep native creation then property undo and redo order',async t=>{
+  const f=fixture(t),profile={titleColumn:'formula.新条目',titleProperty:'条目标题',tags:{领域:'multi'},wrap:true,attachments:[]};
+  f.view.config.name='新的项目素材库';f.view.config.nebulaTable=profile;f.view.config.query.file='Bases/新的项目素材库.base';
+  const file=await f.created(),baseline=f.content.get(file);
+  assert.equal(f.calls.save,1);assert.equal(f.view.config.sort.at(-1).property,'file.ctime');
+  assert.equal(f.view.config.sort.at(-1).direction,'ASC');
+  await f.edit(file,'---\n领域: ["参考"]\n---\n');
+  f.view.config.name='重命名后的素材库';
+  await f.view.undoTransaction();assert.equal(f.content.get(file),baseline);
+  await f.view.undoTransaction();assert.equal(f.files.has(file.path),false);
+  await f.view.redoTransaction();const restored=f.files.get(file.path);assert.ok(restored);assert.equal(f.content.get(restored),baseline);
+  await f.view.redoTransaction();assert.deepEqual(f.props(restored).领域,['参考']);
+  assert.equal(f.calls.save,1,'undo and redo do not rewrite display configuration');
+});
+
+test('single-record views block new records while native property editing and undo remain available',async t=>{
+  for(const phone of [false,true]){
+    const f=fixture(t,{phone});let allow=false;
+    f.view.config.get=function(key){assert.equal(this,f.view.config);return key==='nebulaAllowCreate'?allow:undefined;};
+    const file=f.put('Notes/Single.md','---\nstate: "before"\n---\nBody');
+    await f.menu.open();
+    assert.equal(f.calls.open,0);assert.equal(f.calls.create.length,0);assert.equal(f.calls.save,0);
+    assert.equal(f.view.isReadOnly,undefined);assert.equal(f.container.hasAttribute('aria-readonly'),false);
+    await f.edit(file,'after');assert.equal(f.props(file).state,'after');
+    await f.view.undoTransaction();assert.equal(f.props(file).state,'before');
+    await f.view.redoTransaction();assert.equal(f.props(file).state,'after');
+    allow=true;await f.menu.open();assert.equal(f.calls.open,1);assert.equal(f.calls.create.length,1);
+    allow=false;await f.menu.open();assert.equal(f.calls.open,1);
+  }
+});
+
+test('disabling new-record creation does not block undo or redo of a previously created record',async t=>{
+  const f=fixture(t),file=await f.created(),content=f.content.get(file);
+  f.view.config.get=key=>key==='nebulaAllowCreate'?false:undefined;
+  await f.menu.open();assert.equal(f.calls.open,1);
+  await f.view.undoTransaction();assert.equal(f.files.has(file.path),false);
+  await f.view.redoTransaction();const restored=f.files.get(file.path);assert.ok(restored);assert.equal(f.content.get(restored),content);
+  assert.equal(f.calls.open,1,'history restoration does not reopen the create menu');
+});
+
+test('filename renames share chronological property history without writing note content or frontmatter',async t=>{
+  const f=fixture(t),file=f.put('Ideas/Existing.md','---\nstate: "before"\n---\nExact body\n');
+  await f.edit(file,'after');const content=f.content.get(file),property=f.view.undoStack.at(-1),writes=f.calls.frontmatter;
+  await f.history.rename(f.view,file,'新的中文标题');const marker=f.view.undoStack.at(-1);
+  assert.equal(file.path,'Ideas/新的中文标题.md');assert.equal(f.content.get(file),content);assert.equal(f.calls.frontmatter,writes);
+  assert.equal(marker.changes.length,1);assert.equal(marker.changes[0].file,file);
+  assert.equal(marker.changes[0].fromPath,'Ideas/Existing.md');assert.equal(marker.changes[0].toPath,'Ideas/新的中文标题.md');
+  await f.view.undoTransaction();assert.equal(file.path,'Ideas/Existing.md');assert.equal(f.view.undoStack.at(-1),property);
+  await f.view.undoTransaction();assert.equal(f.props(file).state,'before');
+  await f.view.redoTransaction();await f.view.redoTransaction();assert.equal(file.path,'Ideas/新的中文标题.md');assert.equal(f.content.get(file),content);
+  assert.deepEqual(f.calls.notices,[]);assert.equal(f.calls.nativeUndo,0);assert.equal(f.calls.nativeRedo,0);
+});
+
+test('create then rename can undo twice and redo twice against the restored file identity',async t=>{
+  const f=fixture(t),file=await f.created(),originalPath=file.path,baseline=f.content.get(file);f.menu.close();
+  await f.history.rename(f.view,file,'发布标题');const rename=f.view.undoStack.at(-1);
+  await f.view.undoTransaction();assert.equal(file.path,originalPath);
+  await f.view.undoTransaction();assert.equal(f.files.has(originalPath),false);
+  await f.view.redoTransaction();const restored=f.files.get(originalPath);
+  assert.ok(restored);assert.notEqual(restored,file);assert.equal(rename.changes[0].file,restored);
+  await f.view.redoTransaction();assert.equal(restored.path,'Ideas/发布标题.md');assert.equal(f.files.get(restored.path),restored);
+  assert.equal(f.content.get(restored),baseline);assert.deepEqual(f.calls.notices,[]);
+});
+
+test('rename validation rejects traversal, invalid names, non-Markdown files, stale identities and existing destinations',async t=>{
+  const f=fixture(t),file=f.put('Ideas/Existing.md','Exact body');
+  for(const name of ['', '.', '..', '../Other', 'Folder/File','Folder\\File','Name:', 'a*', 'a?', 'a"', '<a>', 'a|b','a\nb','a\u0000b','a.', ' a','a ', 'CON','lpt1.txt'])
+    await assert.rejects(f.history.rename(f.view,file,name),/笔记名称/,name);
+  await assert.rejects(f.history.rename(f.view,{...file},'Other'),/替换/);
+  const other=f.put('Ideas/Other.md','Do not replace');await assert.rejects(f.history.rename(f.view,file,'Other'),/已有文件/);
+  file.extension='png';await assert.rejects(f.history.rename(f.view,file,'Other2'),/替换/);file.extension='md';
+  assert.equal(f.calls.rename.length,0);assert.equal(f.view.undoStack.length,0);assert.equal(f.files.get(other.path),other);
+  await f.history.rename(f.view,file,'Existing');assert.equal(f.calls.rename.length,0);assert.equal(f.view.undoStack.length,0);
+  assert.equal(f.content.get(file),'Exact body');
+});
+
+test('rename undo and redo retain their marker on external path changes, collisions and native failures',async t=>{
+  const f=fixture(t),file=f.put('Ideas/Original.md','Exact body');await f.history.rename(f.view,file,'Changed');const marker=f.view.undoStack.at(-1);
+  const collision=f.put('Ideas/Original.md','Other file');await f.view.undoTransaction();
+  assert.equal(f.files.get(collision.path),collision);assert.equal(file.path,'Ideas/Changed.md');assert.equal(f.view.undoStack.at(-1),marker);
+  f.files.delete(collision.path);f.setRenameHook(()=>{throw Error('native rename failed');});await f.view.undoTransaction();
+  assert.equal(file.path,'Ideas/Changed.md');assert.equal(f.view.undoStack.at(-1),marker);
+  f.setRenameHook(null);await f.view.undoTransaction();assert.equal(file.path,'Ideas/Original.md');
+  const redoCollision=f.put('Ideas/Changed.md','Preserve');await f.view.redoTransaction();
+  assert.equal(f.files.get(redoCollision.path),redoCollision);assert.equal(f.view.redoStack.at(-1),marker);
+  f.files.delete(redoCollision.path);await f.view.redoTransaction();
+  await f.app.fileManager.renameFile(file,'Ideas/External.md');await f.view.undoTransaction();
+  assert.equal(file.path,'Ideas/External.md');assert.equal(f.view.undoStack.at(-1),marker);assert.equal(f.content.get(file),'Exact body');
+});
+
+test('queued rename and immediate undo execute in order and recheck readonly eligibility',async t=>{
+  const f=fixture(t),file=f.put('Ideas/Original.md','Body');let release,started;
+  const active=new Promise(resolve=>{started=resolve;});f.setRenameHook(()=>new Promise(resolve=>{release=resolve;started();}));
+  const rename=f.history.rename(f.view,file,'Changed');await active;
+  assert.equal(f.history.forView(f.view,false,false),true,'a pending rename is undoable as soon as it commits');
+  f.setRenameHook(null);release();await rename;await drain(f);
+  assert.equal(file.path,'Ideas/Original.md');assert.equal(f.view.redoStack.length,1);
+  const blocked=f.history.rename(f.view,file,'Blocked');f.view.isReadOnly=true;
+  await assert.rejects(blocked,/不可编辑/);assert.equal(file.path,'Ideas/Original.md');
+  f.view.isReadOnly=false;f.controller.isReadOnly=true;await assert.rejects(f.history.rename(f.view,file,'Blocked'),/不可编辑/);
+});
+
+test('rename history survives desktop remount and stays in its original view scope',async t=>{
+  const f=fixture(t),ui=mountSurface(f),owner=ownSession(f,ui),file=f.put('Ideas/Original.md','Body');
+  await f.history.rename(f.view,file,'Changed');const marker=f.view.undoStack.at(-1);
+  const restore=changeScope(f,'name');assert.equal(f.view.undoStack.length,0);
+  restore();assert.equal(f.view.undoStack.at(-1),marker);
+  unmountView(f,ui);const fresh=rebuildView(f,owner);assert.equal(fresh.view.undoStack.at(-1),marker);
+  await fresh.view.undoTransaction();assert.equal(file.path,'Ideas/Original.md');
+  await fresh.view.redoTransaction();assert.equal(file.path,'Ideas/Changed.md');
+});
+
+test('phone tabs share filename rename and creation history, including restored TFile references',async t=>{
+  const f=fixture(t,{phone:true}),ui=mountSurface(f);externalBase(f,ui);const file=await f.created(),path=file.path;
+  const second=anotherBaseTab(f);await f.history.rename(second.view,file,'手机标题');
+  await f.view.undoTransaction();assert.equal(file.path,path);
+  await second.view.undoTransaction();assert.equal(f.files.has(path),false);
+  await f.view.redoTransaction();const restored=f.files.get(path);assert.ok(restored);
+  await second.view.redoTransaction();assert.equal(restored.path,'Ideas/手机标题.md');
+  assert.equal(f.view.undoStack,second.view.undoStack);assert.deepEqual(f.calls.notices,[]);
+});
+
+test('clear removes owned rename markers while preserving native property history',async t=>{
+  const f=fixture(t),file=f.put('Ideas/Original.md','---\nstate: "before"\n---\nBody');
+  await f.edit(file,'after');const property=f.view.undoStack.at(-1);
+  await f.history.rename(f.view,file,'Changed');await f.view.undoTransaction();
+  assert.equal(f.view.redoStack.length,1);f.history.clear();
+  assert.deepEqual([...f.view.undoStack],[property]);assert.equal(f.view.redoStack.length,0);
+  assert.equal(f.view.undoTransaction,f.original.undo);assert.equal(file.path,'Ideas/Original.md');
+});
+
+test('rename finishing after a same-session remount records in the replacement and cannot revive cleared history',async t=>{
+  for(const clear of [false,true]){
+    const f=fixture(t),ui=mountSurface(f),owner=ownSession(f,ui),file=f.put('Ideas/Original.md','Body');let release,started;
+    const active=new Promise(resolve=>{started=resolve;});f.setRenameHook(()=>new Promise(resolve=>{release=resolve;started();}));
+    const pending=f.history.rename(f.view,file,'Changed');await active;unmountView(f,ui);
+    const fresh=rebuildView(f,owner);if(clear)f.history.clear();f.setRenameHook(null);release();await pending;
+    assert.equal(file.path,'Ideas/Changed.md');assert.equal(fresh.view.undoStack.length,clear?0:1);
+    if(!clear){await fresh.view.undoTransaction();assert.equal(file.path,'Ideas/Original.md');}
+  }
+});
+
+test('single-record creation restriction covers folder-group bypasses and plain native config data',async t=>{
+  const f=fixture(t,{folder:true});f.view.config.nebulaAllowCreate=false;
+  f.folders.set('Projects',{path:'Projects'});
+  await f.view.createNoteInGroup({key:new f.StringValue('Projects')});
+  assert.equal(f.calls.groupCreate,0);assert.equal(f.calls.create.length,0);assert.equal(f.calls.open,0);
+  delete f.view.config.nebulaAllowCreate;
+  await f.view.createNoteInGroup({key:new f.StringValue('Projects')});assert.equal(f.calls.create.length,1);
 });

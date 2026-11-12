@@ -4,7 +4,7 @@ const {buildSync} = require('esbuild');
 const {JSDOM} = require('jsdom');
 const code = buildSync({entryPoints: ['src/page-sidebar.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['obsidian'], write: false}).outputFiles[0].text;
 
-function fixture(initial) {
+function fixture(initial, initialEnabled = true) {
   const dom = new JSDOM('<!doctype html><body></body>'), win = dom.window, doc = win.document;
   win.HTMLElement.prototype.createEl = function(tag, options = {}) {
     const el = doc.createElement(tag);
@@ -22,11 +22,27 @@ function fixture(initial) {
   const root = new TFolder('/', [new TFile('Home.md'), new TFolder('Home', [new TFile('Home/Child.md')]), new TFile('Alpha.md'), new TFile('Zebra.md')]);
   let active = 'Home.md', failSave = false;
   const writes = [], opens = [], notices = [], menus = [], commands = [], created = [], modals = [], settingTabs = [], layoutReady = [];
+  const leaves = [], revealed = [], viewStates = []; let switchHook;
+  const addLeaf = (type, currentView, state = {type, state: {}}) => {
+    const leaf = {view: currentView ?? {getViewType: () => type}, state,
+      getViewState() {return this.state;},
+      async setViewState(next) {
+        viewStates.push({leaf: this, state: next}); await switchHook?.(this, next);
+        await this.view.onClose?.(); this.state = next;
+        this.view = next.type === 'nebula-pages' ? new module.exports.PageSidebarView(this, sidebar) : {getViewType: () => next.type};
+        await this.view.onOpen?.();
+      }};
+    if (currentView) currentView.leaf = leaf; leaves.push(leaf); return leaf;
+  };
   const find = (path, node = root) => node.path === path ? node : node.children?.map(child => find(path, child)).find(Boolean);
   const app = {vault: {getRoot: () => root, getName: () => '测试库', getAbstractFileByPath: path => find(path), on() {},
     async createFolder(path) {created.push({folder: path}); const parent = find(path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '/'); parent.children.push(new TFolder(path, []));},
     async create(path, content) {created.push({file: path, content}); const file = new TFile(path); const parent = find(path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '/'); parent.children.push(file); return file;}},
-    workspace: {on() {}, onLayoutReady(fn) {layoutReady.push(fn);}, getActiveFile: () => find(active), getLeaf: mode => ({async openFile(file) {opens.push({path: file.path, mode}); active = file.path;}})}};
+    workspace: {on() {}, onLayoutReady(fn) {layoutReady.push(fn);}, getActiveFile: () => find(active),
+      getLeavesOfType: type => leaves.filter(leaf => leaf.view.getViewType() === type),
+      iterateAllLeaves: callback => leaves.forEach(callback), getLeftLeaf: () => leaves[0] ?? addLeaf('empty'),
+      revealLeaf: async leaf => {revealed.push(leaf);},
+      getLeaf: mode => ({async openFile(file) {opens.push({path: file.path, mode}); active = file.path;}})}};
   class ItemView extends Component {constructor(leaf) {super(); this.leaf = leaf; this.app = app; this.contentEl = doc.createElement('div'); doc.body.append(this.contentEl);}}
   class Modal {constructor() {this.contentEl = doc.createElement('div'); doc.body.append(this.contentEl); modals.push(this);} setTitle() {} open() {this.onOpen();} close() {this.onClose();}}
   class Menu {constructor() {menus.push(this); this.items = [];} setUseNativeMenu() {return this;} addItem(fn) {const item = {setTitle(title) {this.title = title; return this;}, setIcon() {return this;}, setChecked() {return this;}, setDisabled(disabled) {this.disabled = disabled; return this;}, onClick(fn) {this.click = fn; return this;}}; fn(item); this.items.push(item); return this;} addSeparator() {} showAtPosition() {}}
@@ -34,14 +50,15 @@ function fixture(initial) {
   const module = {exports: {}};
   new Function('module', 'exports', 'require', 'window', 'console', code)(module, module.exports, name => {assert.equal(name, 'obsidian'); return obsidian;}, win, {error() {}});
   const plugin = {app, registerView() {}, addCommand(command) {commands.push(command);}, addRibbonIcon() {}, addSettingTab(tab) {settingTabs.push(tab);}};
-  const sidebar = new module.exports.PageSidebar(plugin, initial, async value => {if (failSave) throw new Error('disk full'); writes.push(JSON.parse(JSON.stringify(value)));});
+  const sidebar = new module.exports.PageSidebar(plugin, initial, async value => {if (failSave) throw new Error('disk full'); writes.push(JSON.parse(JSON.stringify(value)));}, undefined, initialEnabled);
   const view = new module.exports.PageSidebarView({}, sidebar);
   const click = (el, options = {}) => el.dispatchEvent(new win.MouseEvent('click', {bubbles: true, cancelable: true, ...options}));
   const key = (el, name, options = {}) => el.dispatchEvent(new win.KeyboardEvent('keydown', {key: name, bubbles: true, cancelable: true, ...options}));
   const settle = () => new Promise(resolve => setImmediate(resolve));
   return {dom, doc, win, root, sidebar, view, writes, opens, notices, menus, commands, created, modals, settingTabs, layoutReady, find, click, key, settle,
+    leaves, revealed, viewStates, addLeaf, setSwitchHook: hook => {switchHook = hook;},
     row: id => [...doc.querySelectorAll('.bui-page-row')].find(row => row.dataset.id === id),
-    failSave() {failSave = true;}, restoreSave() {failSave = false;}, close() {view.onClose(); sidebar.onunload(); win.close();}};
+    failSave() {failSave = true;}, restoreSave() {failSave = false;}, close() {for (const current of [...sidebar.views]) current.onClose(); view.onClose(); sidebar.onunload(); win.close();}};
 }
 
 test('opening the sidebar merges root entries; title opens the note, arrow expands without opening', async () => {
@@ -175,4 +192,68 @@ test('automatic opening waits for layout, is opt-in and cannot resurrect an unlo
       assert.equal(opened, expected);
     } finally {f.close();}
   }
+});
+
+test('appearance switching replaces the same real sidebar leaf and restores search, scroll and page settings', async () => {
+  const f = fixture({expanded: ['Home'], favorites: ['Home'], order: {'/': ['Home', 'Alpha.md', 'Zebra.md']}});
+  try {
+    const leaf = f.addLeaf('nebula-pages', f.view); await f.view.onOpen();
+    const input = f.doc.querySelector('input[type="search"]'); input.value = 'Alpha'; input.dispatchEvent(new f.win.Event('input'));
+    f.doc.querySelector('.bui-pages-scroll').scrollTop = 27;
+    const navigation = f.view.captureNavigation(), settings = JSON.stringify(f.sidebar.settings);
+    await f.sidebar.setEnabled(false);
+    assert.equal(f.sidebar.isEnabled, false); assert.equal(leaf.view.getViewType(), 'file-explorer');
+    assert.equal(f.leaves.length, 1); assert.equal(f.doc.querySelectorAll('.bui-page-row').length, 0);
+    await f.sidebar.setEnabled(true);
+    assert.equal(leaf.view.getViewType(), 'nebula-pages'); assert.equal(f.leaves.length, 1);
+    assert.deepEqual(leaf.view.captureNavigation(), navigation); assert.equal(JSON.stringify(f.sidebar.settings), settings);
+    assert.deepEqual(f.writes, []); assert.deepEqual(f.created, []); assert.equal(f.revealed.at(-1), leaf);
+  } finally {f.close();}
+});
+
+test('all existing page tabs become real file explorers, while existing native tabs remain and no tabs are added', async () => {
+  const f = fixture(); try {
+    const one = f.addLeaf('nebula-pages'), two = f.addLeaf('nebula-pages'), native = f.addLeaf('file-explorer');
+    for (let pass = 0; pass < 2; pass++) {
+      await f.sidebar.setEnabled(false); assert.equal(f.leaves.length, 3);
+      assert.ok(f.leaves.every(leaf => leaf.view.getViewType() === 'file-explorer'));
+      await f.sidebar.open(); assert.ok(f.leaves.every(leaf => leaf.view.getViewType() === 'file-explorer'));
+      await f.sidebar.setEnabled(true); assert.equal(f.leaves.length, 3);
+      assert.equal(one.view.getViewType(), 'nebula-pages'); assert.equal(two.view.getViewType(), 'nebula-pages');
+      assert.equal(native.view.getViewType(), 'file-explorer');
+    }
+    assert.deepEqual(f.created, []); assert.deepEqual(f.writes, []);
+  } finally {f.close();}
+});
+
+test('persisted native mode defeats startup and page commands, and re-enabling reuses the existing native position', async () => {
+  const f = fixture({openOnStartup: true}, false); try {
+    const nativeState = {type: 'file-explorer', state: {collapsed: ['Work']}};
+    const native = f.addLeaf('file-explorer', undefined, nativeState);
+    f.sidebar.onload(); for (const ready of f.layoutReady) ready(); await new Promise(resolve => f.win.setTimeout(resolve, 5));
+    await f.sidebar.open(); assert.equal(native.view.getViewType(), 'file-explorer');
+    assert.equal(f.viewStates.some(item => item.state.type === 'nebula-pages'), false);
+    await f.sidebar.setEnabled(true); assert.equal(native.view.getViewType(), 'nebula-pages'); assert.equal(f.leaves.length, 1);
+    await f.sidebar.setEnabled(false); assert.deepEqual(native.getViewState().state, nativeState.state); assert.equal(f.leaves.length, 1);
+  } finally {f.close();}
+  const ghost = fixture({openOnStartup: true}, false); try {
+    const leaf = ghost.addLeaf('nebula-pages'); ghost.sidebar.onload();
+    ghost.layoutReady.forEach(ready => ready()); await new Promise(resolve => ghost.win.setTimeout(resolve, 5));
+    assert.equal(leaf.view.getViewType(), 'file-explorer'); assert.equal(ghost.leaves.length, 1);
+  } finally {ghost.close();}
+});
+
+test('rapid mode requests serialize in place, honor the latest mode and never revive views after unload', async () => {
+  const f = fixture(); let release; try {
+    const leaf = f.addLeaf('nebula-pages', f.view); await f.view.onOpen();
+    const paused = new Promise(resolve => {release = resolve;});
+    let first = true; f.setSwitchHook(async (_leaf, state) => {if (first && state.type === 'file-explorer') {first = false; await paused;}});
+    const off = f.sidebar.setEnabled(false); await f.settle();
+    const on = f.sidebar.setEnabled(true), again = f.sidebar.setEnabled(false), command = f.sidebar.open();
+    release(); await Promise.all([off, on, again, command]);
+    assert.equal(leaf.view.getViewType(), 'file-explorer'); assert.equal(f.leaves.length, 1);
+    assert.equal(f.viewStates.some(item => item.state.type === 'nebula-pages'), false);
+    const count = f.viewStates.length; f.sidebar.onunload(); await f.sidebar.setEnabled(true); await f.sidebar.open();
+    assert.equal(f.viewStates.length, count);
+  } finally {release?.(); f.close();}
 });

@@ -4,6 +4,7 @@ import {IdeaTagOptions} from './idea-tag-order';
 import {guardTouchScrollClicks, positionAnchoredPopover, preferPopoverInputFocus, watchPopoverViewport} from './mobile-popover';
 import {TagDragMotion} from './tag-drag-motion';
 import {inheritTagTypography} from './tag-typography';
+import {tableProfile} from './table-profile';
 
 import {IdeaView, IdeaQuery, isHtmlElement, isIdeaView, isIdeaQuery, isIdeaPropertyConfig} from './idea-native';
 type ManagerView = IdeaView & {
@@ -116,7 +117,7 @@ export class IdeaTagManager {
     const {view, anchor} = source;
     return managerView(view) && view?._loaded !== false && !view.isReadOnly && !view.readOnly && !view.queryController?.isReadOnly &&
       view.queryController?.view === view &&
-      view.type === 'table' && view.config?.name === '想法收集箱' && anchor.isConnected &&
+      view.type === 'table' && !!tableProfile(view)?.tags[source.property] && anchor.isConnected &&
       view.theadEl?.contains(anchor) && typeof view.config?.getPropertyConfig === 'function' &&
       typeof view.config.query?.saveFn === 'function' &&
       !anchor.closest('[aria-readonly="true"], [aria-disabled="true"], .is-read-only, .is-disabled');

@@ -1,21 +1,29 @@
 import {setIcon} from 'obsidian';
+import {containsRelationLink, RELATION_LINK_SELECTOR, semanticProperty} from './semantic-property';
+export {semanticProperty} from './semantic-property';
 const KNOWN_TONES = new Map(Object.entries({Blender: 'green', AI: 'orange', C4D: 'blue', 编程: 'purple',
   技术: 'green', 流程: 'blue', 内容选题: 'yellow', B站: 'blue', 小红书: 'orange',
   教程: 'green', 预告: 'purple', 短视频内容: 'yellow', 未开始: 'yellow', 进行中: 'blue',
   制作中: 'blue', 完成: 'green', 已完成: 'green'}));
 
-// Markdown/CSV migration retained values, not the original Notion property
-// schema. These exact semantic field names are presentation hints, not a claim
-// that an Obsidian text property has become a Notion select or relation.
-const CLASSIFICATIONS = new Set(['领域', '类型', '重要性', '状态', '优先级', '分类', '发布平台', '内容类型',
-  'status', 'type', 'priority', 'area', 'domain', 'category', 'platform', 'content type', 'content_type']);
-const RELATIONS = new Set(['项目', '关联项目', '使用镜头', 'project', 'projects']);
-export function semanticProperty(raw: string): 'classification' | 'relation' | null {
-  const key = raw.replace(/^note\./, '').normalize('NFC').trim().toLowerCase();
-  return CLASSIFICATIONS.has(key) ? 'classification' : RELATIONS.has(key) ? 'relation' : null;
-}
-type Decoration = {tone: string | null; className: string | null; added: Set<string>};
+type Decoration = {tone: string | null; className: string | null; added: Set<string>; kind: 'tag' | 'relation'};
 type TableFooter = {el: HTMLElement; observer: MutationObserver; focused: boolean};
+
+function enhancedTable(view: HTMLElement): boolean {
+  const explicit = view.dataset.buiEnhancedTable;
+  return view.dataset.viewType === 'table' &&
+    (explicit === undefined ? view.dataset.viewName === '想法收集箱' : explicit === 'true');
+}
+/** Main validates the native view's profile before publishing its tag columns.
+ * DOM decoration never infers select fields from arbitrary prose values. */
+function configuredTags(view: HTMLElement): Set<string> {
+  if (!enhancedTable(view)) return new Set();
+  try {
+    const values: unknown = JSON.parse(view.dataset.buiTagProperties ?? '[]');
+    return new Set(Array.isArray(values) ? values.filter((value): value is string =>
+      typeof value === 'string' && value.startsWith('note.') && value.length > 5) : []);
+  } catch {return new Set();}
+}
 
 /** Style native Bases controls without replacing their contents or input handlers. */
 export function ideaTone(text: string, property: string): string {
@@ -37,6 +45,7 @@ export function ideaTone(text: string, property: string): string {
 export class IdeaTables {
   private decorated = new Map<HTMLElement, Decoration>();
   private semanticContainers = new Map<HTMLElement, boolean>();
+  private relationContainers = new Map<HTMLElement, boolean>();
   private views = new Set<HTMLElement>();
   private footers = new Map<HTMLElement, TableFooter>();
 
@@ -44,16 +53,23 @@ export class IdeaTables {
     const current = new Set<HTMLElement>();
     const views = new Set<HTMLElement>();
     const containers = new Set<HTMLElement>();
+    const relations = new Set<HTMLElement>();
     const roots = Array.from(root.querySelectorAll<HTMLElement>('.bases-view[data-view-type]'));
     if ((root as Node).nodeType === 1 && (root as HTMLElement).matches('.bases-view[data-view-type]')) roots.unshift(root as HTMLElement);
     for (const view of roots) {
-      if (view.dataset.viewType === 'table' && view.dataset.viewName === '想法收集箱') {
+      if (enhancedTable(view)) {
         views.add(view); view.classList.add('bui-ideas-base'); this.refreshFooter(view);
       }
+      const tags = configuredTags(view);
       for (const field of view.querySelectorAll<HTMLElement>(
         '.bases-td[data-property], .bases-cards-property[data-property], .bases-kanban-card-property[data-property], .bui-field[data-property]')) {
         const property = field.dataset.property ?? '';
-        if (!semanticProperty(property) || field.querySelector('.bases-table-header')) continue;
+        if (!field.matches('.bui-attachment-column, .bui-title-column') && containsRelationLink(field) &&
+            (semanticProperty(property) || tags.has(property) || enhancedTable(view) && property.startsWith('note.'))) {
+          this.markRelation(field, relations); this.decorateRelations(field, current); continue;
+        }
+        if (semanticProperty(property) === 'relation' && !tags.has(property)) continue;
+        if ((!tags.has(property) && !semanticProperty(property)) || field.querySelector('.bases-table-header')) continue;
         this.markContainer(field, containers);
         this.decorateValues(field, property.replace(/^note\./, ''), current);
       }
@@ -61,6 +77,8 @@ export class IdeaTables {
     for (const field of root.querySelectorAll<HTMLElement>('.metadata-property[data-property-key]')) {
       const property = field.dataset.propertyKey ?? '';
       if (!semanticProperty(property)) continue;
+      if (containsRelationLink(field)) {this.markRelation(field, relations); this.decorateRelations(field, current); continue;}
+      if (semanticProperty(property) === 'relation') continue;
       this.markContainer(field, containers);
       this.decorateValues(field, property, current);
     }
@@ -69,7 +87,7 @@ export class IdeaTables {
     const doc = (root as Node).ownerDocument ?? root as Document;
     const field = doc?.activeElement?.closest<HTMLElement>('.bui-semantic-property');
     const property = (field?.dataset.propertyKey ?? field?.dataset.property ?? '').replace(/^note\./, '');
-    if (semanticProperty(property)) {
+    if (field && this.semanticContainers.has(field)) {
       for (const popup of root.querySelectorAll<HTMLElement>('.suggestion-container.mod-property-value[data-property-key]')) {
         if (popup.dataset.propertyKey !== property) continue;
         for (const option of popup.querySelectorAll<HTMLElement>('.suggestion-item')) {
@@ -81,6 +99,7 @@ export class IdeaTables {
     const within = (el: HTMLElement) => !scoped || !el.isConnected || (root as Node).contains(el);
     for (const [el, original] of this.decorated) if (within(el) && !current.has(el)) this.restore(el, original);
     for (const [el, present] of this.semanticContainers) if (within(el) && !containers.has(el)) this.restoreContainer(el, present);
+    for (const [el, present] of this.relationContainers) if (within(el) && !relations.has(el)) this.restoreRelation(el, present);
     for (const view of this.views) if (within(view) && !views.has(view)) {view.classList.remove('bui-ideas-base'); this.views.delete(view);}
     for (const view of this.footers.keys()) if (within(view) && !views.has(view)) this.removeFooter(view);
     for (const view of views) this.views.add(view);
@@ -97,16 +116,31 @@ export class IdeaTables {
     this.semanticContainers.delete(el);
   }
 
+  private markRelation(el: HTMLElement, current: Set<HTMLElement>) {
+    current.add(el);
+    if (!this.relationContainers.has(el)) this.relationContainers.set(el, el.classList.contains('bui-relation-property'));
+    el.classList.add('bui-relation-property');
+  }
+
+  private restoreRelation(el: HTMLElement, present: boolean) {
+    if (!present) el.classList.remove('bui-relation-property');
+    this.relationContainers.delete(el);
+  }
+
+  private decorateRelations(field: HTMLElement, current: Set<HTMLElement>) {
+    for (const link of field.querySelectorAll<HTMLElement>(RELATION_LINK_SELECTOR)) {
+      const pill = link.closest<HTMLElement>('.multi-select-pill');
+      const value = pill?.querySelector<HTMLElement>('.multi-select-pill-content') ?? link;
+      // A native pill may carry the actual link class on its outer element.
+      // Add only presentation classes, retaining its href and native handlers.
+      if (pill) this.addClasses(pill, 'relation', ['bui-relation-pill'], current);
+      this.addClasses(value, 'relation', ['bui-relation-link'], current);
+    }
+  }
+
   private valueIdentity(el: HTMLElement): string {
-    const link = el.matches('.internal-link, .external-link, .metadata-link-inner') ? el
-      : el.querySelector<HTMLElement>('.internal-link, .external-link, .metadata-link-inner');
-    // Link targets give the same related page a stable color across aliases.
-    // Neither its displayed text nor its real href is changed.
-    let value = link?.getAttribute('data-href') ?? link?.getAttribute('href') ??
-      el.querySelector('.multi-select-pill-content')?.textContent ?? el.textContent ?? '';
-    value = value.trim();
-    const wiki = /^\[\[([^\]|]+)(?:\|[^\]]*)?\]\]$/.exec(value);
-    return (wiki?.[1] ?? value).normalize('NFC');
+    return (el.querySelector('.multi-select-pill-content')?.textContent ?? el.textContent ?? '')
+      .trim().normalize('NFC');
   }
 
   private decorateValues(field: HTMLElement, property: string, current: Set<HTMLElement>) {
@@ -122,8 +156,6 @@ export class IdeaTables {
       const value = this.valueIdentity(el);
       if (value) this.decorate(el, value, property, current);
     }
-    // A pill containing a relation link must be colored as one pill while its
-    // original link/remove controls remain intact, not as nested colored boxes.
     for (const pill of field.querySelectorAll<HTMLElement>('.multi-select-pill')) {
       const value = this.valueIdentity(pill);
       if (value) this.decorate(pill, value, property, current);
@@ -131,20 +163,24 @@ export class IdeaTables {
   }
 
   private decorate(el: HTMLElement, value: string, property: string, current: Set<HTMLElement>) {
+    this.addClasses(el, 'tag', ['bui-native-tag', 'bui-semantic-tag'], current);
+    el.setAttribute('data-bui-tone', ideaTone(value, property));
+  }
+
+  private addClasses(el: HTMLElement, kind: Decoration['kind'], classes: string[], current: Set<HTMLElement>) {
     current.add(el);
-    if (!this.decorated.has(el)) this.decorated.set(el, {tone: el.getAttribute('data-bui-tone'), className: el.getAttribute('class'), added: new Set()});
+    const previous = this.decorated.get(el);
+    if (previous && previous.kind !== kind) this.restore(el, previous);
+    if (!this.decorated.has(el)) this.decorated.set(el, {tone: el.getAttribute('data-bui-tone'), className: el.getAttribute('class'), added: new Set(), kind});
     const original = this.decorated.get(el)!;
-    const classes = ['bui-native-tag', 'bui-semantic-tag'];
-    if (el.matches('.internal-link, .external-link, .metadata-link-inner')) classes.push('bui-semantic-link');
     for (const name of classes) {
       if (!el.classList.contains(name)) original.added.add(name);
       el.classList.add(name);
     }
-    el.setAttribute('data-bui-tone', ideaTone(value, property));
   }
 
   private nativeCreateButton(view: HTMLElement): HTMLElement | null {
-    if (!view.isConnected || view.dataset.viewName !== '想法收集箱' || view.dataset.viewType !== 'table') return null;
+    if (!view.isConnected || !enhancedTable(view) || view.dataset.buiAllowCreate === 'false') return null;
     const parent = view.parentElement;
     const button = parent?.querySelector<HTMLElement>(':scope > .bases-header .bases-toolbar-new-item-menu .text-icon-button[role="button"]');
     if (!button || view.matches('[hidden], [aria-disabled="true"], [aria-readonly="true"], [data-readonly="true"], .is-disabled, .is-read-only, .is-readonly, .mod-readonly')) return null;
@@ -208,7 +244,8 @@ export class IdeaTables {
     // Restore only a focus lost by detachment, never focus taken by an editor.
     if (state.focused && view.ownerDocument.activeElement === view.ownerDocument.body)
       state.el.querySelector('button')?.focus({preventScroll: true});
-    state.observer.observe(view, {childList: true, attributes: true, attributeFilter: ['data-view-type', 'data-view-name']});
+    state.observer.observe(view, {childList: true, attributes: true,
+      attributeFilter: ['data-view-type', 'data-view-name', 'data-bui-enhanced-table', 'data-bui-allow-create']});
     state.observer.observe(container, {attributes: true, attributeFilter: ['style']});
   }
 
@@ -228,6 +265,7 @@ export class IdeaTables {
   clear() {
     for (const [el, original] of this.decorated) this.restore(el, original);
     for (const [el, present] of this.semanticContainers) this.restoreContainer(el, present);
+    for (const [el, present] of this.relationContainers) this.restoreRelation(el, present);
     for (const view of this.views) view.classList.remove('bui-ideas-base');
     this.views.clear();
     for (const view of this.footers.keys()) this.removeFooter(view);

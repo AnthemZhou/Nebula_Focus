@@ -1,0 +1,314 @@
+{
+  "filters": {
+    "and": [
+      "file.inFolder(\"Finance\")",
+      "file.ext == \"md\"",
+      "note[\"nf_source_collection\"] != null"
+    ]
+  },
+  "views": [
+    {
+      "type": "table",
+      "showSummaries": true,
+      "scopeNote": "虚构演示数据。计算快照不随本地修改自动重算。",
+      "name": "收支流水",
+      "filters": {
+        "and": [
+          "note[\"nf_source_collection\"] == \"example-ledger\"",
+          "note[\"入账状态\"] != \"已作废\""
+        ]
+      },
+      "titleProperty": "note.流水摘要",
+      "order": [
+        "formula.Nebula标题_流水摘要",
+        "note.交易日期",
+        "note.方向",
+        "note.金额",
+        "note.关联项目",
+        "note.资金归属状态",
+        "note.人工补充"
+      ],
+      "amountProperty": "note.金额",
+      "currencyProperty": "note.币种",
+      "directionProperty": "note.方向",
+      "tagProperties": [
+        "note.方向",
+        "note.资金归属状态"
+      ],
+      "sort": [
+        {
+          "property": "note.交易日期",
+          "direction": "DESC"
+        }
+      ],
+      "nebulaTable": {
+        "titleProperty": "流水摘要",
+        "titleColumn": "formula.Nebula标题_流水摘要",
+        "tags": {
+          "方向": "single",
+          "资金归属状态": "single"
+        },
+        "wrap": true,
+        "attachments": [],
+        "scopeNote": "虚构演示数据。计算快照不随本地修改自动重算。"
+      }
+    },
+    {
+      "type": "table",
+      "showSummaries": false,
+      "scopeNote": "虚构演示数据。计算快照不随本地修改自动重算。",
+      "name": "项目",
+      "filters": {
+        "and": [
+          "note[\"nf_source_collection\"] == \"example-projects\""
+        ]
+      },
+      "titleProperty": "note.项目名称",
+      "order": [
+        "formula.Nebula标题_项目名称",
+        "note.状态",
+        "note.合同金额",
+        "note.已收款",
+        "note.已确认成本",
+        "note.成员甲已分配",
+        "note.成员乙已分配"
+      ],
+      "numberProperties": [
+        "note.合同金额",
+        "note.已收款",
+        "note.已确认成本",
+        "note.成员甲已分配",
+        "note.成员乙已分配"
+      ],
+      "tagProperties": [
+        "note.状态"
+      ],
+      "nebulaTable": {
+        "titleProperty": "项目名称",
+        "titleColumn": "formula.Nebula标题_项目名称",
+        "tags": {
+          "状态": "single"
+        },
+        "wrap": true,
+        "attachments": [],
+        "scopeNote": "虚构演示数据。计算快照不随本地修改自动重算。"
+      }
+    },
+    {
+      "type": "table",
+      "showSummaries": false,
+      "scopeNote": "报销金额表示个人垫付；待报销列表不自动确认公司债务。",
+      "name": "待报销",
+      "filters": {
+        "and": [
+          "note[\"nf_source_collection\"] == \"example-costs\"",
+          "note[\"成本状态\"] != \"已作废\"",
+          "note[\"付款来源\"] == \"个人代付\"",
+          "note[\"报销状态\"] == \"未报销\" || note[\"报销状态\"] == \"部分报销\" || note[\"报销状态\"] == \"待确认\" || !note[\"报销状态\"]"
+        ]
+      },
+      "titleProperty": "note.费用内容",
+      "order": [
+        "formula.Nebula标题_费用内容",
+        "note.项目归属",
+        "note.报销金额",
+        "note.时间",
+        "note.支付记录",
+        "note.报销人员"
+      ],
+      "numberProperties": [
+        "note.报销金额"
+      ],
+      "tagProperties": [
+        "note.报销人员"
+      ],
+      "sort": [
+        {
+          "property": "note.时间",
+          "direction": "ASC"
+        }
+      ],
+      "attachmentProperties": [
+        "note.支付记录"
+      ],
+      "nebulaTable": {
+        "titleProperty": "费用内容",
+        "titleColumn": "formula.Nebula标题_费用内容",
+        "tags": {
+          "报销人员": "single"
+        },
+        "wrap": true,
+        "attachments": [
+          "支付记录"
+        ],
+        "scopeNote": "报销金额表示个人垫付；待报销列表不自动确认公司债务。"
+      }
+    },
+    {
+      "type": "table",
+      "showSummaries": false,
+      "scopeNote": "虚构演示数据。计算快照不随本地修改自动重算。",
+      "name": "已报销",
+      "filters": {
+        "and": [
+          "note[\"nf_source_collection\"] == \"example-costs\"",
+          "note[\"成本状态\"] != \"已作废\"",
+          "note[\"付款来源\"] == \"个人代付\"",
+          "note[\"报销状态\"] == \"已报销\""
+        ]
+      },
+      "titleProperty": "note.费用内容",
+      "order": [
+        "formula.Nebula标题_费用内容",
+        "note.项目归属",
+        "note.报销金额",
+        "note.时间",
+        "note.支付记录",
+        "note.报销人员"
+      ],
+      "numberProperties": [
+        "note.报销金额"
+      ],
+      "tagProperties": [
+        "note.报销人员"
+      ],
+      "sort": [
+        {
+          "property": "note.时间",
+          "direction": "DESC"
+        }
+      ],
+      "attachmentProperties": [
+        "note.支付记录"
+      ],
+      "nebulaTable": {
+        "titleProperty": "费用内容",
+        "titleColumn": "formula.Nebula标题_费用内容",
+        "tags": {
+          "报销人员": "single"
+        },
+        "wrap": true,
+        "attachments": [
+          "支付记录"
+        ],
+        "scopeNote": "虚构演示数据。计算快照不随本地修改自动重算。"
+      }
+    },
+    {
+      "type": "table",
+      "showSummaries": false,
+      "scopeNote": "虚构演示数据。计算快照不随本地修改自动重算。",
+      "name": "发票",
+      "filters": {
+        "and": [
+          "note[\"nf_source_collection\"] == \"example-invoices\"",
+          "note[\"票据状态\"] != \"已作废\""
+        ]
+      },
+      "titleProperty": "note.发票摘要",
+      "order": [
+        "formula.Nebula标题_发票摘要",
+        "note.开票日期",
+        "note.关联项目",
+        "note.价税合计",
+        "note.票面税额",
+        "note.发票原件"
+      ],
+      "numberProperties": [
+        "note.价税合计",
+        "note.票面税额"
+      ],
+      "sort": [
+        {
+          "property": "note.开票日期",
+          "direction": "DESC"
+        }
+      ],
+      "attachmentProperties": [
+        "note.发票原件"
+      ],
+      "nebulaTable": {
+        "titleProperty": "发票摘要",
+        "titleColumn": "formula.Nebula标题_发票摘要",
+        "tags": {},
+        "wrap": true,
+        "attachments": [
+          "发票原件"
+        ],
+        "scopeNote": "虚构演示数据。计算快照不随本地修改自动重算。"
+      }
+    },
+    {
+      "type": "table",
+      "showSummaries": false,
+      "scopeNote": "按已导入的状态快照筛选；未提供状态的记录需要回来源核对。",
+      "name": "待确认",
+      "filters": {
+        "and": [
+          "note[\"nf_source_collection\"] == \"example-ledger\"",
+          "note[\"入账状态\"] != \"已作废\"",
+          "note[\"资金归属状态\"] && note[\"资金归属状态\"].contains(\"待确认\")"
+        ]
+      },
+      "titleProperty": "note.流水摘要",
+      "order": [
+        "formula.Nebula标题_流水摘要",
+        "note.交易日期",
+        "note.金额",
+        "note.资金归属状态",
+        "note.备注与待确认",
+        "note.人工补充"
+      ],
+      "numberProperties": [
+        "note.金额"
+      ],
+      "tagProperties": [
+        "note.资金归属状态"
+      ],
+      "nebulaTable": {
+        "titleProperty": "流水摘要",
+        "titleColumn": "formula.Nebula标题_流水摘要",
+        "tags": {
+          "资金归属状态": "single"
+        },
+        "wrap": true,
+        "attachments": [],
+        "scopeNote": "按已导入的状态快照筛选；未提供状态的记录需要回来源核对。"
+      }
+    },
+    {
+      "type": "table",
+      "name": "原生表格编辑",
+      "order": [
+        "file.name",
+        "note.nf_source_collection",
+        "note.金额",
+        "note.币种",
+        "note.方向",
+        "note.关联项目",
+        "note.项目归属",
+        "note.报销状态"
+      ]
+    }
+  ],
+  "formulas": {
+    "Nebula标题_流水摘要": "link(file.path, if(note[\"流水摘要\"], note[\"流水摘要\"], file.name))",
+    "Nebula标题_项目名称": "link(file.path, if(note[\"项目名称\"], note[\"项目名称\"], file.name))",
+    "Nebula标题_费用内容": "link(file.path, if(note[\"费用内容\"], note[\"费用内容\"], file.name))",
+    "Nebula标题_发票摘要": "link(file.path, if(note[\"发票摘要\"], note[\"发票摘要\"], file.name))"
+  },
+  "properties": {
+    "formula.Nebula标题_流水摘要": {
+      "displayName": "流水摘要"
+    },
+    "formula.Nebula标题_项目名称": {
+      "displayName": "项目名称"
+    },
+    "formula.Nebula标题_费用内容": {
+      "displayName": "费用内容"
+    },
+    "formula.Nebula标题_发票摘要": {
+      "displayName": "发票摘要"
+    }
+  }
+}

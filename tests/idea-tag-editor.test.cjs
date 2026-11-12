@@ -6,15 +6,16 @@ const {JSDOM} = require('jsdom');
 const code = buildSync({entryPoints:['src/idea-tag-editor.ts'],bundle:true,write:false,
   platform:'node',format:'cjs',external:['obsidian']}).outputFiles[0].text;
 
-function fixture({delayed=false, failed=false, orderStore, basePath='Bases/想法收集箱.base', sourcePath='Dashboard.md'}={}) {
+function fixture({delayed=false, failed=false, orderStore, basePath='Bases/想法收集箱.base', sourcePath='Dashboard.md',
+  name='想法收集箱', profile, records}={}) {
   const dom = new JSDOM('<!doctype html><body><button id="outside">Outside</button><div class="bases-view"><div class="bases-table-container" tabindex="0"></div></div></body>', {pretendToBeVisual:true});
   const win=dom.window, doc=win.document, host=doc.querySelector('.bases-view'), container=doc.querySelector('.bases-table-container');
   const writes=[], notices=[], native={pointerdown:0,click:0,keydown:0}, cells=new Map();
   const makeEntry=(path,raw)=>({file:{path,extension:'md'},raw,getRawProperty(name){return this.raw[name];}});
-  const entry=makeEntry('ideas/one.md',{领域:['Blender'],类型:'技术',重要性:'!'});
-  const other=makeEntry('ideas/two.md',{领域:['AI','编程','C4D'],类型:'内容选题',重要性:'! !'});
-  const filteredOut=makeEntry('ideas/three.md',{领域:['Blender'],类型:'流程',重要性:'! ! !'});
-  const view={type:'table',_loaded:true,containerEl:container,config:{name:'想法收集箱',query:{file:{path:basePath}}},
+  const entry=makeEntry('ideas/one.md',records?.[0]??{领域:['Blender'],类型:'技术',重要性:'!'});
+  const other=makeEntry('ideas/two.md',records?.[1]??{领域:['AI','编程','C4D'],类型:'内容选题',重要性:'! !'});
+  const filteredOut=makeEntry('ideas/three.md',records?.[2]??{领域:['Blender'],类型:'流程',重要性:'! ! !'});
+  const view={type:'table',_loaded:true,containerEl:container,config:{name,nebulaTable:profile,query:{file:{path:basePath}}},
     queryController:{sourcePath:()=>sourcePath,viewContainerEl:host,results:new Map([[entry.file,entry],[other.file,other],[filteredOut.file,filteredOut]])},
     data:{data:[entry,other],groupedData:[{entries:[entry,other]}]},
     getCellFromDom:el=>cells.get(el.closest('.bases-td')),
@@ -29,7 +30,7 @@ function fixture({delayed=false, failed=false, orderStore, basePath='Bases/想�
   };
   view.queryController.view=view;
   const row={entry,cells:[]}; view.rows=[row];
-  for (const property of ['领域','类型','重要性']) {
+  for (const property of Object.keys(entry.raw)) {
     const anchor=doc.createElement('div'); anchor.className='bases-td'; anchor.dataset.property='note.'+property;
     anchor.innerHTML='<div class="bases-table-cell"><div class="metadata-input-longtext" tabindex="0" contenteditable="true"></div></div>';
     anchor.querySelector('.metadata-input-longtext').textContent=String(entry.raw[property]);
@@ -108,6 +109,19 @@ test('compact cell markers only cover working pickers and restore native control
     f.container.append(area);f.editor.attach(f.view);assert.equal(marked(area),true);
     f.view.updateProperty=undefined;f.editor.attach(f.view);assert.equal(marked(area),false,'unknown adapters restore native controls');
     assert.deepEqual(f.writes,[]);
+  }finally{f.close();}
+});
+
+test('related-page values never enter the classification picker even with an incorrect select hint',()=>{
+  const f=fixture();try{
+    const area=f.anchor('领域');
+    f.entry.raw.领域=['[[Projects/A|项目 A]]'];f.editor.attach(f.view);
+    assert.equal(area.classList.contains('bui-tag-picker-cell'),false);
+    assert.equal(f.open('领域'),null);assert.equal(f.writes.length,0);
+    f.entry.raw.领域=['Blender'];area.firstElementChild.innerHTML='<a class="internal-link" href="Projects/A">项目 A</a>';
+    f.editor.attach(f.view);assert.equal(area.classList.contains('bui-tag-picker-cell'),false);
+    assert.equal(f.open('领域'),null);
+    assert.ok(f.open('类型'),'ordinary classification cells retain the picker');
   }finally{f.close();}
 });
 
@@ -720,5 +734,40 @@ test('unknown native cell and row structures retain native handlers without prop
     assert.equal(f.open('类型'),null);
     assert.deepEqual(f.writes,[]);
     assert.equal(f.native.click,1);
+  }finally{f.close();}
+});
+
+const financeProfile={titleColumn:'formula.流水页面',titleProperty:'流水摘要',
+  tags:{方向:'single',入账状态:'single',税务分类:'multi'},wrap:true,attachments:[]};
+function financeFixture(extra={}) {
+  return fixture({name:'收支流水',profile:structuredClone(financeProfile),basePath:'Bases/财务.base',
+    records:[{方向:'支出',入账状态:'待确认',税务分类:['服务']},{方向:'收入',入账状态:'已入账',税务分类:['差旅','设备']},
+      {方向:'转账',入账状态:'已取消',税务分类:['服务','其他']}],...extra});
+}
+
+test('configured finance tags open the native transaction picker with scalar and multi-value semantics',async()=>{
+  const f=financeFixture();try{
+    assert.ok(f.open('方向'));assert.equal(f.doc.querySelector('[role="listbox"]').hasAttribute('aria-multiselectable'),false);
+    f.mouse(f.option('收入'));await f.tick();
+    assert.equal(f.writes[0].property,'方向');assert.equal(f.writes[0].value,'收入');
+    assert.equal(f.doc.querySelector('.bui-tag-editor'),null,'single selection closes after the native acknowledgement');
+    assert.ok(f.open('税务分类'));assert.equal(f.doc.querySelector('[role="listbox"]').getAttribute('aria-multiselectable'),'true');
+    f.mouse(f.option('设备'));await f.tick();
+    assert.deepEqual(f.writes[1].value,['服务','设备']);assert.ok(f.doc.querySelector('.bui-tag-editor'));
+    f.mouse(f.option('服务'));await f.tick();assert.deepEqual(f.writes[2].value,['设备']);
+    assert.equal(f.writes.every(write=>write.file===f.entry.file),true);
+  }finally{f.close();}
+});
+
+test('finance tag schema is opt-in and rejects stale, disabled or incompatible native cells',async()=>{
+  const plain=financeFixture({profile:undefined});try{assert.equal(plain.open('方向'),null);assert.equal(plain.writes.length,0);}finally{plain.close();}
+  const f=financeFixture();try{
+    f.entry.raw.方向=['支出'];assert.equal(f.open('方向'),null);
+    f.entry.raw.方向='支出';f.entry.raw.税务分类='服务';assert.equal(f.open('税务分类'),null);
+    f.entry.raw.税务分类=['服务'];f.anchor('入账状态').setAttribute('aria-readonly','true');assert.equal(f.open('入账状态'),null);
+    assert.ok(f.open('方向'));f.view.config.nebulaTable.tags.方向='multi';
+    f.mouse(f.option('收入'));await f.tick();assert.deepEqual(f.writes,[]);assert.equal(f.doc.querySelector('.bui-tag-editor'),null);
+    f.view.config.nebulaTable.tags.方向='single';assert.ok(f.open('方向'));
+    f.view.isReadOnly=true;f.mouse(f.option('收入'));await f.tick();assert.deepEqual(f.writes,[]);
   }finally{f.close();}
 });

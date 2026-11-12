@@ -1,3 +1,5 @@
+import {tableProfile} from './table-profile';
+
 /** Structural contracts for the small native Bases surfaces we decorate.
  * All entry points receive unknown; only recognized fields are used. Query
  * values and method results remain unknown until the consumer validates them.
@@ -69,7 +71,9 @@ export function isIdeaPropertyConfig(value: unknown): value is IdeaPropertyConfi
   } catch {return false;}
 }
 export type IdeaConfig = {
-  name: '想法收集箱'; query?: unknown;
+  name: string; query?: unknown;
+  get?: (key: string) => unknown;
+  nebulaTable?: unknown;
   getPropertyConfig?: (property: string) => unknown;
   getOrder?: () => unknown;
 };
@@ -86,24 +90,31 @@ export type IdeaView = {
   activeCell?: unknown; selection?: unknown;
 };
 export type IdeaViewMetadata = Omit<IdeaView, 'rows'> & {rows?: unknown};
-export function isIdeaViewMetadata(value: unknown): value is IdeaViewMetadata {
+export function isNativeTableViewMetadata(value: unknown): value is IdeaViewMetadata {
   try {
-    if (!object(value) || value.type !== 'table' || !object(value.config) || value.config.name !== '想法收集箱') return false;
+    if (!object(value) || value.type !== 'table' || !object(value.config) ||
+        typeof value.config.name !== 'string') return false;
     if (value.containerEl !== undefined && !isHtmlElement(value.containerEl)) return false;
     if (value.theadEl !== undefined && !isHtmlElement(value.theadEl)) return false;
     if (value.queryController !== undefined && !object(value.queryController)) return false;
     if (value.data !== undefined && !object(value.data)) return false;
     for (const key of ['getCellFromDom', 'getCellIndex', 'updateProperty', 'focus'])
       if (value[key] !== undefined && typeof value[key] !== 'function') return false;
-    for (const key of ['getPropertyConfig', 'getOrder'])
+    for (const key of ['getPropertyConfig', 'getOrder', 'get'])
       if (value.config[key] !== undefined && typeof value.config[key] !== 'function') return false;
     return true;
   } catch {return false;}
 }
-export function isIdeaView(value: unknown): value is IdeaView {
+export function isIdeaViewMetadata(value: unknown): value is IdeaViewMetadata {
+  return isNativeTableViewMetadata(value) && !!tableProfile(value);
+}
+export function isNativeTableView(value: unknown): value is IdeaView {
   try {
-    return isIdeaViewMetadata(value) && (value.rows === undefined || (Array.isArray(value.rows) && value.rows.every(isIdeaRow)));
+    return isNativeTableViewMetadata(value) && (value.rows === undefined || (Array.isArray(value.rows) && value.rows.every(isIdeaRow)));
   } catch {return false;}
+}
+export function isIdeaView(value: unknown): value is IdeaView {
+  return isNativeTableView(value) && !!tableProfile(value);
 }
 export type EditableIdeaView = IdeaView & {
   containerEl: HTMLElement;

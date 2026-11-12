@@ -56,7 +56,7 @@ test('publishing fields become native editable tags without changing text, DOM n
     f.refresh();
     assert.equal(view.textContent,before); assert.equal(f.doc.activeElement,platform); assert.equal(inputs,0);
     assert.equal(platform.dataset.buiTone,'blue'); assert.equal(type.dataset.buiTone,'purple');
-    assert.ok(project.classList.contains('bui-semantic-tag')); assert.equal(platform.getAttribute('contenteditable'),'true');
+    assert.equal(project.classList.contains('bui-semantic-tag'),false,'a relationship-like name alone is not a select'); assert.equal(platform.getAttribute('contenteditable'),'true');
     assert.equal(view.classList.contains('bui-ideas-base'),false); assert.equal(f.doc.querySelector('.bui-ideas-new-row'),null);
     assert.deepEqual([...f.doc.querySelectorAll('[data-property="note.项目摘要"], [data-property="file.name"]')].map(el=>el.outerHTML),plain);
     platform.textContent='小红书'; platform.dispatchEvent(new f.dom.window.Event('input',{bubbles:true})); f.refresh();
@@ -91,13 +91,16 @@ test('relation links retain their actual href, alias, click handler and native e
     for(const el of [single,link]) el.addEventListener('click',event=>{event.preventDefault();clicks++;});
     remove.addEventListener('click',()=>removes++);edit.addEventListener('click',()=>edits++);
     f.refresh();
-    assert.ok(single.classList.contains('bui-semantic-link')); assert.equal(single.dataset.buiTone,pill.dataset.buiTone);
+    assert.ok(single.classList.contains('bui-relation-link')); assert.ok(pill.classList.contains('bui-relation-pill'));
+    assert.equal(f.doc.querySelector('.bui-native-tag, .bui-semantic-tag'),null);
+    assert.equal(single.hasAttribute('data-bui-tone'),false);assert.equal(pill.hasAttribute('data-bui-tone'),false);
     assert.equal(single.textContent,'项目别名'); assert.equal(link.textContent,'不同别名');
     assert.equal(single.getAttribute('href'),'Projects/A'); assert.equal(link.getAttribute('data-href'),'Projects/A');
     assert.equal(pill.querySelectorAll('.bui-native-tag').length,0); assert.equal(pill.querySelector('a'),link);
     assert.equal(pill.querySelector('button'),remove); single.click();link.click();remove.click();edit.click();
     assert.equal(clicks,2);assert.equal(removes,1);assert.equal(edits,1);
-    f.tags.clear();single.click();assert.equal(clicks,3);assert.equal(single.classList.contains('bui-semantic-link'),false);
+    f.tags.clear();single.click();assert.equal(clicks,3);assert.equal(single.classList.contains('bui-relation-link'),false);
+    assert.equal(f.doc.querySelector('.bui-relation-pill, .bui-relation-property'),null);
   } finally {f.close();}
 });
 
@@ -112,6 +115,40 @@ test('unknown/new values use stable colors and refreshing or toggling preserves 
     f.refresh();assert.equal(input.dataset.buiTone,tone);assert.equal(tone,ideaTone('用户新建的类型','内容类型'));
     assert.equal(ideaTone('e\u0301','类型'),ideaTone('\u00e9','类型'));
   } finally {f.close();}
+});
+
+test('native linked pills and arbitrary related-page fields stay distinct from classifications through refresh and cleanup',()=>{
+  const f=fixture(table(text('note.类型','技术')+'<div class="bases-td" data-property="note.关联单据"><div class="multi-select-container"><div class="multi-select-pill internal-link" data-href="Receipts/one" tabindex="0"><span class="multi-select-pill-content">一张相关单据</span><button class="multi-select-pill-remove-button">移除</button></div></div></div>'));
+  try{
+    const view=f.doc.querySelector('.bases-view');view.dataset.buiEnhancedTable='true';
+    const field=view.querySelector('[data-property="note.关联单据"]'),pill=field.querySelector('.multi-select-pill'),content=pill.firstElementChild;
+    let opens=0;pill.addEventListener('click',()=>opens++);
+    f.refresh();
+    assert.ok(pill.classList.contains('bui-relation-pill'));assert.ok(content.classList.contains('bui-relation-link'));
+    assert.equal(field.querySelector('.bui-native-tag, .bui-semantic-tag'),null);
+    assert.equal(field.classList.contains('bui-semantic-property'),false);
+    assert.ok(view.querySelector('[data-property="note.类型"] .bui-native-tag'));
+    const before=field.innerHTML;pill.focus();f.refresh();assert.equal(field.innerHTML,before);
+    pill.click();assert.equal(opens,1);assert.equal(pill.dataset.href,'Receipts/one');
+    // A wrongly configured select hint cannot recolor an actual page link.
+    view.dataset.buiTagProperties=JSON.stringify(['note.关联单据']);f.refresh();
+    assert.equal(field.querySelector('.bui-native-tag, .bui-semantic-tag'),null);
+    f.tags.clear();assert.equal(field.querySelector('.bui-relation-link, .bui-relation-pill'),null);
+    assert.ok(pill.classList.contains('internal-link'));pill.click();assert.equal(opens,2);
+  }finally{f.close();}
+});
+
+test('a classification renderer changing into a related page loses its color and restores on return',()=>{
+  const f=fixture(table(text('note.类型','技术')));
+  try{
+    const field=f.doc.querySelector('.bases-td'),value=field.querySelector('.metadata-input-longtext');
+    f.refresh();assert.ok(value.classList.contains('bui-native-tag'));
+    value.innerHTML='<a class="internal-link" href="Types/技术">技术详情</a>';f.refresh();
+    assert.equal(value.classList.contains('bui-native-tag'),false);assert.equal(value.hasAttribute('data-bui-tone'),false);
+    assert.ok(value.firstElementChild.classList.contains('bui-relation-link'));
+    value.textContent='流程';f.refresh();assert.equal(value.dataset.buiTone,'blue');
+    assert.equal(field.classList.contains('bui-relation-property'),false);
+  }finally{f.close();}
 });
 
 test('empty values, unsupported renderer types and raw Markdown tables remain undecorated',()=>{
@@ -136,4 +173,62 @@ test('native property suggestions are colored only for the active semantic field
     f.doc.querySelector('[data-property-key="项目摘要"] .metadata-input-longtext').focus();f.refresh();
     assert.equal(option.classList.contains('bui-native-tag'),false);assert.equal(option.hasAttribute('data-bui-tone'),false);
   } finally {f.close();}
+});
+
+
+test('explicit native finance profiles color only configured tag columns and retain cell DOM editors',()=>{
+  const f=fixture(table(text('note.方向','支出')+text('note.入账状态','待确认')+text('note.流水摘要','服务费')));try{
+    const view=f.doc.querySelector('.bases-view');view.dataset.viewName='收支流水';
+    view.dataset.buiEnhancedTable='true';view.dataset.buiTagProperties=JSON.stringify(['note.方向','note.入账状态']);
+    const input=view.querySelector('[data-property="note.方向"] .metadata-input-longtext');
+    input.focus();f.refresh();
+    assert.ok(view.classList.contains('bui-ideas-base'));assert.ok(input.classList.contains('bui-native-tag'));
+    assert.equal(f.doc.activeElement,input);assert.equal(input.textContent,'支出');
+    assert.equal(view.querySelector('[data-property="note.流水摘要"] .bui-native-tag'),null);
+    delete view.dataset.buiEnhancedTable;delete view.dataset.buiTagProperties;f.refresh();
+    assert.equal(input.classList.contains('bui-native-tag'),false);assert.equal(view.classList.contains('bui-ideas-base'),false);
+  }finally{f.close();}
+});
+
+test('a renamed opted-in native table keeps a final create row and delegates all writes to the native toolbar',async()=>{
+  const f=fixture('<div class="bases-embed"><div class="bases-header"><div class="bases-toolbar-new-item-menu"><button class="text-icon-button" role="button">原生新建</button></div></div>'+table('<div class="bases-table-container" style="width:600px"><div class="bases-tbody">'+text('note.标题','条目一')+'</div></div>')+'</div>');
+  try{
+    const view=f.doc.querySelector('.bases-view'),native=f.doc.querySelector('.text-icon-button'),container=view.querySelector('.bases-table-container');
+    view.dataset.viewName='新文档数据库';view.dataset.buiEnhancedTable='true';view.dataset.buiTagProperties='[]';
+    let creates=0;native.addEventListener('click',()=>creates++);f.refresh();
+    const footer=view.lastElementChild,button=footer.querySelector('button');
+    assert.ok(footer.classList.contains('bui-ideas-new-row'));assert.equal(footer.previousElementSibling,container);
+    assert.equal(creates,0);button.click();assert.equal(creates,1);
+    view.dataset.viewName='重命名后的数据库';f.refresh();assert.equal(view.lastElementChild,footer);
+    view.replaceChildren(container);await new Promise(resolve=>f.dom.window.setTimeout(resolve,0));
+    assert.equal(view.lastElementChild,footer);assert.equal(footer.querySelector('button'),button);
+    view.setAttribute('aria-readonly','true');button.click();assert.equal(creates,1);f.refresh();assert.equal(view.querySelector('.bui-ideas-new-row'),null);
+    view.removeAttribute('aria-readonly');f.refresh();assert.ok(view.querySelector('.bui-ideas-new-row'));
+    view.dataset.buiEnhancedTable='false';f.refresh();assert.equal(view.querySelector('.bui-ideas-new-row'),null);
+    assert.equal(container.querySelector('.metadata-input-longtext').textContent,'条目一');
+  }finally{f.close();}
+});
+
+test('legacy native idea DOM is retained as a fallback but an explicit opt-out wins',()=>{
+  const f=fixture(table(text('note.标题','条目')));try{
+    const view=f.doc.querySelector('.bases-view');view.dataset.viewName='想法收集箱';f.refresh();
+    assert.ok(view.classList.contains('bui-ideas-base'));
+    view.dataset.buiEnhancedTable='false';f.refresh();assert.equal(view.classList.contains('bui-ideas-base'),false);
+    delete view.dataset.buiEnhancedTable;f.refresh();assert.ok(view.classList.contains('bui-ideas-base'));
+  }finally{f.close();}
+});
+
+test('single-record tables hide the final create row without marking existing cells read-only',async()=>{
+  const f=fixture('<div class="bases-embed"><div class="bases-header"><div class="bases-toolbar-new-item-menu"><button class="text-icon-button" role="button">原生新建</button></div></div>'+table('<div class="bases-table-container">'+text('note.标题','当前记录')+'</div>')+'</div>');
+  try{
+    const view=f.doc.querySelector('.bases-view');view.dataset.buiEnhancedTable='true';view.dataset.buiAllowCreate='false';
+    const input=view.querySelector('[contenteditable]'),native=f.doc.querySelector('.text-icon-button');let creates=0;
+    native.addEventListener('click',()=>creates++);f.refresh();
+    assert.ok(view.classList.contains('bui-ideas-base'));assert.equal(view.querySelector('.bui-ideas-new-row'),null);
+    assert.equal(input.getAttribute('contenteditable'),'true');assert.equal(view.hasAttribute('aria-readonly'),false);
+    delete view.dataset.buiAllowCreate;f.refresh();const button=view.querySelector('.bui-ideas-new-button');assert.ok(button);
+    view.dataset.buiAllowCreate='false';button.click();assert.equal(creates,0,'a stale footer cannot bypass the setting');
+    await new Promise(resolve=>f.dom.window.setTimeout(resolve,0));assert.equal(view.querySelector('.bui-ideas-new-row'),null);
+    delete view.dataset.buiAllowCreate;f.refresh();view.querySelector('.bui-ideas-new-button').click();assert.equal(creates,1);
+  }finally{f.close();}
 });

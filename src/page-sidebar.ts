@@ -1,10 +1,12 @@
-import {App, Component, ItemView, Menu, Modal, Notice, Plugin, TFile, TFolder, WorkspaceLeaf, setIcon} from 'obsidian';
+import {App, Component, ItemView, Menu, Modal, Notice, Plugin, TFile, TFolder, WorkspaceLeaf, setIcon, type ViewState} from 'obsidian';
 import {NebulaFocusSettings} from './settings';
 import {PageNode, PageTreeSettings, buildPageTree, filterPages, flattenPages, readPageTreeSettings,
   remapPageSettings, reorderPages, validPageName} from './page-tree';
 
 export const PAGE_SIDEBAR_TYPE = 'nebula-pages';
 let nextViewId = 0;
+type PageNavigationState = {query: string; scroll: number; expanded: string[]};
+type SuspendedPage = {state: ViewState; navigation?: PageNavigationState};
 
 export class PageSidebar extends Component {
   settings: PageTreeSettings;
@@ -13,13 +15,20 @@ export class PageSidebar extends Component {
   private timer = 0;
   private startupTimer = 0;
   private stopped = false;
+  private enabled: boolean;
+  private navigation: Promise<void> = Promise.resolve();
+  private modeRequest = 0;
+  private suspended = new Map<WorkspaceLeaf, SuspendedPage>();
+  private nativeStates = new Map<WorkspaceLeaf, ViewState>();
 
-  constructor(readonly plugin: Plugin, initial: unknown, private save: (settings: PageTreeSettings) => Promise<void>) {
+  constructor(readonly plugin: Plugin, initial: unknown, private save: (settings: PageTreeSettings) => Promise<void>, readonly openHome?: () => Promise<void>, initialEnabled = true) {
     super();
     this.settings = readPageTreeSettings(initial);
+    this.enabled = initialEnabled;
   }
 
   get app() {return this.plugin.app;}
+  get isEnabled() {return this.enabled && !this.stopped;}
   tree() {return buildPageTree(this.app.vault.getRoot(), this.settings);}
 
   onload() {
@@ -34,7 +43,9 @@ export class PageSidebar extends Component {
       // restoring registered views. Let that finish before looking for a leaf.
       this.startupTimer = window.setTimeout(() => {
         this.startupTimer = 0;
-        if (!this.stopped && this.settings.openOnStartup) void this.open();
+        if (this.stopped) return;
+        if (!this.enabled) void this.setEnabled(false);
+        else if (this.settings.openOnStartup) void this.open();
       }, 0);
     });
     this.registerEvent(this.app.vault.on('create', () => this.schedule()));
@@ -48,23 +59,89 @@ export class PageSidebar extends Component {
     }));
   }
 
-  async open() {
-    if (this.stopped) return;
-    try {
-      const leaf = this.app.workspace.getLeavesOfType(PAGE_SIDEBAR_TYPE)[0] ?? this.app.workspace.getLeftLeaf(false);
+  open(): Promise<void> {
+    return this.navigate(async () => {
+      if (!this.enabled) {await this.showNative(); return;}
+      this.pruneLeaves();
+      const leaf = this.app.workspace.getLeavesOfType(PAGE_SIDEBAR_TYPE)[0] ?? [...this.suspended.keys()][0] ?? this.app.workspace.getLeftLeaf(false);
       if (!leaf) return;
-      if (leaf.view.getViewType() !== PAGE_SIDEBAR_TYPE) await leaf.setViewState({type: PAGE_SIDEBAR_TYPE, active: true});
-      await this.app.workspace.revealLeaf(leaf);
-    } catch (error) {this.failure('无法打开页面侧栏', error);}
+      await this.showPages(leaf);
+      if (this.enabled && !this.stopped) await this.app.workspace.revealLeaf(leaf);
+    });
   }
 
-  async openNative() {
-    try {
-      const leaf = this.app.workspace.getLeavesOfType('file-explorer')[0] ?? this.app.workspace.getLeftLeaf(false);
-      if (!leaf) return;
-      if (leaf.view.getViewType() !== 'file-explorer') await leaf.setViewState({type: 'file-explorer', active: true});
-      await this.app.workspace.revealLeaf(leaf);
-    } catch (error) {this.failure('无法打开文件列表', error);}
+  openNative(): Promise<void> {return this.navigate(() => this.showNative());}
+
+  /** Swap real workspace views in place. Layout preferences and note files are
+   * untouched; the requested flag changes immediately to guard startup/commands. */
+  setEnabled(enabled: boolean): Promise<void> {
+    const changed = this.enabled !== enabled;
+    this.enabled = enabled;
+    const request = ++this.modeRequest;
+    if (!enabled) {window.clearTimeout(this.startupTimer); this.startupTimer = 0;}
+    return this.navigate(async () => {
+      if (request !== this.modeRequest) return;
+      this.pruneLeaves();
+      if (!this.enabled) {
+        const pages = this.app.workspace.getLeavesOfType(PAGE_SIDEBAR_TYPE);
+        for (const leaf of pages) {
+          if (this.enabled || this.stopped) return;
+          await this.showNativeLeaf(leaf);
+        }
+        if (!this.enabled && !this.stopped && pages[0]) await this.app.workspace.revealLeaf(pages[0]);
+      } else {
+        let restored: WorkspaceLeaf | undefined;
+        for (const leaf of [...this.suspended.keys()]) {
+          if (!this.enabled || this.stopped) return;
+          // A user's subsequent choice of another view wins over restoration.
+          if (leaf.view.getViewType() !== 'file-explorer') {this.suspended.delete(leaf); continue;}
+          await this.showPages(leaf); restored ??= leaf;
+        }
+        if (!restored && changed && !this.app.workspace.getLeavesOfType(PAGE_SIDEBAR_TYPE).length) {
+          const leaf = this.app.workspace.getLeavesOfType('file-explorer')[0] ?? this.app.workspace.getLeftLeaf(false);
+          if (leaf && this.enabled && !this.stopped) {await this.showPages(leaf); restored = leaf;}
+        }
+        if (restored && this.enabled && !this.stopped) await this.app.workspace.revealLeaf(restored);
+      }
+    });
+  }
+
+  private navigate(action: () => Promise<void>): Promise<void> {
+    const result = this.navigation.then(async () => {if (!this.stopped) await action();})
+      .catch(error => {if (!this.stopped) this.failure('侧栏切换未完成', error);});
+    this.navigation = result; return result;
+  }
+  private pruneLeaves() {
+    const live = new Set<WorkspaceLeaf>(); this.app.workspace.iterateAllLeaves(leaf => {live.add(leaf);});
+    for (const leaf of this.suspended.keys()) if (!live.has(leaf)) this.suspended.delete(leaf);
+    for (const leaf of this.nativeStates.keys()) if (!live.has(leaf)) this.nativeStates.delete(leaf);
+  }
+  private async showNative() {
+    const leaf = this.app.workspace.getLeavesOfType('file-explorer')[0] ?? this.app.workspace.getLeavesOfType(PAGE_SIDEBAR_TYPE)[0] ?? this.app.workspace.getLeftLeaf(false);
+    if (!leaf) return;
+    await this.showNativeLeaf(leaf);
+    if (!this.stopped) await this.app.workspace.revealLeaf(leaf);
+  }
+  private async showNativeLeaf(leaf: WorkspaceLeaf) {
+    if (this.stopped || leaf.view.getViewType() === 'file-explorer') return;
+    if (leaf.view.getViewType() === PAGE_SIDEBAR_TYPE && !this.suspended.has(leaf)) {
+      this.suspended.set(leaf, {state: leaf.getViewState(),
+        ...(leaf.view instanceof PageSidebarView ? {navigation: leaf.view.captureNavigation()} : {})});
+    }
+    await leaf.setViewState({...this.nativeStates.get(leaf), type: 'file-explorer', active: false});
+  }
+  private async showPages(leaf: WorkspaceLeaf) {
+    if (!this.enabled || this.stopped) return;
+    if (leaf.view.getViewType() === 'file-explorer') this.nativeStates.set(leaf, leaf.getViewState());
+    const saved = this.suspended.get(leaf);
+    if (!(leaf.view instanceof PageSidebarView) || leaf.view.sidebar !== this || !leaf.view.isReady) {
+      if (leaf.view.getViewType() === PAGE_SIDEBAR_TYPE) await leaf.setViewState({type: 'empty', active: false});
+      if (!this.enabled || this.stopped) return;
+      await leaf.setViewState({...saved?.state, type: PAGE_SIDEBAR_TYPE, active: false});
+    }
+    if (!this.enabled || this.stopped) return;
+    if (leaf.view instanceof PageSidebarView && saved?.navigation) leaf.view.restoreNavigation(saved.navigation);
+    this.suspended.delete(leaf);
   }
 
   update(change: (settings: PageTreeSettings) => PageTreeSettings): Promise<boolean> {
@@ -88,7 +165,7 @@ export class PageSidebar extends Component {
     console.error('[Nebula Focus] ' + message, error);
     new Notice(message + '：' + (error instanceof Error ? error.message : String(error)));
   }
-  onunload() {this.stopped = true; window.clearTimeout(this.timer); window.clearTimeout(this.startupTimer); this.views.clear();}
+  onunload() {this.stopped = true; window.clearTimeout(this.timer); window.clearTimeout(this.startupTimer); this.views.clear(); this.suspended.clear(); this.nativeStates.clear();}
 
   createPage(parent?: PageNode) {
     // A sibling folder note can gain children without moving its existing file.
@@ -128,8 +205,10 @@ export class PageSidebarView extends ItemView {
   getViewType() {return PAGE_SIDEBAR_TYPE;}
   getDisplayText() {return '页面';}
   getIcon() {return 'panels-top-left';}
+  get isReady() {return !this.closed && !!this.treeEl;}
 
   async onOpen() {
+    if (!this.sidebar.isEnabled) {this.closed = true; void this.sidebar.setEnabled(false); return;}
     this.closed = false;
     this.contentEl.replaceChildren();
     this.contentEl.classList.add('bui-page-sidebar');
@@ -149,6 +228,16 @@ export class PageSidebarView extends ItemView {
       if (event.key === 'Escape') {this.search.value = ''; this.render();}
       if (event.key === 'ArrowDown') {event.preventDefault(); this.rows[0]?.el.focus();}
     });
+    if (this.sidebar.openHome) {
+      const home = this.contentEl.createEl('button', {cls: 'bui-pages-home', text: '首页'});
+      const icon = home.createSpan(); setIcon(icon, 'house'); home.prepend(icon);
+      home.addEventListener('click', () => {void this.sidebar.openHome?.();});
+      const markHome = () => {
+        const active = this.app.workspace.getMostRecentLeaf()?.view.getViewType() === 'nebula-home';
+        home.classList.toggle('is-active', active); home.setAttribute('aria-current', active ? 'page' : 'false');
+      };
+      this.registerEvent(this.app.workspace.on('active-leaf-change', markHome)); markHome();
+    }
     this.scrollEl = this.contentEl.createDiv({cls: 'bui-pages-scroll'});
     this.favoritesEl = this.scrollEl.createDiv({cls: 'bui-pages-favorites'});
     const heading = this.scrollEl.createDiv({cls: 'bui-pages-section'});
@@ -173,8 +262,17 @@ export class PageSidebarView extends ItemView {
     this.closed = true; this.sidebar.views.delete(this); this.contentEl.replaceChildren();
   }
 
-  revealActive(path?: string) {
+  captureNavigation(): PageNavigationState {
+    return {query: this.search?.value ?? '', scroll: this.scrollEl?.scrollTop ?? 0, expanded: [...this.transientExpanded]};
+  }
+  restoreNavigation(state: PageNavigationState) {
     if (this.closed || !this.treeEl) return;
+    this.search.value = state.query; this.transientExpanded = new Set(state.expanded);
+    this.render(); this.scrollEl.scrollTop = state.scroll;
+  }
+
+  revealActive(path?: string) {
+    if (this.closed || !this.treeEl || !this.sidebar.isEnabled) return;
     const nodes = flattenPages(this.sidebar.tree());
     let node = nodes.find(item => item.filePath === path);
     while (node) {
@@ -186,7 +284,7 @@ export class PageSidebarView extends ItemView {
   }
 
   render() {
-    if (this.closed || !this.treeEl) return;
+    if (this.closed || !this.treeEl || !this.sidebar.isEnabled) return;
     this.cancelDrag();
     const activeElement = this.contentEl.ownerDocument.activeElement as HTMLElement | null;
     const focused = activeElement?.closest<HTMLElement>('.bui-page-row');
@@ -231,13 +329,13 @@ export class PageSidebarView extends ItemView {
       const hasChildren = node.children.length > 0;
       const expanded = searching || this.expanded(node);
       if (hasChildren) row.setAttribute('aria-expanded', String(expanded));
-      const disclosure = row.createEl('button', {cls: 'bui-page-disclosure', attr: {tabindex: '-1', 'aria-label': expanded ? '收起 ' + node.title : '展开 ' + node.title}});
       if (hasChildren) {
+        const disclosure = row.createEl('button', {cls: 'bui-page-disclosure', attr: {tabindex: '-1', 'aria-label': expanded ? '收起 ' + node.title : '展开 ' + node.title}});
         setIcon(disclosure, 'chevron-right'); disclosure.classList.toggle('is-expanded', expanded);
         disclosure.addEventListener('click', event => {event.stopPropagation(); if (!searching) this.toggle(node);});
         if (searching) disclosure.disabled = true;
-      } else {disclosure.disabled = true; disclosure.setAttribute('aria-hidden', 'true');}
-      const icon = row.createSpan({cls: 'bui-page-icon'}); setIcon(icon, this.nodeIcon(node));
+      }
+      this.renderNodeIcon(row, node);
       row.createSpan({cls: 'bui-page-title', text: node.title});
       const actions = row.createSpan({cls: 'bui-page-actions'});
       this.iconButton(actions, 'ellipsis', node.title + ' 的操作', event => {event.stopPropagation(); this.nodeMenu(node, event);}, -1);
@@ -267,7 +365,7 @@ export class PageSidebarView extends ItemView {
   private renderFavorite(node: PageNode) {
     const row = this.favoritesEl.createDiv({cls: 'bui-page-favorite'});
     const open = row.createEl('button', {cls: 'bui-page-favorite-open'});
-    setIcon(open.createSpan({cls: 'bui-page-icon'}), this.nodeIcon(node));
+    this.renderNodeIcon(open, node);
     open.createSpan({cls: 'bui-page-title', text: node.title});
     open.title = node.filePath ?? node.id;
     open.addEventListener('click', event => {void this.openNode(node, event.metaKey || event.ctrlKey);});
@@ -275,8 +373,12 @@ export class PageSidebarView extends ItemView {
     this.iconButton(row, 'star', '取消收藏 ' + node.title, () => this.favorite(node));
   }
 
-  private nodeIcon(node: PageNode) {
-    return {page: 'file-text', database: 'table-2', canvas: 'layout-dashboard', folder: 'folder', attachment: 'paperclip'}[node.kind];
+  private renderNodeIcon(host: HTMLElement, node: PageNode) {
+    // Page titles already identify their content. Keep only type distinctions;
+    // an absent icon must not leave a decorative span or a reserved icon slot.
+    if (node.kind === 'page') return;
+    const icon = {database: 'table-2', canvas: 'layout-dashboard', folder: 'folder', attachment: 'paperclip'}[node.kind];
+    setIcon(host.createSpan({cls: 'bui-page-icon'}), icon);
   }
 
   private iconButton(host: HTMLElement, icon: string, title: string, action: (event: MouseEvent) => void, tabIndex = 0) {

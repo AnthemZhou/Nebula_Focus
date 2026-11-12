@@ -399,3 +399,26 @@ The checks below cover the local build; release CI and directory review are sepa
   setting values, concurrent updates, failed saves and unloading before layout readiness.
 - The 1.1.3 installation ZIP matches all three installed runtime files and
   excludes vault preferences. All 310 pre-existing vault content files remain byte-identical.
+
+
+## 1.2.0 Home, linked data and appearance — 2026-11-12
+
+- Strict TypeScript/build and **578/578** automated tests pass. Lint has zero errors
+  and the same 38 existing warnings.
+- Desktop Obsidian 1.14.5: column-label popup text and input inherit the clicked
+  header’s computed font in light and dark themes. Native file-name tables show
+  page buttons; clicking the title starts editing and clicking the icon opens the note.
+- Native appearance restores the actual file explorer in place. Sampled computed
+  styles for the sidebar, paragraph, header and table value match a disabled-plugin
+  baseline. The mode survives reload; rapid toggles preserve the final choice.
+- Sidebar labels follow native font size, weight, padding and line-height tokens.
+  Tests also cover multiple windows, stale callbacks and native multiline-class cleanup.
+- Home retains a single functional tab across reload, including late placeholders and
+  deferred views. Automatic repair neither creates a tab nor steals focus.
+- Filename history tests cover creation → rename → two undos → two redos,
+  view remounts, mobile shared history, path collisions and external file changes.
+- Original preview Markdown files remained byte-identical throughout these checks.
+  Public examples contain fictional data; private vaults are not release assets.
+- Existing Obsidian ResizeObserver notifications were observed during native view
+  remounting. These checks do not establish a warning-free renderer or a new iPhone
+  hardware pass for Home/automatic data/finance features.

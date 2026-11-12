@@ -1,9 +1,9 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {readFileSync} = require('node:fs');
-const {transformSync} = require('esbuild');
+const {buildSync} = require('esbuild');
 const mod = {exports: {}};
-new Function('module', 'exports', transformSync(readFileSync('src/creation-order.ts', 'utf8'), {loader: 'ts', format: 'cjs'}).code)(mod, mod.exports);
+const code=buildSync({entryPoints:['src/creation-order.ts'],bundle:true,write:false,platform:'node',format:'cjs'}).outputFiles[0].text;
+new Function('module', 'exports', code)(mod, mod.exports);
 const {ensureCreationOrder} = mod.exports;
 
 function fixture(sort) {
@@ -81,4 +81,28 @@ test('rollback does not overwrite a newer user sort while native save is pending
   reject(new Error('native save failed'));
   await assert.rejects(pending, /native save failed/);
   assert.equal(f.config.sort, newer);
+});
+
+const profile={titleColumn:'formula.工作条目',titleProperty:'标题',tags:{分类:'multi'},wrap:true,attachments:[]};
+test('renamed and newly generated profiled tables retain creation append order without changing user sorts',async()=>{
+  for(const name of ['灵感与待办','产品素材','财务流水']){
+    const original=[{property:'note.分类',direction:'ASC'}],f=fixture(original);
+    f.config.name=name;f.query.file={path:`Bases/${name}.base`};
+    f.config.get=key=>key==='nebulaTable'?profile:undefined;
+    assert.equal(await ensureCreationOrder(f.view),true);
+    assert.deepEqual(f.config.sort,[...original,{property:'file.ctime',direction:'ASC'}]);
+    assert.equal(f.config.sort[0],original[0]);assert.equal(f.writes.length,1);
+    f.config.name+='（重命名）';assert.equal(await ensureCreationOrder(f.view),false);assert.equal(f.writes.length,1);
+  }
+});
+
+test('profile recognition never bypasses external-base and writable-context protections',async()=>{
+  for(const change of [
+    f=>{f.query.file='Inline.md';},f=>{f.query.file=undefined;},f=>{f.query.readOnly=true;},
+    f=>{f.view.queryController.isReadOnly=true;},f=>{f.config.nebulaTable={...profile,tags:{分类:'unsupported'}};},
+    f=>{f.config.get=()=>{throw Error('uninitialized native config');};},
+  ]){
+    const f=fixture();f.config.name='新文档数据库';f.config.nebulaTable=profile;change(f);
+    assert.equal(await ensureCreationOrder(f.view),false);assert.equal(Object.hasOwn(f.config,'sort'),false);assert.deepEqual(f.writes,[]);
+  }
 });

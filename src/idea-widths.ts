@@ -1,6 +1,8 @@
 import {supportsIdeaTagCell} from './idea-tag-support';
+import {tableProfile} from './table-profile';
+import {isRelationValue, isTableRelationProperty, isTableTagProperty, RELATION_LINK_SELECTOR} from './semantic-property';
 
-/** Minimum widths for the three editable classification columns in native Bases.
+/** Minimum widths for configured and explicitly recognized tag columns in native Bases.
  * Wrap the native column-width accessor, which is shared by rendering, hit testing
  * and selection. Never change customWidth, configuration, or persisted note data.
  */
@@ -28,7 +30,6 @@ function widthView(value: unknown): value is WidthView {
     (data.properties === undefined || (Array.isArray(data.properties) && data.properties.every(item => typeof item === 'string'))) &&
     (raw.columnInfo === undefined || object(raw.columnInfo)) && typeof raw.updateVirtualDisplay === 'function';
 }
-const PROPERTIES = ['note.领域', 'note.类型', 'note.重要性'] as const;
 const FONT_PROPERTIES = ['font-family', 'font-size', 'font-weight', 'font-style', 'font-stretch',
   'font-variant', 'font-feature-settings', 'font-variation-settings', 'font-kerning',
   'letter-spacing', 'word-spacing', 'text-transform', 'direction'] as const;
@@ -56,10 +57,16 @@ function values(value: unknown): string[] {
   if (Array.isArray(value)) return value.flatMap(values);
   if (typeof value === 'object' && 'data' in value) return values(value.data);
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean')
-    return String(value).trim() ? [String(value)] : [];
+    return String(value).trim() ? [displayLabel(String(value))] : [];
   const text = object(value) && typeof value.toString === 'function'
     ? (value.toString as () => unknown).call(value) : undefined;
-  return typeof text === 'string' && text && text !== '[object Object]' ? [text] : [];
+  return typeof text === 'string' && text && text !== '[object Object]' ? [displayLabel(text)] : [];
+}
+
+function displayLabel(value: string): string {
+  const wiki = /^\[\[([^|\]]+)(?:\|([^\]]*))?\]\]$/.exec(value.trim());
+  if (!wiki) return value;
+  return wiki[2] || wiki[1].split('/').pop()!.replace(/\.md(?=#|$)/i, '');
 }
 
 function nativeCell(view: WidthView, property: string): IdeaCell | null {
@@ -69,7 +76,8 @@ function nativeCell(view: WidthView, property: string): IdeaCell | null {
     const cell = row.cells?.find((cell: IdeaCell) => cell.prop === property);
     if (cell?.el instanceof HTMLElement) return cell;
   }
-  const el = view.containerEl.querySelector<HTMLElement>(`.bases-td[data-property="${property}"]`);
+  const el = Array.from(view.containerEl.querySelectorAll<HTMLElement>('.bases-td[data-property]'))
+    .find(cell => cell.dataset.property === property);
   return el ? {el} : null;
 }
 
@@ -130,30 +138,43 @@ export class IdeaColumnWidths {
     // native resize keep them without repeating font/layout measurement.
     if (host.classList.contains('bui-ideas-resizing') && state.patches.size) return false;
     let changed = false;
+    // Restore retired accessors before wrapping a renamed column that may reuse
+    // the same native width object; otherwise wrappers could stack on rename.
+    const properties = new Set(view.data.properties ?? []);
+    for (const [property, patch] of state.patches) if (!properties.has(property)) {
+      this.restore(patch); state.patches.delete(property); state.keys.delete(property); changed = true;
+    }
     const present = new Set<string>();
     const measure = new TextMeasure(host.ownerDocument, this.widths);
     const css = host.ownerDocument.defaultView!.getComputedStyle(host);
     const fontKey = `${this.revision}|${css.font}|${css.letterSpacing}|${host.ownerDocument.body.className}`;
     try {
-      for (const property of PROPERTIES) {
-        if (!view.data.properties?.includes(property)) continue;
+      const profile = tableProfile(view);
+      for (const property of view.data.properties ?? []) {
+        const sample = nativeCell(view, property), cell = sample?.el;
         const info = view.columnInfo?.[property];
         if (!widthInfo(info)) continue;
         const labels = new Set<string>();
+        let linkedValues = false;
         for (const entry of view.data.data) {
-          try {for (const text of values(entry.getValue(property))) labels.add(text);} catch { /* Unsupported native values do not contribute to the column minimum. */ }
+          try {
+            const value = entry.getValue(property);
+            linkedValues ||= isRelationValue(value);
+            for (const text of values(value)) labels.add(text);
+          } catch { /* Unsupported native values do not contribute to the column minimum. */ }
         }
+        const relation = isTableRelationProperty(profile, property, cell, linkedValues);
+        if (!relation && !isTableTagProperty(profile, property)) continue;
         const header = view.header.cells.find((cell: IdeaCell) => cell.prop === property);
         const label = header?.el?.querySelector('.bases-table-header-name')?.textContent ?? '';
-        const sample = nativeCell(view, property), cell = sample?.el;
         const kind = cell?.querySelector('.bases-table-cell')?.getAttribute('data-property-type') ?? '';
         const picker = !!cell && supportsIdeaTagCell(view, sample, property.slice(5), cell);
-        const key = JSON.stringify([fontKey, label, kind, picker,
+        const key = JSON.stringify([fontKey, label, kind, picker, relation,
           host.classList.contains('bui-ideas-base'), [...labels].sort()]);
         let patch = state.patches.get(property);
         if (patch?.info === info && state.keys.get(property) === key) {present.add(property); continue;}
         if (!host.getBoundingClientRect().width) {if (patch) present.add(property); continue;}
-        const minimum = this.minimum(view, property, measure, [...labels]);
+        const minimum = this.minimum(view, property, measure, [...labels], relation);
         if (!minimum) {if (patch) present.add(property); continue;}
         state.keys.set(property, key);
         present.add(property);
@@ -181,7 +202,7 @@ export class IdeaColumnWidths {
     return changed;
   }
 
-  private minimum(view: WidthView, property: string, measure: TextMeasure, labels: string[]): number {
+  private minimum(view: WidthView, property: string, measure: TextMeasure, labels: string[], relation: boolean): number {
     const header = view.header.cells.find((cell: IdeaCell) => cell.prop === property);
     const headerName = header?.el?.querySelector<HTMLElement>('.bases-table-header-name');
     const label = header?.innerEl;
@@ -217,21 +238,29 @@ export class IdeaColumnWidths {
       cell.setAttribute('aria-hidden', 'true'); cell.inert = true;
       cell.removeAttribute('style');
       cell.classList.add('bui-tag-width-measure');
+      cell.classList.toggle('bui-tag-column', !relation);
+      cell.classList.toggle('bui-relation-column', relation);
+      cell.classList.add(relation ? 'bui-relation-property' : 'bui-semantic-property');
       const list = cell.querySelector('.multi-select-container');
       if (list && !list.querySelector('.multi-select-pill')) {
         const pill = cell.ownerDocument.createElement('div');
-        pill.className = 'multi-select-pill bui-native-tag bui-semantic-tag';
+        pill.className = relation ? 'multi-select-pill bui-relation-pill' : 'multi-select-pill bui-native-tag bui-semantic-tag';
         const content = pill.appendChild(cell.ownerDocument.createElement('div'));
-        content.className = 'multi-select-pill-content'; content.textContent = labels[0] ?? ' ';
+        content.className = `multi-select-pill-content${relation ? ' bui-relation-link' : ''}`; content.textContent = labels[0] ?? ' ';
         const remove = pill.appendChild(cell.ownerDocument.createElement('div'));
         remove.className = 'multi-select-pill-remove-button';
         const icon = remove.appendChild(cell.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'svg'));
         icon.classList.add('svg-icon'); icon.setAttribute('width', '24'); icon.setAttribute('height', '24');
         list.prepend(pill);
       }
-      for (const pill of cell.querySelectorAll('.multi-select-pill'))
+      if (relation) for (const link of cell.querySelectorAll<HTMLElement>(RELATION_LINK_SELECTOR)) {
+        const pill = link.closest<HTMLElement>('.multi-select-pill');
+        pill?.classList.add('bui-relation-pill');
+        (pill?.querySelector('.multi-select-pill-content') ?? link).classList.add('bui-relation-link');
+      }
+      if (!relation) for (const pill of cell.querySelectorAll('.multi-select-pill'))
         pill.classList.add('bui-native-tag', 'bui-semantic-tag');
-      if (labels.length) for (const input of cell.querySelectorAll('.metadata-input-longtext')) {
+      if (!relation && labels.length) for (const input of cell.querySelectorAll('.metadata-input-longtext')) {
         input.classList.add('bui-native-tag', 'bui-semantic-tag');
         if (!input.textContent) input.textContent = labels[0];
       }
@@ -241,7 +270,7 @@ export class IdeaColumnWidths {
     const list = cell?.querySelector<HTMLElement>('.multi-select-container');
     const pill = list?.querySelector<HTMLElement>('.multi-select-pill');
     const content = pill?.querySelector<HTMLElement>('.multi-select-pill-content');
-    const input = cell?.querySelector<HTMLElement>('.metadata-input-longtext, .multi-select-input');
+    const input = cell?.querySelector<HTMLElement>('.metadata-input-longtext, .multi-select-input, .metadata-link-inner, .bases-rendered-value');
     const reference = content ?? input ?? headerName;
     let widest = 0;
     if (list) {
@@ -259,7 +288,10 @@ export class IdeaColumnWidths {
       for (const text of labels) widest = Math.max(widest,
         measure.width(text, reference) + pillExtra + inputWidth + pixels(listStyle.columnGap) + containerExtra);
     } else {
-      const extra = input ? horizontal(style(input)) : 28;
+      const linkWrapper = cell?.querySelector<HTMLElement>('.metadata-link');
+      const edit = linkWrapper?.querySelector<HTMLElement>('.metadata-link-flair');
+      const editWidth = edit && style(edit).display !== 'none' ? edit.getBoundingClientRect().width : 0;
+      const extra = (input ? horizontal(style(input)) : 28) + (linkWrapper ? horizontal(style(linkWrapper)) : 0) + editWidth;
       for (const text of labels) widest = Math.max(widest, measure.width(text, reference) + extra);
     }
     return Math.ceil(Math.max(headerWidth, widest + 2));

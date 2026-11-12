@@ -1,4 +1,7 @@
 import {supportsIdeaTagCell} from './idea-tag-support';
+import {tableProfile} from './table-profile';
+import {isUnavailableValue} from './unavailable-value';
+import {isTableRelationProperty, isTableTagProperty, RELATION_LINK_SELECTOR} from './semantic-property';
 
 /** Content-sized native Bases rows. Native row/cell objects and editors remain
  * intact; rendering, selection and hit testing use the same vertical index.
@@ -91,6 +94,7 @@ type Patch = {name: 'updateVirtualDisplay' | 'getCellRect' | 'getClosestCellInde
 type GroupLayout = {offsets: number[]; top: number; bodyTop: number; collapsed: boolean};
 type State = {
   view: LayoutView; host: HTMLElement; patches: Patch[]; createRow: (view: LayoutView) => LayoutRow; measureRow: LayoutRow;
+  originalMultiline: boolean;
   originalUpdate: LayoutView['updateVirtualDisplay']; originalRect: LayoutView['getCellRect']; originalClosest: LayoutView['getClosestCellIndexWithinGroup'];
   heights: Map<IdeaFile, {key: string; height: number}>; groups: GroupLayout[];
   widths: number[]; width: number; busy: boolean; frame: number; observer: MutationObserver;
@@ -99,6 +103,51 @@ type State = {
   perf: {resizeStarts: number; resizeEnds: number; dragStarts: number; ignoredPointerCancels: number; lastResizeEnd: string; layouts: number; previewLayouts: number; measurementBatches: number; measuredRows: number; lastLayoutMs: number; maxPreviewLayoutMs: number; lastMeasureMs: number};
 };
 const px = (value: string) => Number.parseFloat(value) || 0;
+const MEASUREMENT_SELECTOR = '.bui-tag-width-measure, .bui-text-width-measure, .bui-row-height-measure';
+const INTERACTION_CLASSES = new Set(['is-active', 'is-selected', 'is-focused', 'is-focus',
+  'mod-focus', 'mod-focused', 'mod-selection', 'has-focus']);
+const NATIVE_INTERACTION_SELECTOR = '.bases-tr, .bases-td, .bases-table-cell, .multi-select-container, .multi-select-pill, .multi-select-pill-content';
+
+function measurementNode(node: Node): boolean {
+  const element = node.nodeType === 1 ? node as Element : node.parentElement;
+  return !!element?.closest(MEASUREMENT_SELECTOR);
+}
+function selectionNode(view: LayoutView, node: Node): boolean {
+  return [view.activeCellEl, view.selectionEl].some(overlay => overlay === node || overlay.contains(node));
+}
+function geometryClassNames(value: string | null): string {
+  return (value ?? '').split(/\s+/).filter(name => name && !INTERACTION_CLASSES.has(name)).sort().join(' ');
+}
+function transientMutationNodes(view: LayoutView, records: MutationRecord[]): Set<Node> {
+  const transient = new Set<Node>();
+  const mark = (node: Node) => {transient.add(node); for (const child of node.childNodes) mark(child);};
+  // Descendants can be detached before delivery. Retain their probe/overlay
+  // ancestry from the ordered child-list records in this same batch.
+  for (const record of records) if (record.type === 'childList') {
+    const inside = transient.has(record.target) || measurementNode(record.target) || selectionNode(view, record.target);
+    for (const node of [...record.addedNodes, ...record.removedNodes])
+      if (inside || measurementNode(node) || selectionNode(view, node)) mark(node);
+  }
+  return transient;
+}
+/** Measurement probes and native selection chrome do not change row content.
+ * Keep editor/unknown classes and all actual content/style mutations observable.
+ */
+function affectsRowGeometry(view: LayoutView, record: MutationRecord, transient: Set<Node>): boolean {
+  if (transient.has(record.target) || measurementNode(record.target) || selectionNode(view, record.target)) return false;
+  if (record.type === 'childList') {
+    const nodes = [...record.addedNodes, ...record.removedNodes];
+    return nodes.some(node => !transient.has(node) && !measurementNode(node) && !selectionNode(view, node));
+  }
+  if (record.type !== 'attributes') return true;
+  const target = record.target as Element;
+  const current = target.getAttribute(record.attributeName!);
+  if (record.oldValue === current) return false;
+  if (record.attributeName === 'class' &&
+      (target === view.containerEl || target.matches(NATIVE_INTERACTION_SELECTOR)) &&
+      geometryClassNames(record.oldValue) === geometryClassNames(current)) return false;
+  return true;
+}
 
 export function heightOffsets(heights: number[]): number[] {
   const offsets = [0];
@@ -169,7 +218,7 @@ export class IdeaRowHeights {
     if (!isIdeaView(view)) return this.release(view);
     const host = view.queryController?.viewContainerEl;
     if (!isHtmlElement(host)) return this.release(view);
-    if (view?.type !== 'table' || view.config?.name !== '想法收集箱' || !host?.isConnected || view._loaded === false) return this.release(view);
+    if (view?.type !== 'table' || !tableProfile(view)?.wrap || !host?.isConnected || view._loaded === false) return this.release(view);
     if (this.failed.has(view)) return false;
     const current = this.states.get(view);
     if (current) {
@@ -188,10 +237,12 @@ export class IdeaRowHeights {
     try {measureRow = createRow(view);} catch {return false;}
     const win = host.ownerDocument.defaultView!;
     const state: State = {view, host, patches: [], createRow, measureRow,
+      originalMultiline: view.containerEl.classList.contains('mod-multiline'),
       originalUpdate: view.updateVirtualDisplay.bind(view), originalRect: view.getCellRect.bind(view), originalClosest: view.getClosestCellIndexWithinGroup.bind(view),
       heights: new Map(), groups: [], widths: [], width: 0, busy: false, frame: 0,
       observer: new win.MutationObserver(records => {
-        if (records.some(record => record.type !== 'attributes' || record.oldValue !== (record.target as Element).getAttribute(record.attributeName!))) this.schedule(state, true);
+        const transient = transientMutationNodes(view, records);
+        if (records.some(record => affectsRowGeometry(view, record, transient))) this.schedule(state, true);
       }),
       resize: new win.ResizeObserver(() => {
         if (state.resizing) return;
@@ -224,7 +275,7 @@ export class IdeaRowHeights {
     const {view, host} = state, win = host.ownerDocument.defaultView!;
     const target = view.rows?.[0]?.el?.querySelector('.bases-table-cell') ?? host;
     const css = win.getComputedStyle(target);
-    return [host.clientWidth, css.font, css.lineHeight, css.letterSpacing, host.ownerDocument.body.className].join('|');
+    return [host.clientWidth, css.font, css.lineHeight, css.letterSpacing, host.ownerDocument.body.className, JSON.stringify(tableProfile(view))].join('|');
   }
   private observe(state: State) {
     state.observer.observe(state.view.containerEl, {subtree: true, childList: true, characterData: true,
@@ -273,7 +324,9 @@ export class IdeaRowHeights {
   private measurementKey(state: State, entry: LayoutEntry, key: string): string {
     const active = state.host.ownerDocument.activeElement as HTMLElement | null;
     const live = active && state.view.rows.find((row: LayoutRow) => row.entry?.file === entry.file && row.el.contains(active));
-    return `${key}|${valueKey(entry, state.view.data.properties)}${live ? `|editing:${active?.textContent}:${active?.className}:${active?.style.cssText}` : ''}`;
+    const title = tableProfile(state.view)?.titleProperty;
+    const properties = [...state.view.data.properties, 'note.nf_unavailable_fields', ...(title ? [`note.${title}`] : [])];
+    return `${key}|${valueKey(entry, properties)}${live ? `|editing:${active?.textContent}:${active?.className}:${active?.style.cssText}` : ''}`;
   }
   private createMeasurement(state: State, entry: LayoutEntry, widths: number[]): HTMLElement {
     const active = state.host.ownerDocument.activeElement;
@@ -284,6 +337,7 @@ export class IdeaRowHeights {
     state.measureRow.render(entry, state.view.data.properties);
     state.measureRow.virtualize(widths, 0, state.width);
     const row = state.measureRow.el.cloneNode(true) as HTMLElement;
+    row.classList.add('bui-row-height-measure');
     if (editing && existing) for (const cell of existing.el.children) {
       const prop = (cell as HTMLElement).dataset.property;
       const target = Array.from(row.children).find(el => (el as HTMLElement).dataset.property === prop);
@@ -303,17 +357,70 @@ export class IdeaRowHeights {
     row.setAttribute('aria-hidden', 'true'); row.inert = true;
     styles(row, {position: 'fixed', left: '-100000px', top: '0', visibility: 'hidden',
       'pointer-events': 'none', height: 'auto', width: `${state.width}px`, 'max-height': 'none',
+      'min-width': '0', 'max-width': `${state.width}px`,
       '--bases-table-row-height': 'auto'});
     const cells = Array.from(row.children) as HTMLElement[];
+    const profile = tableProfile(state.view);
+    let unavailable: string[] = [];
+    try {
+      const raw = entry.getRawProperty?.('nf_unavailable_fields');
+      if (Array.isArray(raw)) unavailable = raw.filter((value): value is string =>
+        typeof value === 'string' && isUnavailableValue(entry.getRawProperty?.(value)));
+    } catch { /* An unsupported metadata accessor leaves the native value visible. */ }
     for (const cell of cells) {
       const index = state.view.data.properties.indexOf(cell.dataset.property ?? '');
       const nativeCell = state.measureRow.cells?.find((candidate: LayoutCell) => candidate.prop === cell.dataset.property);
       cell.classList.toggle('bui-tag-picker-cell', supportsIdeaTagCell(state.view, nativeCell,
         (cell.dataset.property ?? '').replace(/^note\./, ''), cell));
       styles(cell, {position: 'relative', 'inset-inline-start': 'auto', width: `${widths[index]}px`,
-        height: 'auto', 'min-height': '0', 'max-height': 'none', 'flex-shrink': '0'});
-      if (['note.领域', 'note.类型', 'note.重要性'].includes(cell.dataset.property ?? ''))
-        cell.querySelectorAll('.multi-select-pill, .metadata-input-longtext').forEach(el => el.classList.add('bui-native-tag'));
+        height: 'auto', 'min-height': '0', 'max-height': 'none',
+        'min-width': '0', 'max-width': `${widths[index]}px`, flex: `0 0 ${widths[index]}px`});
+      const relation = isTableRelationProperty(profile, cell.dataset.property ?? '', cell);
+      cell.classList.toggle('bui-relation-column', relation);
+      cell.classList.toggle('bui-tag-column', !relation && isTableTagProperty(profile, cell.dataset.property ?? ''));
+      if (relation) {
+        cell.classList.add('bui-relation-property');
+        for (const link of cell.querySelectorAll<HTMLElement>(RELATION_LINK_SELECTOR)) {
+          const pill = link.closest<HTMLElement>('.multi-select-pill');
+          pill?.classList.add('bui-relation-pill');
+          (pill?.querySelector('.multi-select-pill-content') ?? link).classList.add('bui-relation-link');
+        }
+      } else if (isTableTagProperty(profile, cell.dataset.property ?? '')) {
+        cell.classList.add('bui-semantic-property', 'bui-tag-column');
+        cell.querySelectorAll('.multi-select-pill, .metadata-input-longtext').forEach(el => el.classList.add('bui-native-tag', 'bui-semantic-tag'));
+      }
+      if (cell.dataset.property?.startsWith('note.') && profile?.attachments.includes(cell.dataset.property.slice(5)))
+        cell.classList.add('bui-attachment-column');
+      if (profile && cell.dataset.property === profile.titleColumn) {
+        cell.classList.add('bui-title-column');
+        const liveCell = existing?.cells.find(candidate => candidate.prop === profile.titleColumn);
+        if (!liveCell?.el.contains(active)) {
+          // Formula Markdown renders asynchronously in some Bases versions.
+          // Its first measurement clone may still be blank or show the previous
+          // entry. The profile's scalar source title supplies the same text
+          // synchronously; only this inert clone changes, never the renderer.
+          try {
+            const text = entry.getRawProperty?.(profile.titleProperty);
+            const inner = cell.querySelector<HTMLElement>('.bases-table-cell');
+            if (typeof text === 'string' && text && inner) {
+              inner.replaceChildren();
+              const link = inner.createSpan({cls: 'internal-link', text});
+              link.dataset.href = entry.file.path;
+            }
+          } catch { /* Unknown raw values retain the native measurement markup. */ }
+        }
+        const link = cell.querySelector('.internal-link');
+        link?.classList.add('bui-idea-title');
+        link?.closest('.bases-table-cell')?.classList.add('bui-idea-title-cell');
+      }
+      if (cell.dataset.property?.startsWith('note.') && unavailable.includes(cell.dataset.property.slice(5))) {
+        const inner = cell.querySelector<HTMLElement>('.bases-table-cell');
+        if (inner) {
+          inner.classList.add('bui-unavailable-cell');
+          inner.replaceChildren();
+          inner.createSpan({cls: 'bui-unavailable-value', text: '未取得'});
+        }
+      }
       for (const el of cell.querySelectorAll<HTMLElement>('.bases-table-cell, .multi-select-container, .metadata-input-longtext')) {
         el.classList.add('bui-natural-height-measure');
         // Keep native overflow: hidden on flex items. Replacing it with visible
@@ -575,6 +682,9 @@ export class IdeaRowHeights {
     for (const type of ['pointerdown', 'dragstart']) nativeView.theadEl.removeEventListener(type, state.onResizeStart, true);
     for (const type of ['pointerup', 'pointercancel', 'drop', 'dragend', 'blur']) state.host.ownerDocument.defaultView!.removeEventListener(type, state.onResizeEnd, true);
     state.host.classList.remove('bui-ideas-auto', 'bui-ideas-resizing'); this.restore(state);
+    // Native single-line tables must not inherit our multiline layout after
+    // disabling presentation, even when a hidden/unloaded view cannot redraw.
+    nativeView.containerEl.classList.toggle('mod-multiline', state.originalMultiline);
     for (const row of [...nativeView.rows, ...nativeView.unusedRows]) row.el.style.removeProperty('--bases-table-row-height');
     state.measureRow.el.remove(); state.heights.clear();
     if (nativeView._loaded !== false && nativeView.containerEl.isConnected) nativeView.updateVirtualDisplay();

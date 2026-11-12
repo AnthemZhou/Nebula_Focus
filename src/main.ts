@@ -1,4 +1,4 @@
-import {Plugin, TFile, Notice, MarkdownView, Component, Menu, Modal, setIcon} from 'obsidian';
+import {Plugin, TFile, Notice, MarkdownView, Component, Menu, Modal, Platform, setIcon} from 'obsidian';
 import {compactLink, firstImage, isDueProperty, isEmpty, overdue, propertyName} from './model';
 import {IdeaTables} from './idea-table';
 import {IdeaColumnWidths} from './idea-widths';
@@ -11,6 +11,18 @@ import {BaseCreationHistory} from './creation-history';
 import {TableRenderSync} from './table-render-sync';
 import {MobileHistoryActions} from './mobile-actions';
 import {PageSidebar} from './page-sidebar';
+import {HomeController} from './home-controller';
+import type {HomeConfig} from './home-model';
+import {migrateFinanceBases} from './finance-native-migration';
+import {AutoBaseSetup} from './auto-base-setup';
+import {noteSource} from './note-source';
+import {tableProfile, tableTitleProfiles} from './table-profile';
+import {isTableRelationProperty, isTableTagProperty} from './semantic-property';
+import {NativeTableDetails} from './native-table-details';
+import {tableContentOptions} from './table-options';
+import {NativeFinanceSummary} from './native-finance-summary';
+import {openRecordInspector} from './record-links';
+import {APPEARANCE_HOTKEY, ShortcutGuide, shortcutHints} from './shortcut-guide';
 import type {PageTreeSettings} from './page-tree';
 import {record, callable, unknownArray, presentationView, renderedValue, groupsValid, nativeAppField, nativeText, nativeElement, nativeHTMLElement, displayProperties} from './native-presentation';
 import type {Entry, Group, NativeCall, PresentationView, DisplayProperty} from './native-presentation';
@@ -52,6 +64,16 @@ export default class NebulaFocus extends Plugin {
   private settingsAvailable = true;
   private settingsWrite: Promise<void> = Promise.resolve();
   private attachmentThumbnails = new Map<HTMLElement, {image: HTMLImageElement; href: string; pill: HTMLElement}>();
+  private shortcutGuides = new Map<Window, ShortcutGuide>();
+  private tableDetails = new NativeTableDetails(path => {
+    const file = this.app.vault.getFileByPath(path);
+    return file ? this.app.metadataCache.getFileCache(file)?.frontmatter : undefined;
+  });
+  private financeSummary = new NativeFinanceSummary(file => this.app.metadataCache.getCache(file.path)?.frontmatter);
+  private autoBases?: AutoBaseSetup;
+  private home?: HomeController;
+  private pageSidebar?: PageSidebar;
+  private presentationDocs = new Set<Document>();
 
   async onload() {
     try {
@@ -59,7 +81,32 @@ export default class NebulaFocus extends Plugin {
       if (record(saved) && !Array.isArray(saved)) this.uiSettings = saved;
     } catch {this.settingsAvailable = false;}
     if (this.disposed) return;
-    this.addChild(new PageSidebar(this, this.uiSettings.pageSidebar, settings => this.savePageSidebar(settings)));
+    this.active = this.uiSettings.appearanceMode !== 'native';
+    this.autoBases = new AutoBaseSetup(this.app, this.manifest.id, () => this.active && !this.disposed);
+    const migration = await migrateFinanceBases(this.app.vault, this.manifest.id);
+    if (migration.failed.length) new Notice('部分财务视图未转换，相关文件未被覆盖；请稍后重新载入插件重试。');
+    if (this.disposed) return;
+    this.installShortcutGuides();
+    this.addCommand({id: 'open-note-database', name: '打开当前笔记的数据视图',
+      checkCallback: checking => {
+        const file = this.app.workspace.getActiveFile();
+        if (!file || file.extension !== 'md') return false;
+        if (!checking) void this.openNoteDatabase(file);
+        return true;
+      }});
+    this.registerEvent(this.app.workspace.on('file-menu', (menu, file) => {
+      if (!(file instanceof TFile) || file.extension !== 'md') return;
+      menu.addItem(item => item.setTitle('打开数据视图').setIcon('table').onClick(() => this.openNoteDatabase(file)));
+    }));
+    this.addCommand({id: 'inspect-record-relations', name: '查看记录属性与关联',
+      checkCallback: checking => {
+        const file = this.app.workspace.getActiveFile();
+        if (!file || file.extension !== 'md') return false;
+        if (!checking) openRecordInspector(this.app, file);
+        return true;
+      }});
+    this.home = this.addChild(new HomeController(this, this.uiSettings.home, config => this.saveHome(config)));
+    this.pageSidebar = this.addChild(new PageSidebar(this, this.uiSettings.pageSidebar, settings => this.savePageSidebar(settings), () => this.home!.open(), this.active));
     this.ideaTags = new IdeaTagEditors({
       read: key => {
         const value = this.settingsRecord('tagOptionOrder')[key];
@@ -75,6 +122,13 @@ export default class NebulaFocus extends Plugin {
     this.creationHistory = new BaseCreationHistory(this.app, view => {
       if (this.active && !this.disposed) this.mobileActions?.refresh(view);
     });
+    this.ideaTitles = new IdeaTitleEditors({
+      rename: async (view, file, basename) => {
+        if (!this.creationHistory) throw new Error('数据库历史尚未就绪');
+        await this.creationHistory.rename(view, file, basename);
+      },
+      open: (_view, file, event) => this.app.workspace.openLinkText(file.path, '', event.metaKey || event.ctrlKey),
+    });
     // Phone UI stays compact; hiding these controls does not discard history.
     if (!nativeAppField(this.app, 'isMobile')) this.mobileActions = new MobileHistoryActions(this.creationHistory);
     this.syncTouchMode();
@@ -84,25 +138,31 @@ export default class NebulaFocus extends Plugin {
       checkCallback: checking => this.creationHistory?.command(true, checking) ?? false});
     this.registerDomEvent(document, 'keydown', event => this.creationHistory?.handleKey(event), true);
     this.propertySuggestions = new PropertySuggestions(this.app);
-    document.body.classList.add('bui-enabled');
+    this.syncAppearanceDocuments();
+    this.registerEvent(this.app.workspace.on('window-open', (_workspace, win) => {
+      this.presentationDocs.add(win.document); this.syncAppearanceDocuments();
+    }));
+    this.registerEvent(this.app.workspace.on('window-close', (_workspace, win) => {
+      win.document.body?.classList.remove('bui-enabled', 'bui-touch'); this.presentationDocs.delete(win.document);
+    }));
     this.edgeObserver = new ResizeObserver(() => this.schedule());
     this.addCommand({id: 'toggle-reading-ui', name: '切换 Notion-like / 原生外观',
-      hotkeys: [{modifiers: ['Mod', 'Alt'], key: 'U'}], callback: () => {
-      this.active = !this.active;
-      document.body.classList.toggle('bui-enabled', this.active);
-      if (!this.active) this.clearPresentation();
-      this.schedule();
-      this.app.workspace.trigger('css-change');
-      new Notice(this.active ? '阅读优化已开启' : '已恢复原生外观');
-    }});
-    this.app.workspace.onLayoutReady(() => { if (this.disposed) return; this.installFactories(); this.scan(); });
+      hotkeys: [APPEARANCE_HOTKEY], callback: () => this.setAppearance(!this.active)});
+    this.app.workspace.onLayoutReady(() => {
+      if (this.disposed) return;
+      this.installFactories(); this.scan(); this.prepareNoteDatabase(this.app.workspace.getActiveFile());
+    });
     this.registerEvent(this.app.workspace.on('layout-change', () => this.schedule()));
     this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.scheduleNavigation()));
-    this.registerEvent(this.app.workspace.on('file-open', () => this.scheduleNavigation()));
+    this.registerEvent(this.app.workspace.on('file-open', file => {
+      this.scheduleNavigation(); this.prepareNoteDatabase(file);
+    }));
     this.registerEvent(this.app.metadataCache.on('changed', file => {
       this.imageCache.delete(file.path);
       for (const adapter of this.adapters.values()) adapter.invalidate();
       this.schedule();
+      const activeFile = this.app.workspace.getActiveFile();
+      if (activeFile) this.prepareNoteDatabase(activeFile);
     }));
     this.registerEvent(this.app.vault.on('rename', () => {this.imageCache.clear(); this.schedule();}));
     this.registerEvent(this.app.workspace.on('css-change', () => {this.ideaWidths.invalidate(); this.ideaRows.invalidate(); this.schedule();}));
@@ -158,6 +218,58 @@ export default class NebulaFocus extends Plugin {
     this.observer.observe(document.body, {childList: true, subtree: true});
   }
 
+  private prepareNoteDatabase(file: TFile | null) {
+    if (!file || !this.autoBases || !this.active || this.disposed) return;
+    void this.autoBases.ensure(file).then(() => {if (!this.disposed) this.schedule();}).catch((error: unknown) => {
+      // Opening a note must remain usable if a Base is malformed, read-only or
+      // still syncing. Explicit menu/command use presents the actionable error.
+      console.warn('[Nebula Focus] 数据视图自动配置未完成', error);
+    });
+  }
+
+  private async openNoteDatabase(file: TFile) {
+    try {
+      const bases = await this.autoBases?.ensure(file, true) ?? [];
+      if (!bases.length) {
+        const inline = file.extension === 'md' && noteSource(await this.app.vault.read(file)).inlineBase;
+        new Notice(inline ? '当前笔记已包含内嵌数据视图，可直接在笔记中使用' : '数据视图尚未就绪，请等待笔记索引或同步完成后重试');
+        return;
+      }
+      if (!this.disposed) await this.app.workspace.getLeaf('tab').openFile(bases[0]);
+    } catch (error) {new Notice(error instanceof Error ? error.message : '数据视图未能打开');}
+  }
+
+  private installShortcutGuides() {
+    if (Platform.isMobile) return;
+    const attach = (win: Window) => {
+      if (this.disposed || this.shortcutGuides.has(win)) return;
+      this.shortcutGuides.set(win, new ShortcutGuide(win, Platform.isMacOS, {
+        target: () => {
+          const el = this.app.workspace.getMostRecentLeaf()?.view.containerEl;
+          return el?.ownerDocument === win.document ? el : null;
+        },
+        hints: () => shortcutHints(this.app, Platform.isMacOS, this.manifest.id),
+        status: () => this.active ? '当前：优化外观' : '当前：原生外观',
+      }));
+    };
+    attach(window);
+    this.app.workspace.onLayoutReady(() => {
+      if (this.disposed) return;
+      this.app.workspace.iterateAllLeaves(leaf => {
+        const win = leaf.view.containerEl.ownerDocument.defaultView;
+        if (win) attach(win);
+      });
+    });
+    this.registerEvent(this.app.workspace.on('window-open', (_workspace, win) => attach(win)));
+    this.registerEvent(this.app.workspace.on('window-close', (_workspace, win) => {
+      this.shortcutGuides.get(win)?.dispose(); this.shortcutGuides.delete(win);
+    }));
+    const cancel = () => {for (const guide of this.shortcutGuides.values()) guide.cancel(true);};
+    this.registerEvent(this.app.workspace.on('active-leaf-change', cancel));
+    this.registerEvent(this.app.workspace.on('file-open', cancel));
+    this.register(() => {for (const guide of this.shortcutGuides.values()) guide.dispose(); this.shortcutGuides.clear();});
+  }
+
   private installFactories() {
     const internal = nativeAppField(this.app, 'internalPlugins');
     const plugins = record(internal) ? internal.plugins : undefined;
@@ -183,6 +295,16 @@ export default class NebulaFocus extends Plugin {
       };
       registration.factory = wrapped;
       this.factoryRestores.push(() => {if (registration.factory === wrapped) registration.factory = original;});
+      if (type === 'table' && callable(registration.options)) {
+        const originalOptions = registration.options;
+        const enabled = () => this.active && !this.disposed;
+        const wrappedOptions = function(this: unknown, ...args: unknown[]) {
+          const options = originalOptions.apply(this, args);
+          return enabled() ? tableContentOptions(options, args[0]) : options;
+        };
+        registration.options = wrappedOptions;
+        this.factoryRestores.push(() => {if (registration.options === wrappedOptions) registration.options = originalOptions;});
+      }
     }
   }
 
@@ -191,8 +313,41 @@ export default class NebulaFocus extends Plugin {
     return record(value) ? value : {};
   }
 
+  private appearanceDocuments(): Set<Document> {
+    this.presentationDocs.add(document);
+    this.app.workspace.iterateAllLeaves?.(leaf => this.presentationDocs.add(leaf.view.containerEl.ownerDocument));
+    return this.presentationDocs;
+  }
+
+  private syncAppearanceDocuments() {
+    for (const doc of this.appearanceDocuments()) {
+      doc.body?.classList.toggle('bui-enabled', this.active && !this.disposed);
+      doc.body?.classList.toggle('bui-touch', this.active && !this.disposed &&
+        (!!nativeAppField(this.app, 'isMobile') || !!doc.defaultView?.matchMedia?.('(any-pointer: coarse)').matches));
+    }
+  }
+
+  private async setAppearance(enabled: boolean) {
+    this.active = enabled;
+    this.syncAppearanceDocuments();
+    if (!enabled) this.clearPresentation();
+    else this.prepareNoteDatabase(this.app.workspace.getActiveFile());
+    const sidebar = this.pageSidebar?.setEnabled(enabled);
+    this.schedule();
+    this.app.workspace.trigger('css-change');
+    const write = this.settingsWrite.then(async () => {
+      if (!this.settingsAvailable) throw new Error('Plugin settings unavailable');
+      const next = {...this.uiSettings, appearanceMode: enabled ? 'enhanced' : 'native'};
+      await this.saveData(next); this.uiSettings = next;
+    });
+    this.settingsWrite = write.catch(() => {});
+    await sidebar;
+    try {await write;}
+    catch {new Notice('外观已切换，但偏好未能保存；重新加载后可能恢复之前的模式');}
+  }
+
   schedule() {
-    if (this.timer) return;
+    if (this.disposed || this.timer) return;
     this.timer = window.setTimeout(() => {this.timer = 0; this.scan();}, 70);
   }
 
@@ -234,6 +389,15 @@ export default class NebulaFocus extends Plugin {
     return write;
   }
 
+  private saveHome(config: HomeConfig): Promise<void> {
+    const write = this.settingsWrite.then(async () => {
+      if (!this.settingsAvailable) throw new Error('Plugin settings unavailable');
+      const next = {...this.uiSettings, home: config};
+      await this.saveData(next); this.uiSettings = next;
+    });
+    this.settingsWrite = write.catch(() => {}); return write;
+  }
+
   private saveTagOptions(key: string, options: {order: string[]; added: string[]; hidden: string[]}): Promise<void> {
     const order = [...options.order], added = [...options.added], hidden = [...options.hidden];
     const write = this.settingsWrite.then(async () => {
@@ -246,9 +410,10 @@ export default class NebulaFocus extends Plugin {
   }
 
   private scan() {
+    if (this.disposed) return;
+    this.syncAppearanceDocuments();
     if (!this.active) return;
-    this.syncTouchMode();
-    this.propertySuggestions?.refresh(document);
+    for (const doc of this.appearanceDocuments()) this.propertySuggestions?.refresh(doc);
     // Native drag frames only need column positions; defer decoration and
     // content measurements until the resize adapter finishes the gesture.
     if (this.ideaRows.isResizing()) return;
@@ -270,7 +435,7 @@ export default class NebulaFocus extends Plugin {
       if (!view._loaded) { adapter.destroy(); this.adapters.delete(view); }
       else if (adapter.host.isConnected) adapter.render();
     }
-    this.ideaTables.refresh(document);
+    for (const doc of this.appearanceDocuments()) this.ideaTables.refresh(doc);
     this.ideaTitles.prune();
     this.creationHistory?.prune();
     this.mobileActions?.prune();
@@ -279,15 +444,15 @@ export default class NebulaFocus extends Plugin {
     this.tableRender.prune();
     this.ideaHeaders?.prune();
     this.ideaTags.prune();
-    this.decorateTables();
-    this.decorateIdeaAttachments();
-    this.decorateTableImages();
+    for (const doc of this.appearanceDocuments()) {
+      this.decorateTables(doc); this.decorateIdeaAttachments(doc); this.decorateTableImages(doc);
+    }
     for (const el of this.edgeRoots) if (!el.isConnected) {this.edgeObserver?.unobserve(el); this.edgeRoots.delete(el);}
     for (const el of this.edgeEmbeds) if (!el.isConnected) this.edgeEmbeds.delete(el);
   }
 
   private syncTouchMode() {
-    document.body.classList.toggle('bui-touch', !!nativeAppField(this.app, 'isMobile') || !!window.matchMedia?.('(any-pointer: coarse)').matches);
+    this.syncAppearanceDocuments();
   }
 
   attach(view: unknown) {
@@ -329,10 +494,36 @@ export default class NebulaFocus extends Plugin {
     if (!this.active || this.disposed || this.ideaRows.isResizing()) return;
     // No width/font or row-height measurements here: this path runs for every
     // virtual viewport update and only touches the newly visible table's DOM.
+    const profile = tableProfile(view);
+    const titleColumns = new Set(tableTitleProfiles(view).map(title => title.titleColumn));
+    const config = record(view) && record(view.config) ? view.config : undefined;
+    let allowCreate = true;
+    try {allowCreate = !config || !callable(config.get) || config.get('nebulaAllowCreate') !== false;}
+    catch {/* A partially initialized native view will be retried after render. */}
+    root.dataset.buiAllowCreate = String(allowCreate);
+    if (profile) {
+      root.dataset.buiEnhancedTable = 'true';
+      root.dataset.buiTagProperties = JSON.stringify(Object.keys(profile.tags).map(key => `note.${key}`));
+      root.dataset.buiWrap = String(profile.wrap);
+    } else {
+      delete root.dataset.buiEnhancedTable;
+      delete root.dataset.buiTagProperties;
+      delete root.dataset.buiWrap;
+    }
+    for (const cell of root.querySelectorAll<HTMLElement>('.bases-td')) {
+      const property = cell.dataset.property ?? '';
+      cell.classList.toggle('bui-title-column', titleColumns.has(property));
+      const relation = isTableRelationProperty(profile, property, cell);
+      cell.classList.toggle('bui-relation-column', relation);
+      cell.classList.toggle('bui-tag-column', !relation && isTableTagProperty(profile, property));
+      cell.classList.toggle('bui-attachment-column', !!profile?.attachments.includes(property.replace(/^note\./, '')));
+    }
     this.ideaTables.refresh(root, true);
     this.ideaTitles.refresh(view);
     this.ideaHeaders?.attach(view);
     this.ideaTags.attach(view);
+    this.tableDetails.refresh(view, root);
+    this.financeSummary.refresh(view, root);
     this.decorateTables(root);
     this.decorateIdeaAttachments(root);
     this.decorateTableImages(root);
@@ -343,7 +534,7 @@ export default class NebulaFocus extends Plugin {
     let config: unknown;
     try {config = view.config;} catch {return false;}
     if (!record(config)) return false;
-    if (config.name !== '想法收集箱') return true;
+    if (!tableProfile(view)) return true;
     const controller = record(view.queryController) ? view.queryController : undefined;
     const host = controller?.viewContainerEl;
     // Factories can run before data/rows exist. Retry locally after a native
@@ -420,7 +611,7 @@ export default class NebulaFocus extends Plugin {
       el.classList.toggle('bui-overdue', isDueProperty(prop) && overdue(date?.value ?? el.textContent?.trim()));
       const link = el.querySelector<HTMLElement>('.external-link, .metadata-link-inner');
       if (link && /^(视频链接|链接|url|website)$/i.test(propertyName(prop)) &&
-          !el.contains(document.activeElement)) {
+          !el.contains(el.ownerDocument.activeElement)) {
         const text = link.textContent ?? '';
         const label = compactLink(text);
         if (label) {
@@ -457,7 +648,7 @@ export default class NebulaFocus extends Plugin {
 
   private decorateIdeaAttachments(root: ParentNode = document) {
     const seen = new Set<HTMLElement>();
-    for (const link of root.querySelectorAll<HTMLElement>('.bui-ideas-base .bases-td[data-property="note.文件和媒体"] .multi-select-pill-content.internal-link[data-href]')) {
+    for (const link of root.querySelectorAll<HTMLElement>('.bui-ideas-base .bases-td:is([data-property="note.文件和媒体"], .bui-attachment-column) .multi-select-pill-content.internal-link[data-href]')) {
       const href = link.dataset.href ?? '';
       if (!/\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(href)) continue;
       const pill = link.parentElement;
@@ -467,7 +658,7 @@ export default class NebulaFocus extends Plugin {
       const previous = this.attachmentThumbnails.get(link);
       if (previous?.href === href && previous.image.parentElement === pill) continue;
       if (previous) {previous.image.remove(); previous.pill.classList.remove('bui-attachment-with-thumb');}
-      const image = document.createElement('img');
+      const image = pill.ownerDocument.createElement('img');
       image.className = 'bui-attachment-thumb';
       image.src = this.app.vault.getResourcePath(file);
       image.alt = href.split('/').pop() ?? '图片';
@@ -543,6 +734,18 @@ export default class NebulaFocus extends Plugin {
     this.ideaRows.clear();
     this.tableRender.clear();
     this.ideaHeaders?.clear();
+    this.tableDetails.clear();
+    this.financeSummary.clear();
+    for (const doc of this.appearanceDocuments()) {
+      for (const root of doc.querySelectorAll<HTMLElement>('[data-bui-enhanced-table]')) {
+        delete root.dataset.buiEnhancedTable;
+        delete root.dataset.buiTagProperties;
+        delete root.dataset.buiWrap;
+      }
+      for (const root of doc.querySelectorAll<HTMLElement>('[data-bui-allow-create]')) delete root.dataset.buiAllowCreate;
+      for (const cell of doc.querySelectorAll('.bui-title-column, .bui-tag-column, .bui-relation-column, .bui-attachment-column'))
+        cell.classList.remove('bui-title-column', 'bui-tag-column', 'bui-relation-column', 'bui-attachment-column');
+    }
     for (const {image, pill} of this.attachmentThumbnails.values()) {image.remove(); pill.classList.remove('bui-attachment-with-thumb');}
     this.attachmentThumbnails.clear();
     for (const [img, attributes] of this.tableImages)
@@ -557,8 +760,9 @@ export default class NebulaFocus extends Plugin {
     this.linkLabels.clear();
     for (const [metadata, button] of this.metaButtons) {button.remove(); metadata.classList.remove('bui-show-aux');}
     this.metaButtons.clear();
-    document.querySelectorAll('.bui-duplicate-heading,.bui-overdue,.bui-has-bases,.bui-has-ideas,.bui-low-priority,.bui-cover-property').forEach(el =>
-      el.classList.remove('bui-duplicate-heading','bui-overdue','bui-has-bases','bui-has-ideas','bui-low-priority','bui-cover-property'));
+    for (const doc of this.appearanceDocuments())
+      doc.querySelectorAll('.bui-duplicate-heading,.bui-overdue,.bui-has-bases,.bui-has-ideas,.bui-low-priority,.bui-cover-property').forEach(el =>
+        el.classList.remove('bui-duplicate-heading','bui-overdue','bui-has-bases','bui-has-ideas','bui-low-priority','bui-cover-property'));
     for (const el of this.edgeEmbeds) {
       el.classList.remove('bui-edge-to-pane');
       el.style.removeProperty('--bui-right-bleed');
@@ -572,11 +776,13 @@ export default class NebulaFocus extends Plugin {
     this.creationHistory?.clear();
     this.mobileActions?.clear();
     this.active = false;
+    this.syncAppearanceDocuments();
     this.observer?.disconnect();
     window.clearTimeout(this.timer);
     for (const restore of this.factoryRestores) restore();
     this.clearPresentation();
-    document.body.classList.remove('bui-enabled', 'bui-touch');
+    for (const doc of this.appearanceDocuments()) doc.body?.classList.remove('bui-enabled', 'bui-touch');
+    this.presentationDocs.clear();
     this.app.workspace.trigger('css-change');
   }
 }

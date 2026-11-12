@@ -6,6 +6,7 @@ import {guardTouchScrollClicks, positionAnchoredPopover, preferPopoverInputFocus
 import {readIdeaTagValues as valuesOf, supportsIdeaTagCell} from './idea-tag-support';
 import {TagDragMotion} from './tag-drag-motion';
 import {inheritTagTypography} from './tag-typography';
+import {tableProfile} from './table-profile';
 export type {IdeaTagOrderStore} from './idea-tag-order';
 
 // Bases has no public cell-editor extension point. If this guarded adapter no
@@ -20,10 +21,11 @@ function readableEntry(value: unknown): value is ReadableEntry {
 function tagCell(value: unknown): value is TagCell {
   return isIdeaCell(value) && !!value.renderer && readableEntry(value.renderer.entry);
 }
-type Property = '领域' | '类型' | '重要性';
+type Property = string;
+type TagMode = 'single' | 'multi';
 type Value = string | string[];
 type Binding = {view: EditableIdeaView; host: HTMLElement; removeListeners: (() => void)[]; markedCells: Set<HTMLElement>};
-type Target = {binding: Binding; cell: TagCell; anchor: HTMLElement; entry: ReadableEntry; property: Property};
+type Target = {binding: Binding; cell: TagCell; anchor: HTMLElement; entry: ReadableEntry; property: Property; mode: TagMode};
 type Choice = {value: string; create: boolean};
 type Drag = {
   pointerId: number; value: string; row: HTMLElement; startX: number; startY: number; moved: boolean;
@@ -37,7 +39,6 @@ type Editor = Target & {
   orderKey: string | null; order: string[]; drag?: Drag; ignoreClick: boolean;
   composing: boolean; imeEnded: boolean; busy: boolean; autoInputFocus: boolean; removeListeners: (() => void)[];
 };
-const PROPERTIES = new Set(['领域', '类型', '重要性']);
 let nextId = 0;
 
 function listen(target: EventTarget, type: string, listener: EventListener, capture = false): () => void {
@@ -47,14 +48,14 @@ function listen(target: EventTarget, type: string, listener: EventListener, capt
 function element(target: EventTarget | null): HTMLElement | null {
   return target && (target as Node).nodeType === 1 ? target as HTMLElement : null;
 }
-function rawValue(values: string[], property: Property): Value {
-  return property === '领域' ? values : values[0] ?? '';
+function rawValue(values: string[], mode: TagMode): Value {
+  return mode === 'multi' ? values : values[0] ?? '';
 }
 function unmodified(event: MouseEvent | KeyboardEvent): boolean {
   return !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
 }
 
-/** A popover for three native idea-table properties. Only explicit option and
+/** A popover for explicitly configured native classification properties. Only explicit option and
  * toggle actions call Bases.updateProperty, preserving its transaction/undo
  * path. Opening, filtering, blur and cancellation never write note data.
  */
@@ -94,7 +95,7 @@ export class IdeaTagEditors {
     const values = new Set<string>();
     for (const entry of this.entries(view)) {
       if (typeof entry?.getRawProperty !== 'function') continue;
-      try {for (const value of valuesOf(entry.getRawProperty(property), property) ?? []) values.add(value);} catch { /* Skip unsupported entries. */ }
+      try {for (const value of valuesOf(entry.getRawProperty(property), tableProfile(view)?.tags[property]) ?? []) values.add(value);} catch { /* Skip unsupported entries. */ }
     }
     for (const value of [...options.added, ...selected]) values.add(value);
     return {...options, order, values: applyTagOrder([...values], order).filter(value => !options.hidden.includes(value))};
@@ -103,9 +104,9 @@ export class IdeaTagEditors {
   /** Called by the header adapter; returns false for non-classification columns. */
   manage(view: unknown, rawProperty: string, anchor: HTMLElement, keyboard = false): boolean {
     if (!isIdeaView(view)) return false;
-    const property = rawProperty.replace(/^note\./, '') as Property;
+    const property = rawProperty.replace(/^note\./, '');
     const key = ideaTagOrderKey(view, property);
-    if (!rawProperty.startsWith('note.') || !PROPERTIES.has(property) || !key || !this.orderStore?.writeOptions) return false;
+    if (!rawProperty.startsWith('note.') || !tableProfile(view)?.tags[property] || !key || !this.orderStore?.writeOptions) return false;
     this.close();
     return this.manager.open({view, property, anchor, keyboard, read: () => this.catalog(view, property),
       save: async (options: IdeaTagOptions) => {
@@ -122,7 +123,7 @@ export class IdeaTagEditors {
     const container = view.containerEl;
     const candidate = view.queryController?.viewContainerEl;
     const host = isHtmlElement(candidate) && candidate.contains(container) ? candidate : container.parentElement;
-    if (!host || !container || view?.type !== 'table' || view.config?.name !== '想法收集箱' ||
+    if (!host || !container || view?.type !== 'table' || !tableProfile(view) ||
         typeof view.getCellFromDom !== 'function' || typeof view.updateProperty !== 'function' ||
         !container.isConnected || view._loaded === false) {
       const old = this.bindings.get(view);
@@ -183,11 +184,13 @@ export class IdeaTagEditors {
     const anchor = el?.closest<HTMLElement>('.bases-td[data-property]');
     if (!anchor || !view.containerEl.contains(anchor) || !binding.host.contains(anchor)) return null;
     const property = anchor.dataset.property?.replace(/^note\./, '') as Property;
-    if (!anchor.dataset.property?.startsWith('note.') || !PROPERTIES.has(property)) return null;
+    if (!anchor.dataset.property?.startsWith('note.') || !tableProfile(view)?.tags[property]) return null;
     const cell = view.getCellFromDom(anchor);
     if (!tagCell(cell)) return null;
     const entry = cell.renderer.entry;
-    const result: Target = {binding, cell, anchor, entry, property};
+    const mode = tableProfile(view)?.tags[property];
+    if (!mode) return null;
+    const result: Target = {binding, cell, anchor, entry, property, mode};
     return this.editable(result) ? result : null;
   }
 
@@ -203,7 +206,7 @@ export class IdeaTagEditors {
 
   private editable(target: Target): boolean {
     const {binding, anchor, cell, entry, property} = target, {view} = binding;
-    if (!supportsIdeaTagCell(view, cell, property, anchor) ||
+    if (tableProfile(view)?.tags[property] !== target.mode || !supportsIdeaTagCell(view, cell, property, anchor) ||
         !anchor.isConnected || !binding.host.contains(anchor) || !view.containerEl.contains(anchor) ||
         cell.renderer.entry?.file?.path !== entry.file.path ||
         anchor.dataset.property !== `note.${property}`) return false;
@@ -258,15 +261,15 @@ export class IdeaTagEditors {
     const optionsEl = make('div', 'bui-tag-editor-options');
     optionsEl.id = `bui-tag-options-${++nextId}`; optionsEl.setAttribute('role', 'listbox');
     optionsEl.setAttribute('aria-label', `${property}选项`);
-    if (property === '领域') optionsEl.setAttribute('aria-multiselectable', 'true');
+    if (target.mode === 'multi') optionsEl.setAttribute('aria-multiselectable', 'true');
     input.setAttribute('aria-controls', optionsEl.id);
     const statusEl = make('div', 'bui-tag-editor-status'); statusEl.setAttribute('role', 'status'); statusEl.hidden = true;
     popup.append(selectedEl, input, optionsEl, statusEl);
     const orderKey = ideaTagOrderKey(view, property);
     const edit: Editor = {...target, file: entry.file, query: view.config?.query, popup, selectedEl, input,
-      optionsEl, statusEl, values: valuesOf(entry.getRawProperty(property), property)!,
-      displayedValues: valuesOf(entry.getRawProperty(property), property)!, saving: false, closeOnSync: false, lastAttemptFailed: false,
-      observedValues: valuesOf(entry.getRawProperty(property), property)!, awaitingValues: [], choices: [], active: 0,
+      optionsEl, statusEl, values: valuesOf(entry.getRawProperty(property), tableProfile(view)?.tags[property])!,
+      displayedValues: valuesOf(entry.getRawProperty(property), tableProfile(view)?.tags[property])!, saving: false, closeOnSync: false, lastAttemptFailed: false,
+      observedValues: valuesOf(entry.getRawProperty(property), tableProfile(view)?.tags[property])!, awaitingValues: [], choices: [], active: 0,
       orderKey, order: this.readOrder(orderKey), ignoreClick: false,
       composing: false, imeEnded: false, busy: false, autoInputFocus, removeListeners: []};
     this.editor = edit;
@@ -563,7 +566,7 @@ export class IdeaTagEditors {
     const entry = this.currentEntry(edit);
     if (!entry) {this.close(); return;}
     let observed: string[] | null;
-    try {observed = valuesOf(entry.getRawProperty(edit.property), edit.property);} catch {this.close(); return;}
+    try {observed = valuesOf(entry.getRawProperty(edit.property), edit.mode);} catch {this.close(); return;}
     if (!observed) {this.close(); return;}
     // Bases refreshes query entries asynchronously after updateProperty. Keep
     // explicit additions made in this popover until those results catch up;
@@ -582,10 +585,10 @@ export class IdeaTagEditors {
       }
     }
     const current = edit.values, remove = current.includes(value);
-    const next = remove ? current.filter(item => item !== value) : edit.property === '领域'
+    const next = remove ? current.filter(item => item !== value) : edit.mode === 'multi'
       ? current.includes(value) ? current : [...current, value] : [value];
     if (JSON.stringify(next) === JSON.stringify(current)) {
-      if (edit.property !== '领域' && !remove) this.close(true);
+      if (edit.mode !== 'multi' && !remove) this.close(true);
       else {this.renderSelected(edit); this.renderOptions(edit);}
       return;
     }
@@ -598,10 +601,10 @@ export class IdeaTagEditors {
     try {
       // This is the native property renderer's write API. It records a Bases
       // transaction for undo/redo and keeps the native permission/write path.
-      await edit.binding.view.updateProperty(edit.file, edit.property, rawValue(next, edit.property));
+      await edit.binding.view.updateProperty(edit.file, edit.property, rawValue(next, edit.mode));
       if (this.editor !== edit) return;
       edit.values = next; edit.awaitingValues.push(next); edit.pendingDisplay = next;
-      edit.clearInputOnSync = submittedInput; edit.closeOnSync = edit.property !== '领域';
+      edit.clearInputOnSync = submittedInput; edit.closeOnSync = edit.mode !== 'multi';
     } catch {
       if (this.editor === edit) {
         edit.lastAttemptFailed = true; edit.statusEl.textContent = '未能保存，请重试'; edit.statusEl.hidden = false;
@@ -636,13 +639,13 @@ export class IdeaTagEditors {
     const entry = this.currentEntry(edit);
     if (!entry) {this.close(); return;}
     let actual: string[] | null, rendered: string[] | null;
-    try {actual = valuesOf(entry.getRawProperty(edit.property), edit.property);} catch {return;}
+    try {actual = valuesOf(entry.getRawProperty(edit.property), edit.mode);} catch {return;}
     if (!actual) return;
     rendered = actual;
     // Guarded native Bases property renderer stores the exact rendered raw
     // value in val. Unknown renderer versions safely use the real query data.
     if (typeof edit.cell.renderer.val === 'string') {
-      try {rendered = valuesOf(JSON.parse(edit.cell.renderer.val), edit.property) ?? actual;} catch { /* Native fallback. */ }
+      try {rendered = valuesOf(JSON.parse(edit.cell.renderer.val), edit.mode) ?? actual;} catch { /* Native fallback. */ }
     }
     const expected = JSON.stringify(edit.pendingDisplay), current = JSON.stringify(actual);
     if (JSON.stringify(rendered) !== current) return;
@@ -691,7 +694,7 @@ export class IdeaTagEditors {
       // flush only that native notification. Never alter a query entry or cell
       // contents to simulate acknowledgement.
       try {
-        const actual = valuesOf(this.currentEntry(edit)?.getRawProperty(edit.property), edit.property);
+        const actual = valuesOf(this.currentEntry(edit)?.getRawProperty(edit.property), edit.mode);
         const notify = edit.binding.view.queryController?.requestNotifyView;
         if (JSON.stringify(actual) === JSON.stringify(edit.pendingDisplay) &&
             (typeof notify === 'function' || object(notify)) && 'run' in notify && typeof notify.run === 'function')
@@ -737,7 +740,7 @@ export class IdeaTagEditors {
   prune() {
     this.manager.prune();
     for (const binding of this.bindings.values()) {
-      if (!binding.host.isConnected || binding.view._loaded === false || binding.view.config?.name !== '想法收集箱') this.detach(binding);
+      if (!binding.host.isConnected || binding.view._loaded === false || !tableProfile(binding.view)) this.detach(binding);
       else this.refreshCellMarkers(binding);
     }
     if (this.editor && !this.currentEntry(this.editor)) this.close();

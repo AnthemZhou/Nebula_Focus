@@ -72,7 +72,7 @@ function fixture() {
     showAtPosition(position){this.position=position;}
     showAtMouseEvent(){}
   }
-  const api = {Plugin, PluginSettingTab: class {}, TFile, TFolder: class {}, ItemView: class extends Component {}, MarkdownView, Component, Modal, Notice:class{constructor(message){notices.push(message);}}, Menu, setIcon(){}};
+  const api = {Plugin, PluginSettingTab: class {}, TFile, TFolder: class {}, ItemView: class extends Component {}, BasesView: class extends Component {}, MarkdownView, Component, Modal, Notice:class{constructor(message){notices.push(message);}}, Menu, setIcon(){}};
   const mod = {exports:{}};
   new vm.Script(fs.readFileSync('main.js','utf8')).runInContext(vm.createContext({
     module:mod,exports:mod.exports,require:name => {assert.equal(name,'obsidian'); return api;},
@@ -796,6 +796,64 @@ test('unloading during settings load cannot resurrect decorations or listeners',
   assert.equal(f.doc.body.classList.contains('bui-enabled'), false);
   assert.equal(f.plugin.adapters.size, 0);
   assert.equal(f.plugin.disposed, true);
+  // A late callback from the old plugin must not clear the reloaded instance's mode.
+  f.doc.body.classList.add('bui-enabled');
+  f.plugin.scan(); f.plugin.schedule();
+  assert.equal(f.doc.body.classList.contains('bui-enabled'),true);
+  assert.equal(f.plugin.timer,0);
+});
+
+test('native appearance removes presentation in every window and restores the real sidebar without changing notes', async () => {
+  const f = fixture(), popout = new JSDOM('<!doctype html><body></body>');
+  try {
+    const switched = [], saved = [];
+    f.plugin.schedule = () => {};
+    f.app.workspace.getActiveFile = () => null;
+    f.app.workspace.iterateAllLeaves = visit => visit({view:{containerEl:popout.window.document.body}});
+    f.plugin.pageSidebar = {setEnabled:async enabled => switched.push(enabled)};
+    f.plugin.saveData = async data => saved.push(JSON.parse(JSON.stringify(data)));
+    f.plugin.uiSettings = {tagOptions:{domain:{added:['New']}}, pageSidebar:{collapsed:['A']}};
+    for (const doc of [f.doc, popout.window.document]) {
+      const el = doc.createElement('div');
+      el.className = 'bui-title-column bui-tag-column bui-overdue bui-has-bases';
+      el.dataset.buiEnhancedTable = 'true'; el.dataset.buiTagProperties = '[]';
+      el.dataset.buiWrap = 'true'; el.dataset.buiAllowCreate = 'true'; doc.body.append(el);
+    }
+    f.plugin.syncAppearanceDocuments();
+    assert(popout.window.document.body.classList.contains('bui-enabled'));
+    f.plugin.attach(f.view);
+    await f.plugin.setAppearance(false);
+    for (const doc of [f.doc, popout.window.document]) {
+      assert(!doc.body.classList.contains('bui-enabled'));
+      assert(!doc.body.classList.contains('bui-touch'));
+      assert.equal(doc.querySelector('.bui-title-column,.bui-tag-column,.bui-overdue,.bui-has-bases,[data-bui-enhanced-table],[data-bui-allow-create]'),null);
+    }
+    assert.equal(f.doc.querySelector('.bui-presentation'),null);
+    assert.equal(f.native.hidden,false);
+    assert.deepEqual(switched,[false]);
+    assert.equal(saved.at(-1).appearanceMode,'native');
+    assert.deepEqual(saved.at(-1).tagOptions,{domain:{added:['New']}});
+    assert.deepEqual(f.writes,[]);
+    await f.plugin.setAppearance(true);
+    assert.equal(f.plugin.active,true); assert.deepEqual(switched,[false,true]);
+    assert(popout.window.document.body.classList.contains('bui-enabled'));
+    assert.equal(saved.at(-1).appearanceMode,'enhanced');
+    f.plugin.onunload();
+    assert(!popout.window.document.body.classList.contains('bui-enabled'));
+  } finally {popout.window.close(); f.close();}
+});
+
+test('rapid appearance switches serialize preferences alongside tag edits and keep the last choice', async () => {
+  const f=fixture();
+  try {
+    f.plugin.schedule=()=>{}; f.app.workspace.getActiveFile=()=>null;
+    f.plugin.pageSidebar={setEnabled:async()=>{}};
+    f.plugin.saveData=async()=>{await Promise.resolve();};
+    await Promise.all([f.plugin.setAppearance(false),f.plugin.saveTagOrder('domain',['AI']),f.plugin.setAppearance(true),f.plugin.setAppearance(false)]);
+    assert.equal(f.plugin.active,false); assert.equal(f.plugin.uiSettings.appearanceMode,'native');
+    assert.deepEqual(Array.from(f.plugin.uiSettings.tagOptionOrder.domain),['AI']);
+    assert.equal(f.doc.body.classList.contains('bui-enabled'),false);
+  } finally {f.close();}
 });
 
 test('tag option additions/removals save atomically with order and retain concurrent preferences', async () => {

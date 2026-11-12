@@ -28,6 +28,16 @@ type HistoryView = {
   createNoteInGroup?: UnknownMethod; isGroupedByFolder?: boolean; isReadOnly?: boolean;
   getEphemeralState?: () => unknown; setEphemeralState?: (state: unknown) => void; showError?: (error: unknown) => void;
 };
+/** A single-record table can edit its record without offering another record.
+ * This is creation policy only; property transactions and history stay native. */
+function allowsCreation(view: HistoryView): boolean {
+  const config = view.config;
+  if (!config) return true;
+  try {
+    const get = field(config, 'get');
+    return (method(get) ? get.call(config, 'nebulaAllowCreate') : field(config, 'nebulaAllowCreate')) !== false;
+  } catch {return false;}
+}
 function optional(value: unknown, valid: (value: unknown) => boolean): boolean {return value === undefined || valid(value);}
 function htmlElement(value: unknown): value is HTMLElement {
   const constructor = field(field(field(value, 'ownerDocument'), 'defaultView'), 'HTMLElement');
@@ -63,6 +73,7 @@ function historyView(value: unknown): value is HistoryView {
 }
 
 type Created = {file: TFile; path: string; content: string; ctime: number; mtime: number; removed: boolean; titleTouched?: boolean};
+type RenameMarker = {changes: [{file: TFile; fromPath: string; toPath: string}]; state?: unknown};
 type Session = {key: string; leaf: WorkspaceLeaf; file: unknown};
 type Suspended = {session: Session; records: Map<unknown, Created>; properties: Set<unknown>; undo: unknown[]; redo: unknown[]; wasLast: boolean};
 // Phone views backed by a real external Base share history across source tabs.
@@ -116,8 +127,65 @@ export class BaseCreationHistory {
   private surfaces = new Map<unknown, Set<HTMLElement>>();
   private suspended = new Map<string, Suspended>();
   private phones = new Set<PhoneScope>();
+  private renames = new WeakSet<object>();
   private last?: Binding;
   constructor(private app: App, private changed: (view: unknown) => void = () => {}) {}
+
+  /** Change only the basename through Obsidian's link-aware file manager.
+   * The same serialized history owns creation, source properties and renames. */
+  async rename(view: unknown, candidate: unknown, basename: string): Promise<void> {
+    this.attach(view);
+    const binding = this.bindings.get(view), path = field(candidate, 'path');
+    if (!binding || !this.available(binding) || typeof path !== 'string') throw Error('当前数据库不可编辑，未重命名笔记');
+    if (typeof basename !== 'string' || !basename || basename !== basename.trim() || basename === '.' || basename === '..' ||
+        /[\\/:*?"<>|]/.test(basename) || [...basename].some(char => char.charCodeAt(0) < 32) ||
+        /[. ]$/.test(basename) || /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(basename))
+      throw Error('笔记名称不能为空，或包含文件名不支持的字符');
+    const toPath = path.slice(0, path.lastIndexOf('/') + 1) + basename + '.md';
+    this.pending(binding, 1); this.last = binding;
+    return this.serial(binding, async () => {
+      if (!this.available(binding)) throw Error('数据库已关闭或不可编辑，未重命名笔记');
+      const file = this.app.vault.getFileByPath(path);
+      if (!file || file !== candidate || file.path !== path || file.extension !== 'md')
+        throw Error('原笔记已移动或被替换，未重命名其他文件');
+      if (toPath === path) return;
+      const marker: RenameMarker = {changes: [{file, fromPath: path, toPath}], state: binding.view.getEphemeralState?.()};
+      await this.moveFilename(file, path, toPath);
+      // A successful native operation can finish after its original renderer
+      // unmounts. Keep the marker in the original still-open session only.
+      this.renames.add(marker);
+      const phone = binding.phone;
+      if (phone && this.phones.has(phone) && this.phoneOpen(phone)) {
+        phone.redo = []; phone.undo.push(marker); this.syncPhone(phone);
+      } else if (!phone && binding.live) {
+        binding.view.redoStack = []; binding.view.undoStack.push(marker);
+      } else if (!phone && binding.session && this.sessionOpen(binding.session)) {
+        const replacement = [...this.bindings.values()].find(peer => peer.live && !peer.phone && peer.session?.key === binding.session?.key);
+        const saved = this.suspended.get(binding.session.key);
+        if (replacement) {replacement.view.redoStack = []; replacement.view.undoStack.push(marker); this.notify(replacement);}
+        else if (saved) {saved.redo = []; saved.undo.push(marker);}
+      }
+      if (binding.live) binding.view.queryController.requestNotifyView?.();
+    }, () => {this.pending(binding, -1);});
+  }
+
+  private async moveFilename(file: TFile, fromPath: string, toPath: string): Promise<void> {
+    // Retrying a completed move is harmless when a native refresh interrupted
+    // the history transition; a different identity or path is never adopted.
+    if (file.path === toPath && this.app.vault.getAbstractFileByPath(toPath) === file) return;
+    if (file.extension !== 'md' || file.path !== fromPath || this.app.vault.getAbstractFileByPath(fromPath) !== file)
+      throw Error('原笔记已移动或被替换，重命名记录已保留');
+    const occupied = this.app.vault.getAbstractFileByPath(toPath);
+    if (occupied && occupied !== file) throw Error('目标名称已有文件，未覆盖；重命名记录已保留');
+    if (typeof this.app.fileManager.renameFile !== 'function') throw Error('原生重命名接口不可用');
+    await this.app.fileManager.renameFile(file, toPath);
+    if (file.path !== toPath || this.app.vault.getAbstractFileByPath(toPath) !== file)
+      throw Error('未能确认重命名结果，请检查笔记路径');
+  }
+
+  private isRename(marker: unknown): marker is RenameMarker {
+    return recordValue(marker) && this.renames.has(marker);
+  }
 
   attach(view: unknown) {
     if (!historyView(view)) return;
@@ -149,10 +217,11 @@ export class BaseCreationHistory {
       phoneCreationReceiver: this.phoneCreationReceiver.bind(this), historyReceiver: this.historyReceiver.bind(this),
       enqueue: this.enqueue.bind(this), setLast: () => {this.last = binding;}, app: this.app};
     binding.wrappedOpen = function(...args: unknown[]) {
+      if (!allowsCreation(view)) return;
       if (!itemMenu(this)) return binding.open.apply(this, args);
       history.pending(binding, 1); history.setLast();
       return history.serial(binding, async () => {
-      const available = () => history.available(binding) && this.queryController?.view === view && view.queryController?.newItemMenu === this;
+      const available = () => allowsCreation(view) && history.available(binding) && this.queryController?.view === view && view.queryController?.newItemMenu === this;
       if (!available() || binding.creating) return;
       binding.creating = true;
       const previous = this.newlyCreatedFile;
@@ -175,6 +244,7 @@ export class BaseCreationHistory {
       const groupCreate = view.createNoteInGroup;
       binding.groupCreate = groupCreate;
       binding.wrappedGroupCreate = function(group: unknown, ...args: unknown[]) {
+        if (!allowsCreation(view)) return;
         const key = field(group, 'key');
         const manager = history.app.fileManager;
         const createMarkdown = field(manager, 'createNewMarkdownFile'), folderPath = field(key, 'data');
@@ -184,7 +254,7 @@ export class BaseCreationHistory {
           return groupCreate.call(this, group, ...args);
         history.pending(binding, 1); history.setLast();
         return history.serial(binding, async () => {
-          if (!history.available(binding)) return;
+          if (!allowsCreation(view) || !history.available(binding)) return;
           const folder = history.app.vault.getFolderByPath(folderPath);
           if (!folder) {new Notice('目标文件夹不存在，未新建笔记'); return;}
           binding.creating = true;
@@ -485,6 +555,19 @@ export class BaseCreationHistory {
     const owned = () => binding.live || !!binding.phone && this.phones.has(binding.phone) && this.phoneOpen(binding.phone);
     const unchanged = () => source === (redo ? binding.phone?.redo ?? view.redoStack : binding.phone?.undo ?? view.undoStack) &&
       target === (redo ? binding.phone?.undo ?? view.undoStack : binding.phone?.redo ?? view.redoStack) && source.at(-1) === marker;
+    if (this.isRename(marker)) {
+      try {
+        const change = marker.changes[0];
+        await this.moveFilename(change.file, redo ? change.fromPath : change.toPath, redo ? change.toPath : change.fromPath);
+        if (!owned() || !unchanged()) return;
+        source.pop(); target.push(marker);
+        if (binding.live) {
+          if (marker.state) view.setEphemeralState?.(marker.state);
+          view.queryController.requestNotifyView?.(); this.focus(binding);
+        }
+      } catch (error) {new Notice(error instanceof Error ? error.message : '重命名撤销未完成，历史记录已保留');}
+      return;
+    }
     if (!record) {
       if (binding.properties.has(marker)) {
         try {
@@ -615,7 +698,7 @@ export class BaseCreationHistory {
   }
   private detach(binding: Binding, preserve = false) {
     const saved = !binding.phone && preserve && binding.session && this.sessionOpen(binding.session) &&
-      (binding.records.size || binding.properties.size || binding.view.undoStack.length || binding.view.redoStack.length);
+      (binding.records.size || binding.properties.size || binding.view.undoStack.length || binding.view.redoStack.length || this.pending(binding));
     if (saved && binding.session) {
       this.suspended.set(binding.session.key, {session: binding.session, records: new Map(binding.records),
         properties: new Set(binding.properties), undo: [...binding.view.undoStack], redo: [...binding.view.redoStack], wasLast: this.last === binding});
@@ -635,7 +718,7 @@ export class BaseCreationHistory {
     if (binding.wrappedGroupCreate && binding.view.createNoteInGroup === binding.wrappedGroupCreate) binding.view.createNoteInGroup = binding.groupCreate;
     const removed = new Set<unknown>([...binding.records.values()].filter(record => record.removed).map(record => record.file));
     if (!scoped) for (const key of ['undoStack', 'redoStack'] as const) binding.view[key] = binding.view[key].flatMap(item => {
-      if (binding.records.has(item)) return [];
+      if (binding.records.has(item) || this.isRename(item)) return [];
       if (!recordValue(item) || !Array.isArray(item.changes)) return [item];
       const original: unknown[] = item.changes;
       const changes = original.filter(change => !recordValue(change) || !removed.has(change.file));
@@ -645,5 +728,5 @@ export class BaseCreationHistory {
     this.bindings.delete(binding.view);
     if (this.last === binding) this.last = undefined;
   }
-  clear() {for (const binding of this.bindings.values()) this.detach(binding); this.surfaces.clear(); this.suspended.clear(); this.phones.clear();}
+  clear() {for (const binding of this.bindings.values()) this.detach(binding); this.surfaces.clear(); this.suspended.clear(); this.phones.clear(); this.renames = new WeakSet();}
 }

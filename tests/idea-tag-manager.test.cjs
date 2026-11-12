@@ -6,20 +6,20 @@ const {JSDOM}=require('jsdom');
 const code=buildSync({stdin:{contents:"export {IdeaTagEditors} from './src/idea-tag-editor'; export {IdeaHeaders} from './src/idea-header';",resolveDir:process.cwd()},
   bundle:true,write:false,platform:'node',format:'cjs',external:['obsidian']}).outputFiles[0].text;
 
-function fixture({failed=false,renameFailed=false,saveWait}={}) {
+function fixture({failed=false,renameFailed=false,saveWait,name='想法收集箱',profile,records}={}) {
   const dom=new JSDOM('<!doctype html><body><button id="outside">Outside</button><div class="host"><div class="bases-view" tabindex="0"><div class="bases-thead"></div><div class="bases-tbody"></div></div></div></body>',{pretendToBeVisual:true});
   const win=dom.window,doc=win.document,container=doc.querySelector('.bases-view'),head=doc.querySelector('.bases-thead'),tbody=doc.querySelector('.bases-tbody');
   const cells=new Map(),configs=new Map(),saved=[],writes=[],displayWrites=[],data=new Map(),notices=[];
-  const entry={file:{path:'ideas/one.md',extension:'md'},raw:{领域:['Blender'],类型:'技术',重要性:'!'},getRawProperty(name){return this.raw[name];}};
-  const other={file:{path:'ideas/two.md',extension:'md'},raw:{领域:['AI','编程','C4D'],类型:'流程',重要性:'! !'},getRawProperty(name){return this.raw[name];}};
+  const entry={file:{path:'ideas/one.md',extension:'md'},raw:records?.[0]??{领域:['Blender'],类型:'技术',重要性:'!'},getRawProperty(name){return this.raw[name];}};
+  const other={file:{path:'ideas/two.md',extension:'md'},raw:records?.[1]??{领域:['AI','编程','C4D'],类型:'流程',重要性:'! !'},getRawProperty(name){return this.raw[name];}};
   const view={_loaded:true,type:'table',containerEl:container,theadEl:head,
-    config:{name:'想法收集箱',query:{file:{path:'Bases/Ideas.base'},saveFn(){if(renameFailed)throw Error('save failure');}},getPropertyConfig:prop=>configs.get(prop)},
+    config:{name,nebulaTable:profile,query:{file:{path:'Bases/Ideas.base'},saveFn(){if(renameFailed)throw Error('save failure');}},getPropertyConfig:prop=>configs.get(prop)},
     queryController:{viewContainerEl:doc.querySelector('.host'),results:new Map([[entry.file,entry],[other.file,other]]),requestNotifyView(){}},
     getCellFromDom:el=>cells.get(el.closest('.bases-td')),focus:()=>container.focus(),
     async updateProperty(file,property,value){writes.push({file,property,value:structuredClone(value)});entry.raw[property]=structuredClone(value);}};
   view.queryController.view=view;
   const geometry=el=>el.getBoundingClientRect=()=>({left:100,right:250,top:70,bottom:100,width:150,height:30});
-  for(const prop of ['领域','类型','重要性']){
+  for(const prop of Object.keys(entry.raw)){
     let label=prop; configs.set('note.'+prop,{getDisplayName:()=>label,setDisplayName(value){label=value;displayWrites.push({prop,value});}});
     const el=doc.createElement('div');el.className='bases-td';el.dataset.property='note.'+prop;
     el.innerHTML='<span class="bases-table-header-name">'+prop+'</span><span class="bases-table-header-resizer"></span>';head.append(el);geometry(el);
@@ -293,5 +293,17 @@ test('closing a manager before a row hold expires leaves no delayed ghost or wri
     f.open();f.dragGeometry();f.pointer(f.option('AI').querySelector('.bui-tag-manager-chip'),'pointerdown',{pointerType:'touch'});
     f.editor.clear();await new Promise(resolve=>f.win.setTimeout(resolve,200));
     assert.equal(f.doc.querySelector('.bui-tag-drag-overlay'),null);assert.deepEqual(f.saved,[]);assert.deepEqual(f.writes,[]);
+  }finally{f.close();}
+});
+
+
+test('finance classification headers open the catalog, manage options and rename without editing records',async()=>{
+  const profile={titleColumn:'formula.流水页面',titleProperty:'流水摘要',tags:{方向:'single'},wrap:true,attachments:[]};
+  const f=fixture({name:'收支流水',profile,records:[{方向:'支出'},{方向:'收入'}]});try{
+    assert.ok(f.open('方向'));assert.equal(f.sorts,0);assert.deepEqual(f.options(),['支出','收入']);
+    f.add('转账');await f.tick();assert.deepEqual(f.options(),['支出','收入','转账']);assert.deepEqual(f.writes,[]);
+    const input=f.doc.querySelector('.bui-tag-manager-name-input');input.value='收支方向';f.key(input,'Enter');await f.tick();
+    assert.equal(f.configs.get('note.方向').getDisplayName(),'收支方向');assert.deepEqual(f.writes,[]);
+    profile.tags={};f.add('不能添加');await f.tick();assert.equal(f.saved.length,1,'removed classification schema cannot keep an active manager write path');
   }finally{f.close();}
 });

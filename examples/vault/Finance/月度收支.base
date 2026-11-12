@@ -1,0 +1,62 @@
+{
+  "filters": {
+    "and": [
+      "note[\"nf_source_collection\"] == \"example-ledger\"",
+      "file.inFolder(\"Finance\")",
+      "note[\"入账状态\"] == \"已确认\""
+    ]
+  },
+  "formulas": {
+    "月份": "if(note[\"交易日期\"], date(note[\"交易日期\"]).format(\"YYYY-MM\"), \"日期未提供\")",
+    "Nebula标题_流水摘要": "link(file.path, if(note[\"流水摘要\"], note[\"流水摘要\"], file.name))"
+  },
+  "views": [
+    {
+      "type": "table",
+      "showSummaries": true,
+      "scopeNote": "只查看已确认流水；月度现金净额不代表利润。展示列的现金流入／流出是导入快照，汇总使用本地金额和方向。",
+      "name": "按月看现金收支",
+      "titleProperty": "note.流水摘要",
+      "groupBy": {
+        "property": "formula.月份",
+        "direction": "DESC"
+      },
+      "order": [
+        "formula.Nebula标题_流水摘要",
+        "note.交易日期",
+        "note.现金流入",
+        "note.现金流出",
+        "note.收支类别",
+        "note.关联项目"
+      ],
+      "numberProperties": [
+        "note.现金流入",
+        "note.现金流出"
+      ],
+      "tagProperties": [
+        "note.收支类别"
+      ],
+      "sort": [
+        {
+          "property": "note.交易日期",
+          "direction": "DESC"
+        }
+      ],
+      "nebulaTable": {
+        "titleProperty": "流水摘要",
+        "titleColumn": "formula.Nebula标题_流水摘要",
+        "tags": {
+          "收支类别": "single"
+        },
+        "wrap": true,
+        "attachments": [],
+        "scopeNote": "只查看已确认流水；月度现金净额不代表利润。展示列的现金流入／流出是导入快照，汇总使用本地金额和方向。"
+      }
+    }
+  ],
+  "properties": {
+    "formula.Nebula标题_流水摘要": {
+      "displayName": "流水摘要"
+    }
+  }
+}

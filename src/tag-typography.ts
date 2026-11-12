@@ -1,6 +1,17 @@
 import {object, isHtmlElement} from './idea-native';
 /** Body-level popovers do not inherit the table's font settings. Snapshot the
  * visible value once on open, including custom fonts and mobile text scaling. */
+export function inheritPopoverTypography(popup: HTMLElement, source: HTMLElement) {
+  const style = source.ownerDocument.defaultView?.getComputedStyle(source);
+  if (!style) return;
+  // Read computed values, not inline declarations: a relative source font must
+  // not be resolved again against the body-mounted popup's different parent.
+  for (const name of ['font-size', 'font-family', 'font-weight', 'line-height']) {
+    const actual = style.getPropertyValue(name).trim();
+    if (actual) popup.style.setProperty(`--bui-source-tag-${name}`, actual);
+  }
+}
+
 export function inheritTagTypography(popup: HTMLElement, anchor: HTMLElement, view: unknown, property: string) {
   const value = (cell: HTMLElement) => cell.querySelector<HTMLElement>(
     '.multi-select-pill-content, .metadata-input-longtext, .bases-rendered-value');
@@ -16,10 +27,5 @@ export function inheritTagTypography(popup: HTMLElement, anchor: HTMLElement, vi
     }
   }
   source ??= anchor;
-  const style = source.ownerDocument.defaultView?.getComputedStyle(source);
-  if (!style) return;
-  for (const name of ['font-size', 'font-family', 'font-weight', 'line-height']) {
-    const actual = style.getPropertyValue(name).trim();
-    if (actual) popup.style.setProperty(`--bui-source-tag-${name}`, actual);
-  }
+  inheritPopoverTypography(popup, source);
 }

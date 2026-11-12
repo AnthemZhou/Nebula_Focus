@@ -1,0 +1,51 @@
+{
+  "filters": {
+    "and": [
+      "note[\"nf_source_collection\"] == \"example-overview\"",
+      "file.inFolder(\"Finance\")"
+    ]
+  },
+  "views": [
+    {
+      "type": "table",
+      "showSummaries": false,
+      "scopeNote": "总览计算值未提供时显示“未取得”，不会使用样例流水补算。",
+      "name": "资金总览",
+      "filters": {
+        "and": [
+          "note[\"nf_source_collection\"] == \"example-overview\""
+        ]
+      },
+      "titleProperty": "note.总览名称",
+      "order": [
+        "formula.Nebula标题_总览名称",
+        "note.公司账面现金",
+        "note.成员甲资金池",
+        "note.成员乙资金池",
+        "note.待分配及预留差额"
+      ],
+      "numberProperties": [
+        "note.公司账面现金",
+        "note.成员甲资金池",
+        "note.成员乙资金池",
+        "note.待分配及预留差额"
+      ],
+      "nebulaTable": {
+        "titleProperty": "总览名称",
+        "titleColumn": "formula.Nebula标题_总览名称",
+        "tags": {},
+        "wrap": true,
+        "attachments": [],
+        "scopeNote": "总览计算值未提供时显示“未取得”，不会使用样例流水补算。"
+      }
+    }
+  ],
+  "formulas": {
+    "Nebula标题_总览名称": "link(file.path, if(note[\"总览名称\"], note[\"总览名称\"], file.name))"
+  },
+  "properties": {
+    "formula.Nebula标题_总览名称": {
+      "displayName": "总览名称"
+    }
+  }
+}

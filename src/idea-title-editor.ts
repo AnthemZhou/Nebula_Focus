@@ -1,18 +1,32 @@
 import {Notice, setIcon} from 'obsidian';
 
-import {IdeaView, IdeaRow, IdeaEntry, IdeaFile, isIdeaView} from './idea-native';
-type TitleView = IdeaView & {rows: IdeaRow[]; updateProperty(file: IdeaFile, property: string, value: unknown): unknown};
+import {IdeaView, IdeaRow, IdeaEntry, IdeaFile, isNativeTableView} from './idea-native';
+import {TableTitleProfile, tableTitleProfiles} from './table-profile';
+type TitleView = IdeaView & {rows: IdeaRow[]};
 type TitleRow = IdeaRow & {entry: IdeaEntry};
 function titleView(value: unknown): value is TitleView {
-  return isIdeaView(value) && Array.isArray(value.rows) && typeof value.updateProperty === 'function';
+  return isNativeTableView(value) && Array.isArray(value.rows);
 }
 function titleRow(value: IdeaRow): value is TitleRow {return !!value.entry;}
 
-const TITLE_COLUMN = 'formula.想法';
-const TITLE_PROPERTY = '这里写想法';
+export type TitleActions = {
+  rename(view: unknown, file: IdeaFile, basename: string): unknown;
+  open?(view: unknown, file: IdeaFile, event: MouseEvent): unknown;
+};
+
+function currentFileLink(link: HTMLElement, file: IdeaFile): boolean {
+  const target = link.getAttribute('data-href') ?? link.getAttribute('href');
+  if (!target) return false;
+  try {
+    const normalized = decodeURIComponent(target).replace(/^\.\//, '');
+    return normalized === file.path || normalized === file.path.replace(/\.md$/i, '');
+  } catch {return false;}
+}
+
 const READ_ONLY = '[disabled], [aria-disabled="true"], [aria-readonly="true"], [data-readonly="true"], .is-read-only, .is-readonly, .mod-readonly';
 type Binding = {
   view: TitleView; row: TitleRow; file: IdeaFile; path: string; query: unknown;
+  titleColumn: string; titleProperty: string; kind: TableTitleProfile['kind']; nativeText: boolean;
   cell: HTMLElement; outer: HTMLElement; link: HTMLElement; icon: HTMLButtonElement;
   attributes: Map<string, string | null>; hadTitleClass: boolean; hadCellClass: boolean;
   cleanup: () => void; forwarding: boolean; down?: {x: number; y: number; moved: boolean}; stopGesture?: () => void;
@@ -29,47 +43,60 @@ type Edit = {
 export class IdeaTitleEditors {
   private bindings = new Map<HTMLElement, Binding>();
   private edit?: Edit;
+  constructor(private actions?: TitleActions) {}
 
   refresh(view: unknown) {
     this.pruneEdit();
     if (!titleView(view)) {
       this.releaseView(view); return;
     }
+    const profiles = tableTitleProfiles(view);
+    if (!profiles.length) {this.releaseView(view); return;}
     const seen = new Set<HTMLElement>();
     for (const row of view.rows) {
       if (!titleRow(row)) continue;
-      const nativeCell = row.cells?.find(cell => cell.prop === TITLE_COLUMN);
-      const cell = nativeCell?.renderer?.el;
-      const link = cell?.querySelector<HTMLElement>('.internal-link');
+      for (const profile of profiles) {
+      const nativeCell = row.cells?.find(cell => cell.prop === profile.titleColumn);
+      const cell = nativeCell?.renderer?.el ?? nativeCell?.el?.querySelector<HTMLElement>('.bases-table-cell');
+      let link = cell?.querySelector<HTMLElement>('.internal-link');
+      let nativeText = false;
+      if (link && !currentFileLink(link, row.entry.file)) continue;
+      if (!link && profile.titleColumn.startsWith('note.') && this.actions?.open && nativeCell?.renderer?.propertyEditor) {
+        link = cell?.querySelector<HTMLElement>('.metadata-input-longtext'); nativeText = !!link;
+      }
       if (!cell?.isConnected || !link || !row.entry?.file) continue;
       seen.add(link);
       let binding = this.bindings.get(link);
       if (binding && (binding.view !== view || binding.row !== row || binding.file !== row.entry.file ||
           binding.path !== row.entry.file.path || binding.query !== view.config.query ||
+          binding.titleColumn !== profile.titleColumn || binding.titleProperty !== profile.titleProperty ||
+          binding.kind !== profile.kind || binding.nativeText !== nativeText ||
           binding.outer !== (cell.closest('.bases-td') ?? cell))) {
         this.release(binding); binding = undefined;
       }
       // Bases can replace a formula link inside the same reused cell. Release
       // its old decoration before capturing the new cell's original classes.
       if (!binding) for (const previous of this.bindings.values()) if (previous.cell === cell) this.release(previous);
-      if (!binding) this.attach(view, row, cell, link);
+      if (!binding) this.attach(view, row, cell, link, profile, nativeText);
+      }
     }
     for (const binding of this.bindings.values()) if (binding.view === view && !seen.has(binding.link)) this.release(binding);
   }
 
-  private attach(view: TitleView, row: TitleRow, cell: HTMLElement, link: HTMLElement) {
+  private attach(view: TitleView, row: TitleRow, cell: HTMLElement, link: HTMLElement, profile: TableTitleProfile, nativeText: boolean) {
     const doc = link.ownerDocument, icon = doc.createElement('button');
     icon.type = 'button';
-    icon.className = 'bui-idea-page-button'; icon.setAttribute('aria-label', '打开想法笔记');
+    icon.className = 'bui-idea-page-button'; icon.setAttribute('aria-label', '打开笔记');
     setIcon(icon, 'file-text');
     const attributes = this.snapshot(link, ['tabindex', 'role']);
     const outer = cell.closest<HTMLElement>('.bases-td') ?? cell;
     const binding: Binding = {view, row, file: row.entry.file, path: row.entry.file.path, query: view.config.query,
+      titleColumn: profile.titleColumn, titleProperty: profile.titleProperty, kind: profile.kind, nativeText,
       cell, outer, link, icon, attributes, hadTitleClass: link.classList.contains('bui-idea-title'),
       hadCellClass: cell.classList.contains('bui-idea-title-cell'), cleanup: () => {}, forwarding: false};
     this.bindings.set(link, binding);
     link.classList.add('bui-idea-title'); cell.classList.add('bui-idea-title-cell');
-    link.tabIndex = 0; link.setAttribute('role', 'button');
+    link.tabIndex = 0; if (!nativeText) link.setAttribute('role', 'button');
     link.before(icon);
     const listeners: [HTMLElement, string, EventListener, boolean][] = [];
     const listen = <K extends keyof HTMLElementEventMap>(el: HTMLElement, name: K,
@@ -115,6 +142,7 @@ export class IdeaTitleEditors {
       } else this.start(binding);
     }, true);
     listen(link, 'click', event => {
+      if (binding.nativeText) return;
       if (binding.forwarding || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey) return;
       if (this.edit?.binding === binding) {event.stopImmediatePropagation(); return;}
       event.preventDefault(); event.stopImmediatePropagation();
@@ -128,11 +156,13 @@ export class IdeaTitleEditors {
       this.start(binding, event);
     }, true);
     listen(link, 'dblclick', event => {
+      if (binding.nativeText) return;
       if (binding.forwarding || event.metaKey || event.ctrlKey || event.altKey) return;
       // Preserve the browser's word selection, but do not open a formula editor.
       event.stopImmediatePropagation();
     }, true);
     listen(link, 'keydown', event => {
+      if (binding.nativeText) return;
       if (this.edit?.binding === binding || event.defaultPrevented || event.isComposing ||
           event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       if (event.key === 'Enter' || event.key === ' ') {
@@ -180,24 +210,35 @@ export class IdeaTitleEditors {
   }
 
   private current(binding: Binding): boolean {
+    const profile = tableTitleProfiles(binding.view).find(profile => profile.titleColumn === binding.titleColumn);
     return this.bindings.get(binding.link) === binding && binding.link.isConnected &&
       binding.cell.contains(binding.link) && binding.outer.contains(binding.cell) && binding.view._loaded !== false &&
-      binding.view.type === 'table' && binding.view.config?.name === '想法收集箱' &&
+      (binding.nativeText || currentFileLink(binding.link, binding.file)) &&
+      binding.view.type === 'table' && profile?.titleColumn === binding.titleColumn && profile.titleProperty === binding.titleProperty && profile.kind === binding.kind &&
+      (!binding.view.queryController?.view || binding.view.queryController.view === binding.view) &&
       binding.view.config.query === binding.query && binding.row.entry?.file === binding.file &&
       binding.file.path === binding.path && Array.isArray(binding.view.rows) && binding.view.rows.includes(binding.row);
   }
   private writable(binding: Binding): boolean {
     return this.current(binding) && binding.file.extension === 'md' &&
-      binding.view.isReadOnly !== true && binding.view.queryController?.isReadOnly !== true &&
-      !binding.cell.closest(READ_ONLY) && typeof binding.view.updateProperty === 'function';
+      binding.view.isReadOnly !== true && binding.view.readOnly !== true && binding.view.queryController?.isReadOnly !== true &&
+      !binding.cell.closest(READ_ONLY) && (binding.kind === 'filename' ? typeof this.actions?.rename === 'function' :
+        typeof binding.view.updateProperty === 'function' && this.scalarSource(binding));
+  }
+  private scalarSource(binding: Binding): boolean {
+    try {
+      const value = binding.row.entry.getRawProperty?.(binding.titleProperty);
+      return value == null || typeof value === 'string';
+    } catch {return false;}
   }
   private raw(binding: Binding): string | undefined {
-    try {return JSON.stringify(binding.row.entry.getRawProperty?.(TITLE_PROPERTY));}
+    try {return binding.kind === 'filename' ? binding.file.path : JSON.stringify(binding.row.entry.getRawProperty?.(binding.titleProperty));}
     catch {return undefined;}
   }
 
   private navigate(binding: Binding, event: MouseEvent) {
     if (!this.current(binding)) return;
+    if (binding.nativeText) {this.actions?.open?.(binding.view, binding.file, event); return;}
     const win = binding.link.ownerDocument.defaultView!;
     binding.forwarding = true;
     try {
@@ -212,6 +253,7 @@ export class IdeaTitleEditors {
 
   private start(binding: Binding, point?: MouseEvent) {
     if (!this.writable(binding) || this.edit?.binding === binding) return;
+    if (binding.nativeText) {binding.link.focus({preventScroll: true}); this.placeCaret(binding.link, point); return;}
     if (this.edit) {this.save(this.edit, true); if (this.edit) return;}
     const {link, view} = binding;
     const original = link.textContent ?? '';
@@ -284,15 +326,17 @@ export class IdeaTitleEditors {
     const displayed = value || (typeof file.basename === 'string' ? file.basename : edit.original);
     link.textContent = displayed;
     try {
-      // updateProperty creates the native undoable Bases transaction; no
-      // filesystem writes, file renames, or formula changes happen here.
-      void Promise.resolve(view.updateProperty(file, TITLE_PROPERTY, value)).catch(() => {
+      // Source properties use native transactions. File-name edits use the
+      // injected rename/history adapter; never create a frontmatter "file.name".
+      const operation = binding.kind === 'filename' ? this.actions?.rename(view, file, value) :
+        view.updateProperty?.(file, binding.titleProperty, value);
+      void Promise.resolve(operation).catch(() => {
         if (this.current(binding) && link.textContent === displayed && this.edit?.binding !== binding) link.textContent = edit.original;
-        new Notice('想法标题未能保存，请重试');
+        new Notice('标题未能保存，请重试');
       });
     } catch {
       if (this.current(binding) && link.textContent === displayed) link.textContent = edit.original;
-      new Notice('想法标题未能保存，请重试');
+      new Notice('标题未能保存，请重试');
     }
     if (focus && link.isConnected) link.focus({preventScroll: true});
   }

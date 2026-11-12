@@ -2,6 +2,8 @@ import {App, setIcon} from 'obsidian';
 import {positionAnchoredPopover, preferPopoverInputFocus, watchPopoverViewport} from './mobile-popover';
 
 import {IdeaView, IdeaQuery, isHtmlElement, isIdeaView, isIdeaCell, isIdeaPropertyConfig, isIdeaQuery} from './idea-native';
+import {tableProfile} from './table-profile';
+import {inheritPopoverTypography} from './tag-typography';
 type HeaderView = IdeaView & {
   theadEl: HTMLElement;
   getCellFromDom(target: Element): unknown;
@@ -36,13 +38,17 @@ export class IdeaHeaders {
 
   attach(view: unknown) {
     this.pruneEditor();
-    if (!headerView(view)) return;
+    if (!headerView(view)) {
+      const stale = this.bindings.get(view); if (stale) this.detach(stale);
+      return;
+    }
     let binding = this.bindings.get(view);
     if (binding && binding.head !== view.theadEl) {this.detach(binding); binding = undefined;}
     if (!binding) {
       const head = view.theadEl;
       const activate = (target: EventTarget | null, keyboard: boolean): boolean => {
-        if (!(target instanceof Element) || !head.contains(target) || target.closest('.bases-table-header-resizer')) return false;
+        const ElementType = head.ownerDocument.defaultView?.Element;
+        if (!ElementType || !(target instanceof ElementType) || !head.contains(target) || target.closest('.bases-table-header-resizer')) return false;
         const cell = view.getCellFromDom(target);
         const property = isIdeaCell(cell) ? cell.prop : undefined;
         const anchor = target.closest<HTMLElement>('.bases-td');
@@ -71,7 +77,7 @@ export class IdeaHeaders {
   private editable(view: HeaderView): boolean {
     return view?._loaded !== false && !view?.isReadOnly && !view?.readOnly && !view?.queryController?.isReadOnly &&
       (!view?.queryController || view.queryController.view === view) &&
-      view?.type === 'table' && view.config?.name === '想法收集箱' &&
+      view?.type === 'table' && !!tableProfile(view) &&
       view.theadEl?.isConnected && typeof view.config.query?.saveFn === 'function';
   }
 
@@ -100,6 +106,7 @@ export class IdeaHeaders {
       const el = doc.createElement(tag); el.className = cls; if (text !== undefined) el.textContent = text; return el;
     };
     const popup = make('div', 'bui-tag-manager bui-header-editor');
+    inheritPopoverTypography(popup, label);
     popup.tabIndex = -1; popup.setAttribute('role', 'dialog'); popup.setAttribute('aria-label', '修改列名称');
     const heading = make('div', 'bui-tag-manager-heading');
     heading.append(make('span', 'bui-tag-manager-title', '修改列名称'));
@@ -184,7 +191,7 @@ export class IdeaHeaders {
   prune() {
     this.pruneEditor();
     for (const binding of this.bindings.values()) if (!binding.head.isConnected ||
-        binding.view._loaded === false || binding.view.config?.name !== '想法收集箱') this.detach(binding);
+        binding.view._loaded === false || !tableProfile(binding.view)) this.detach(binding);
   }
   private restoreLabel(label: HTMLElement, original: Map<string, string | null>) {
     for (const [name, value] of original) value === null ? label.removeAttribute(name) : label.setAttribute(name, value);

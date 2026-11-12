@@ -1,0 +1,133 @@
+{
+  "version": 1,
+  "profiles": {
+    "example-projects": {
+      "metrics": [
+        {
+          "property": "合同金额",
+          "format": "number",
+          "currency": "CNY"
+        },
+        {
+          "property": "已收款",
+          "format": "number",
+          "currency": "CNY"
+        },
+        {
+          "property": "已确认成本",
+          "format": "number",
+          "currency": "CNY"
+        },
+        {
+          "property": "成员甲已分配",
+          "format": "number",
+          "currency": "CNY"
+        },
+        {
+          "property": "成员乙已分配",
+          "format": "number",
+          "currency": "CNY"
+        }
+      ],
+      "tabs": [
+        {
+          "label": "费用与报销",
+          "targetCollection": "example-costs",
+          "relationProperty": "项目归属",
+          "forwardProperty": "项目成本",
+          "titleProperty": "费用内容",
+          "columns": [
+            "费用内容",
+            "成本金额",
+            "时间",
+            "支付记录",
+            "报销人员"
+          ],
+          "numberProperties": [
+            "成本金额"
+          ],
+          "tagProperties": [
+            "报销人员"
+          ],
+          "filters": [
+            {
+              "property": "成本状态",
+              "operator": "notEquals",
+              "value": "已作废"
+            }
+          ],
+          "sort": [
+            {
+              "property": "时间",
+              "direction": "asc"
+            }
+          ]
+        },
+        {
+          "label": "收付款",
+          "targetCollection": "example-ledger",
+          "relationProperty": "关联项目",
+          "forwardProperty": "项目流水",
+          "titleProperty": "流水摘要",
+          "columns": [
+            "流水摘要",
+            "交易日期",
+            "方向",
+            "金额",
+            "交易对方"
+          ],
+          "numberProperties": [
+            "金额"
+          ],
+          "tagProperties": [
+            "方向"
+          ],
+          "filters": [
+            {
+              "property": "入账状态",
+              "operator": "notEquals",
+              "value": "已作废"
+            }
+          ],
+          "sort": [
+            {
+              "property": "交易日期",
+              "direction": "asc"
+            }
+          ]
+        },
+        {
+          "label": "发票",
+          "targetCollection": "example-invoices",
+          "relationProperty": "关联项目",
+          "forwardProperty": "项目发票",
+          "titleProperty": "发票摘要",
+          "columns": [
+            "发票摘要",
+            "开票日期",
+            "价税合计",
+            "票面税额",
+            "发票原件"
+          ],
+          "numberProperties": [
+            "价税合计",
+            "票面税额"
+          ],
+          "filters": [
+            {
+              "property": "票据状态",
+              "operator": "notEquals",
+              "value": "已作废"
+            }
+          ],
+          "sort": [
+            {
+              "property": "开票日期",
+              "direction": "asc"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

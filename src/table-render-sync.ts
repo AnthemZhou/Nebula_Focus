@@ -1,3 +1,5 @@
+import {isHtmlElement} from './idea-native';
+
 type NativeMethod = (this: unknown, ...args: unknown[]) => unknown;
 type TableView = {
   type: 'table'; containerEl: HTMLElement; scrollEl?: unknown; _loaded?: unknown;
@@ -6,7 +8,7 @@ type TableView = {
 function isTableView(view: unknown): view is TableView {
   if (!view || typeof view !== 'object') return false;
   const candidate = view as Record<string, unknown>;
-  return candidate.type === 'table' && candidate.containerEl instanceof HTMLElement;
+  return candidate.type === 'table' && isHtmlElement(candidate.containerEl);
 }
 const isMethod = (value: unknown): value is NativeMethod => typeof value === 'function';
 type Binding = {
@@ -27,7 +29,7 @@ export class TableRenderSync {
   attach(view: unknown) {
     if (!isTableView(view)) return;
     const container = view.containerEl;
-    const root: HTMLElement = view.scrollEl instanceof HTMLElement ? view.scrollEl
+    const root: HTMLElement = isHtmlElement(view.scrollEl) ? view.scrollEl
       : container.closest<HTMLElement>('.bases-view') ?? container;
     let binding = this.bindings.get(view);
     if (binding?.root === root) {
