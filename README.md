@@ -6,22 +6,23 @@ A Codex-like workspace for Markdown and Bases, with focused navigation, reminder
 
 [中文](#中文) · [English](#english) · [下载 / Downloads](https://github.com/AnthemZhou/Nebula_Focus/releases) · [反馈 / Issues](https://github.com/AnthemZhou/Nebula_Focus/issues)
 
-**1.3.0** · Obsidian **1.14.5+** · Desktop + iPhone · GPL-3.0-only
+**1.4.0** · Obsidian **1.14.5+** · Desktop + iPhone · GPL-3.0-only
 
 ## 中文
 
 Nebula Focus 让本地 Markdown 成为更容易浏览和编辑的工作区。界面参考 Codex 的导航与排版，手机侧栏借鉴 ChatGPT 的简洁布局；资料仍保存为普通 Markdown、属性和链接，AI 可以直接读取与编辑这些数据。
 
-1.3.0 带来提醒事项首页、统一搜索、置顶区域、按需打开的右侧标签区，以及可离线使用的霞鹜文楷。项目早期借鉴 Notion 数据库的展示，但不会把任意 Markdown 自动还原成完整的 Notion 数据库。
+1.4.0 带来直接新建页面、桌面单主区标题、手机全屏搜索、可改名的提醒事项与精简设置，并支持撤销表格行菜单删除。项目早期借鉴 Notion 数据库的展示，但不会把任意 Markdown 自动还原成完整的 Notion 数据库。
 
 **目录：** [功能](#功能) · [安装](#安装) · [使用](#使用) · [数据保存](#数据保存) · [兼容范围](#兼容范围) · [开发与反馈](#开发与反馈)
 
 ### 功能
 
-- **清晰的页面侧栏。** 同名文件夹与笔记合成一个入口，按「置顶、项目、页面」组织。页面和目录省略装饰图标，子项统一缩进。鼠标悬停时可置顶或新建子页，完整操作放在右键菜单；长标题右侧渐隐，停留约 300 毫秒后横向滚动，不再重复弹出全称。
-- **同一个搜索入口。** 桌面与手机顶部右侧的放大镜打开「直接搜索、标签、书签、文件列表」。查询本地标题和正文、按 Obsidian 标签找笔记、浏览书签或逐层打开目录，均留在同一个面板中。包括仅在侧栏隐藏的笔记，切换模式不会丢失侧栏。
-- **简单的工作区。** 左侧栏点击始终进入主内容区；正文内部链接、提醒来源和表格页面图标默认打开右侧标签区，按住 Command / Ctrl 点击改为主内容区。已有目标页面与右侧标签区会被复用，插件不继续增加分栏或创建上下分屏。手机使用普通标签页，打开侧栏结果后自动收起抽屉。
-- **提醒事项首页。** 自动读取 Markdown 未完成任务与支持的截止日期，按逾期、今天、明天、后续日期和未设日期排列。可手动引用已有 `.base` 数据库，显示原来的记录。关闭启动选项后，继续恢复上次工作页面。
+- **清晰的页面侧栏。** 顶部左侧切换仓库，右侧放大镜搜索；同名文件夹与笔记合成一个入口，按「置顶、项目、页面」组织。页面和目录省略装饰图标，子项统一缩进。鼠标悬停时可置顶或新建子页，完整操作放在右键菜单；长标题右侧渐隐，停留约 300 毫秒后横向滚动，不再重复弹出全称。
+- **同一个搜索入口。** 放大镜打开「直接搜索、标签、书签、文件列表」，包含仅在侧栏隐藏的笔记。桌面使用搜索面板；iPhone 使用全屏页面，顶部分类、底部输入框随软键盘避让。查询与数据未变时，来回切换分类复用结果和滚动位置，并保持键盘原来的打开或收起状态。
+- **简单的工作区。** 桌面主区顶部只显示当前页面标题，底层已有原生标签保留，切回原生外观即可恢复显示。左侧栏点击始终进入主内容区；正文内部链接、提醒来源和表格页面图标默认打开右侧标签区，按住 Command / Ctrl 点击改为主内容区。已有目标页面与右侧标签区会被复用，插件不继续增加分栏或创建上下分屏。手机使用普通标签页，打开侧栏结果后自动收起抽屉。
+- **提醒事项首页。** 自动读取 Markdown 未完成任务与支持的截止日期，按逾期、今天、明天、后续日期和未设日期排列。可改页面名称、手动引用已有 `.base` 数据库；关闭启动选项后恢复上次工作页面。
+- **直接新建页面。** 点击「新建页面」即创建唯一命名的空白 Markdown，在主区打开；无需命名弹窗，名称通过页面顶部的原生标题修改。子页面采用相同流程，正文不写入重复标题或 UI 标记。
 - **紧凑的原生数据库。** 配置后的表格支持原位标题编辑、彩色标签、内容行高、紧凑缩略图和关联记录。看板自动使用笔记第一张有效图片作为封面，过期日期保留颜色提示；新建、属性编辑与数据库撤销沿用源 Markdown 数据。
 - **一致的阅读外观。** 正文、表格和侧栏采用协调的字号与颜色，阅读和编辑模式统一文字行距基线。可选内置 **霞鹜文楷 / LXGW WenKai**，无需联网或安装系统字体；代码仍使用等宽字体。随时切回 Obsidian 原生外观。
 - **桌面外部归档。** 从页面右键菜单将暂时不用的页面或项目归档到库外：先复制并校验，再将源文件移入库内回收站。管理器可以浏览与恢复；手机不显示归档入口。
@@ -32,7 +33,7 @@ Nebula Focus 让本地 Markdown 成为更容易浏览和编辑的工作区。界
 
 需要 Obsidian 1.14.5 或更新版本；使用数据库视图时启用 **Bases / 数据库** 核心插件。
 
-1. 从 [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases) 下载 `nebula-focus-1.3.0.zip`。
+1. 从 [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases) 下载 `nebula-focus-1.4.0.zip`。
 2. 解压到库的 `.obsidian/plugins/nebula-focus/`，确认有 `main.js`、`manifest.json`、`styles.css`。
 3. 在 Obsidian 第三方插件设置中启用 **Nebula Focus**。
 4. 打开现有笔记或 Base，也可在独立测试库中体验[虚构示例](examples/vault)。
@@ -45,20 +46,24 @@ iPhone 使用 iCloud 库时，可在电脑更新同一库的插件目录，等�
 
 | 操作 | 方法 |
 | --- | --- |
-| 打开页面侧栏 | 设置 → Nebula Focus → 页面侧栏 → 打开侧栏；也可用命令面板或左侧图标 |
+| 打开页面侧栏 | 设置 → Nebula Focus → 更多设置 → 页面侧栏 → 打开侧栏；也可用命令面板或左侧图标 |
 | 搜索与浏览 | 点击侧栏顶部右侧放大镜，切换直接搜索、标签、书签或文件列表 |
 | 置顶项目或页面 | 点击行内图钉；置顶区域显示在项目上方，再点图钉取消置顶 |
 | 整理页面 | 拖动调整同级顺序，或使用 Alt + ↑ / ↓；右键菜单保留新建子页、排序和归档等操作 |
 | 打开主页面 | 点击左侧栏页面、置顶项或搜索结果 |
+| 新建页面 | 点击侧栏「新建页面」创建空白 `未命名.md`；同名时递增编号，再在页面顶部原生标题处改名 |
 | 查看相关记录 | 点击正文内部链接、提醒来源或数据表前的页面图标，在右侧打开；Command / Ctrl 点击改为主区 |
 | 编辑记录标题 | 点击标题文字或右侧空白；Enter / 失焦保存，Escape 取消 |
-| 打开提醒事项 | 点击侧栏提醒事项或运行同名命令；「添加数据库」引用已有 Base |
+| 打开或改名提醒事项 | 点击侧栏入口；点击页面标题、右键入口或在设置中改名。「添加数据库」引用已有 Base |
 | 选择与管理标签 | 点击分类值选择，再点带勾选项取消；点击列标题管理候选项、顺序与显示名称 |
 | 新建条目 | 点击表格最后一行「新建条目」或看板中的「新建」 |
+| 删除表格页面 | 行菜单「⋯ → 将页面移到回收站」移入库内 `.trash`，支持本次数据库会话的撤销／重做 |
 | 查看图片 | 点击表格缩略图放大；看板封面使用 16:9 区域 |
 | 更换字体 | 设置 → Nebula Focus → 字体 → 显示字体，选择跟随 Obsidian 或霞鹜文楷 |
 
 提醒事项默认在冷启动时打开，插件热重载不抢走当前页面。关闭「设置 → Nebula Focus → 提醒事项 → 启动时打开提醒事项」后，由 Obsidian 恢复上次页面。旧版模块化 Home 已退出入口，原 `home` 配置与生成的 Base 文件保留，不迁移或删除其中的记录。
+
+设置默认显示字体和提醒事项等常用项，侧栏排序、隐藏页面、桌面工具按钮与外部归档收在「更多设置」；手机隐藏桌面专用项。桌面新建入口位于提醒事项上方，手机位于侧栏底部右侧，设置在其左；手机启动和成功打开页面后保持侧栏收起。
 
 侧栏只显示 Markdown 页面及其目录，独立 `.base` 配置仍可从搜索面板文件列表、已有嵌入和选择器访问。右键顶部或空白处可调整侧栏选项。左侧竖条按钮可在设置中选择显示项，帮助和设置位于底部。详见[页面侧栏](docs/page-sidebar.md)与[工作区导航](docs/workspace-layout.md)。
 
@@ -70,7 +75,7 @@ iPhone 使用 iCloud 库时，可在电脑更新同一库的插件目录，等�
 
 单独按住 Command / Ctrl 约 0.6 秒，可查看桌面快捷键速查；松开收起。原生外观会恢复字体、间距、颜色、左侧工具和真正的文件列表，暂停自动生成 Base；重新启用后保留置顶、排序和展开状态。
 
-数据库历史涵盖新建，以及通过原生属性事务提交的标题、标签值和普通看板状态修改；编辑文字时优先使用文字撤销。手机隐藏额外撤销按钮行，保留内部历史和命令入口。同一外部 Base 的同名、同类型手机视图可共享会话历史，关闭最后一个所属页面或重启后清空。候选项设置、列配置、删除文件及跨文件夹移动不属于该历史，详见[撤销覆盖范围](docs/undo-coverage.md)。
+数据库历史涵盖数据库中新建条目、通过原生属性事务提交的标题／标签／普通看板状态修改，以及表格行菜单移入回收站的删除；编辑文字优先使用文字撤销。手机隐藏额外撤销按钮，保留历史和命令入口。同一外部 Base 的同名、同类型手机视图可共享会话历史；关闭最后一个所属页面、停用插件或重启后清空，不跨重启保存。候选项设置、列配置、其他入口的文件删除、侧栏新建页面及跨文件夹移动不属于该数据库历史。详见[撤销覆盖范围](docs/undo-coverage.md)。
 
 ### 数据保存
 
@@ -82,7 +87,7 @@ iPhone 使用 iCloud 库时，可在电脑更新同一库的插件目录，等�
 | 主动修改标题、标签或看板状态 | 源笔记 YAML 属性；编辑原生文件名列通过 Obsidian 重命名文件 |
 | 列名称、列宽、排序、筛选、分组 | 原生 `.base` 配置 |
 | 候选项、置顶、侧栏顺序、字体与外观偏好 | 插件 `data.json` |
-| 提醒事项启动与数据库引用 | `data.json` 的 `reminders`；不复制任务或数据库记录 |
+| 提醒事项名称、启动与数据库引用 | `data.json` 的 `reminders`；不复制任务或数据库记录 |
 | 自动数据视图 | `Nebula Views/<原笔记路径>.base`，或复用原 Base |
 | 记录详情布局 | `nebula-record-layouts.json`；数据与关联仍在 Markdown 中 |
 | 历史 Home 配置 | 原 `home` 设置和 `Nebula Views/Home/` 文件保留，1.3.0 不再提供旧首页入口 |
@@ -117,16 +122,17 @@ npm test
 
 Nebula Focus makes local Markdown easier to browse and edit. Its navigation and typography take cues from Codex, while the mobile sidebar follows ChatGPT's restrained layout. Notes remain ordinary Markdown, properties and links that AI tools can read and edit directly.
 
-Version 1.3.0 adds a Reminders landing page, unified search, pinned entries, an optional right-hand tab group and offline LXGW WenKai. The project initially borrowed from Notion's database presentation; it does not automatically turn arbitrary Markdown into a complete Notion database.
+Version 1.4.0 adds direct page creation, a single current-page header on desktop, full-screen phone search, renameable Reminders, simpler settings and undo for table row-menu deletion. The project initially borrowed from Notion's database presentation; it does not automatically turn arbitrary Markdown into a complete Notion database.
 
 **Contents:** [Features](#features) · [Installation](#installation) · [Usage](#usage) · [Data storage](#data-storage) · [Compatibility](#compatibility) · [Development and feedback](#development-and-feedback)
 
 ### Features
 
-- **Focused page navigation.** Matching folders and notes share one entry, organized under Pinned, Projects and Pages. Pages and folders omit decorative icons, with consistent child indentation. Hover actions pin entries or create children; full actions remain in the context menu. Long titles fade at the edge and scroll after about 300ms, without a duplicate full-title tooltip.
-- **One search entry.** The top-right magnifier on desktop and mobile opens Direct Search, Tags, Bookmarks and Files. Search local titles and text, find notes by Obsidian tags, browse bookmarks or descend into folders—all inside one panel. Sidebar-hidden notes remain searchable; changing modes does not replace the sidebar.
-- **A simple workspace.** Sidebar clicks always open the main content region. Internal content links, reminder sources and table page icons open the right-hand tab group; Command / Ctrl-click opens them in the main region. Existing target pages and right-hand groups are reused rather than adding more splits or creating top/bottom panes. Mobile uses ordinary tabs and dismisses the drawer after opening a sidebar result.
-- **Reminders.** Read unfinished Markdown tasks and supported page deadlines, grouped into overdue, today, tomorrow, later dates and undated items. Add references to existing `.base` databases using their original records. Disable startup opening to resume the previous page.
+- **Focused page navigation.** The vault picker sits at the top left, beside the Search magnifier. Matching folders and notes share one entry, organized under Pinned, Projects and Pages. Pages and folders omit decorative icons, with consistent child indentation. Hover actions pin entries or create children; full actions remain in the context menu. Long titles fade at the edge and scroll after about 300ms, without a duplicate full-title tooltip.
+- **One search entry.** Search offers Direct Search, Tags, Bookmarks and Files, including sidebar-hidden notes. Desktop uses a panel; iPhone uses a full-screen page with top categories and a bottom input above the software keyboard. Switching categories reuses results and scroll positions while the query and data are unchanged, preserving the keyboard's open or dismissed state.
+- **A simple workspace.** Desktop shows only the current page title above the main region. Existing native tabs remain underneath and reappear in native appearance. Sidebar clicks always open the main content region. Internal content links, reminder sources and table page icons open the right-hand tab group; Command / Ctrl-click opens them in the main region. Existing target pages and right-hand groups are reused rather than adding more splits or creating top/bottom panes. Mobile uses ordinary tabs and dismisses the drawer after opening a sidebar result.
+- **Reminders.** Read unfinished Markdown tasks and supported page deadlines, grouped into overdue, today, tomorrow, later dates and undated items. Rename the page or reference existing `.base` databases; disable startup opening to resume the previous page.
+- **Direct page creation.** New page creates a uniquely named, empty Markdown file and opens it in the main region. Rename through the native page title, without a naming dialog. Child pages follow the same flow; no duplicate heading or UI markup is inserted into the body.
 - **Compact native databases.** Configured tables support inline titles, colored tags, content-driven row heights, compact thumbnails and linked records. Boards use the first valid image in a note as a cover, with overdue-date color cues. Creation, property edits and database undo use the source Markdown data.
 - **Consistent reading.** Notes, tables and the sidebar share coordinated typography and colors, with a common text-leading baseline across reading and editing. Optional **LXGW WenKai** works offline without a system-font installation; code stays monospace. Native Obsidian appearance remains one shortcut away.
 - **Desktop external archives.** Archive unused pages or projects outside the vault through their context menu. Files are copied and verified before sources move to the vault trash. The manager can browse and restore them; mobile has no archive controls.
@@ -137,7 +143,7 @@ Automatic Bases, finance summaries and record layouts retain existing configurat
 
 Requires Obsidian 1.14.5 or later. Enable the **Bases** core plugin for database views.
 
-1. Download `nebula-focus-1.3.0.zip` from [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases).
+1. Download `nebula-focus-1.4.0.zip` from [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases).
 2. Extract into `.obsidian/plugins/nebula-focus/` in your vault, containing `main.js`, `manifest.json` and `styles.css`.
 3. Enable **Nebula Focus** in Obsidian's Community plugins settings.
 4. Open an existing note or Base, or try the [fictional examples](examples/vault) in a separate test vault.
@@ -150,20 +156,24 @@ For an iCloud vault on iPhone, update the same vault's plugin folder from the co
 
 | Action | Method |
 | --- | --- |
-| Open the page sidebar | Settings → Nebula Focus → Page sidebar → Open sidebar; or use the command palette/ribbon |
+| Open the page sidebar | Settings → Nebula Focus → 更多设置 / More settings → Page sidebar → Open sidebar; or use the command palette/ribbon |
 | Search and browse | Use the top-right magnifier and switch between Direct Search, Tags, Bookmarks and Files |
 | Pin a page or project | Use its pin action; the dedicated section appears above Projects. Pin again to remove the shortcut |
 | Organize pages | Drag siblings or use Alt + ↑ / ↓; right-click for child creation, ordering and archive actions |
 | Open the main page | Click a sidebar page, pin or search result |
+| Create a page | Use sidebar New page to create an empty `未命名.md`, adding a number if needed; rename through its native page title |
 | Inspect related records | Click an internal content link, reminder source or table page icon to open on the right; Command / Ctrl-click targets the main region |
 | Edit a record title | Click the text or trailing space; Enter/blur saves, Escape cancels |
-| Open Reminders | Use the sidebar or command palette; Add database references an existing Base |
+| Open or rename Reminders | Use its sidebar entry; rename through the page title, entry context menu or settings. Add database references an existing Base |
 | Choose and manage tags | Click a classification value; click a checked option again to deselect. Column headers manage suggestions, order and display names |
 | Create a record | Use the grid's final New item row or the board's New action |
+| Delete a table page | Row menu ⋯ → Move page to trash moves it to vault `.trash`, with undo/redo in the current database session |
 | View images | Click a thumbnail to enlarge it; board covers use 16:9 areas |
 | Choose a font | Settings → Nebula Focus → 字体 / Fonts → 显示字体 / Display font |
 
 Reminders opens on cold startup by default; hot reload does not take focus. Disable **启动时打开提醒事项** under Settings → Nebula Focus → 提醒事项 to resume the previous workspace. The old modular Home is no longer an entry point; its `home` preferences and generated Base files remain stored without moving or deleting records.
+
+Settings initially show common controls such as fonts and Reminders. More settings contains sidebar sorting, hidden pages, desktop tools and external archives; phones omit desktop-only options. Desktop New page sits above Reminders; mobile places it at the bottom right beside Settings. The phone drawer stays closed at startup and closes after successful page navigation.
 
 The sidebar shows Markdown pages and their folders. Standalone `.base` files remain accessible through Files in the search panel, existing embeds and selectors. Right-click the header or blank space for sidebar options. Choose visible left-rail tools in settings; Help and Settings sit at its bottom. See [page navigation](docs/page-sidebar.md) and [workspace behavior](docs/workspace-layout.md).
 
@@ -175,7 +185,7 @@ The sidebar shows Markdown pages and their folders. Standalone `.base` files rem
 
 Hold Command / Ctrl alone for about 0.6 seconds to show desktop shortcut help; release to dismiss it. Native appearance restores fonts, spacing, colors, left tools and the actual file explorer, and pauses automatic Base generation. Re-enabling retains pins, ordering and expansion state.
 
-Database history covers creation and title, tag-value or ordinary board-state changes submitted through native property transactions; typing keeps normal text undo. Mobile hides the extra undo-button row but retains history and command access. The same named/type view of an external Base can share session history across mobile tabs; closing its last owner or restarting clears it. Candidate settings, column configuration, file deletion and cross-folder moves are outside this history. See [undo coverage](docs/undo-coverage.md).
+Database history covers database record creation, title/tag/ordinary board-state edits submitted through native property transactions, and table row-menu deletion to vault trash. Typing keeps normal text undo. Mobile hides extra undo buttons but retains history and command access. The same named/type view of an external Base can share session history across mobile tabs; closing its last owner, disabling the plugin or restarting clears it. History does not survive restarts. Candidate settings, column configuration, deletion through other entry points, sidebar page creation and cross-folder moves are outside this database history. See [undo coverage](docs/undo-coverage.md).
 
 ### Data storage
 
@@ -187,7 +197,7 @@ Browsing and appearance changes do not insert UI code into Markdown bodies or ap
 | Explicit title, tag or board-state edits | Source-note YAML; editing a native file-name column renames the note through Obsidian |
 | Column names, widths, sorting, filters and groups | Native `.base` configuration |
 | Suggestions, pins, sidebar order, font and appearance preferences | Plugin `data.json` |
-| Reminder startup and database references | `reminders` in `data.json`; no task or record copies |
+| Reminder name, startup and database references | `reminders` in `data.json`; no task or record copies |
 | Automatic data views | `Nebula Views/<original note path>.base`, or a reused Base |
 | Record-detail layouts | `nebula-record-layouts.json`; data and relations remain in Markdown |
 | Historical Home settings | Existing `home` preferences and `Nebula Views/Home/` files remain; 1.3.0 removes the old entry point |

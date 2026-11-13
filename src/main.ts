@@ -8,8 +8,10 @@ import {IdeaTagEditors} from './idea-tag-editor';
 import {PropertySuggestions} from './property-suggestions';
 import {IdeaTitleEditors} from './idea-title-editor';
 import {BaseCreationHistory} from './creation-history';
+import {TableRowActions} from './table-row-actions';
 import {TableRenderSync} from './table-render-sync';
 import {MobileHistoryActions} from './mobile-actions';
+import {MobileDrawerSurface} from './mobile-drawer-surface';
 import {PageSidebar} from './page-sidebar';
 import {RightWorkspaceController, type RightWorkspaceState} from './right-workspace';
 import {RibbonController, type RibbonPreferences} from './ribbon-controller';
@@ -61,7 +63,15 @@ export default class NebulaFocus extends Plugin {
   private ideaTags = new IdeaTagEditors();
   private ideaTitles = new IdeaTitleEditors();
   private creationHistory?: BaseCreationHistory;
+  private rowActions = new TableRowActions({
+    canRemove: (view, file) => this.creationHistory?.canRemove(view, file) ?? false,
+    remove: async (view, file) => {
+      if (!this.creationHistory) throw Error('数据库历史尚未就绪');
+      await this.creationHistory.remove(view, file);
+    },
+  });
   private mobileActions?: MobileHistoryActions;
+  private mobileDrawer?: MobileDrawerSurface;
   private propertySuggestions?: PropertySuggestions;
   private tableRender = new TableRenderSync((view, root) => this.paintTable(view, root), () => this.active && !this.disposed,
     view => this.prepareTable(view));
@@ -96,6 +106,7 @@ export default class NebulaFocus extends Plugin {
     } catch {this.settingsAvailable = false;}
     if (this.disposed) return;
     this.active = this.uiSettings.appearanceMode !== 'native';
+    this.mobileDrawer = this.addChild(new MobileDrawerSurface(this, this.active));
     this.autoBases = new AutoBaseSetup(this.app, this.manifest.id, () => this.active && !this.disposed);
     const migration = await migrateFinanceBases(this.app.vault, this.manifest.id);
     if (migration.failed.length) new Notice('部分财务视图未转换，相关文件未被覆盖；请稍后重新载入插件重试。');
@@ -132,6 +143,9 @@ export default class NebulaFocus extends Plugin {
     this.pageSidebar.rightWorkspace = this.rightWorkspace;
     this.pageSidebar.openReminders = () => this.reminders!.open();
     this.pageSidebar.reminders = this.reminders;
+    this.pageSidebar.reminderName = () => this.reminders!.displayName;
+    this.pageSidebar.renameReminders = () => {void this.reminders!.rename();};
+    this.reminders.onNameChange = () => this.pageSidebar?.refresh();
     this.ribbon = this.addChild(new RibbonController(this, this.uiSettings.ribbon, settings => this.saveRibbonPreferences(settings), this.active));
     this.pageSidebar.ribbon = this.ribbon;
     if (Platform.isDesktopApp && !Platform.isMobile && this.app.vault.adapter instanceof FileSystemAdapter) {
@@ -169,9 +183,9 @@ export default class NebulaFocus extends Plugin {
     // Phone UI stays compact; hiding these controls does not discard history.
     if (!nativeAppField(this.app, 'isMobile')) this.mobileActions = new MobileHistoryActions(this.creationHistory);
     this.syncTouchMode();
-    this.addCommand({id: 'undo-base-change', name: '撤销数据库操作（含新建条目）',
+    this.addCommand({id: 'undo-base-change', name: '撤销数据库操作（含新建与删除页面）',
       checkCallback: checking => this.creationHistory?.command(false, checking) ?? false});
-    this.addCommand({id: 'redo-base-change', name: '重做数据库操作（含新建条目）',
+    this.addCommand({id: 'redo-base-change', name: '重做数据库操作（含新建与删除页面）',
       checkCallback: checking => this.creationHistory?.command(true, checking) ?? false});
     this.registerDomEvent(document, 'keydown', event => this.creationHistory?.handleKey(event), true);
     this.propertySuggestions = new PropertySuggestions(this.app);
@@ -404,6 +418,7 @@ export default class NebulaFocus extends Plugin {
     const workspace = this.rightWorkspace?.setEnabled(enabled);
     this.ribbon?.setEnabled(enabled);
     this.reminders?.setEnabled(enabled);
+    this.mobileDrawer?.setEnabled(enabled);
     this.schedule();
     this.app.workspace.trigger('css-change');
     const write = this.settingsWrite.then(async () => {
@@ -536,6 +551,7 @@ export default class NebulaFocus extends Plugin {
     }
     for (const doc of this.appearanceDocuments()) this.ideaTables.refresh(doc);
     this.ideaTitles.prune();
+    this.rowActions.prune();
     this.creationHistory?.prune();
     this.mobileActions?.prune();
     this.ideaWidths.prune();
@@ -619,6 +635,7 @@ export default class NebulaFocus extends Plugin {
     }
     this.ideaTables.refresh(root, true);
     this.ideaTitles.refresh(view);
+    this.rowActions.refresh(view);
     this.ideaHeaders?.attach(view);
     this.ideaTags.attach(view);
     this.tableDetails.refresh(view, root);
@@ -828,6 +845,7 @@ export default class NebulaFocus extends Plugin {
     this.propertySuggestions?.clear();
     this.ideaTags.clear();
     this.ideaTitles.clear();
+    this.rowActions.clear();
     this.ideaTables.clear();
     this.ideaWidths.clear();
     this.ideaRows.clear();
@@ -876,6 +894,7 @@ export default class NebulaFocus extends Plugin {
     this.creationHistory?.clear();
     this.mobileActions?.clear();
     this.active = false;
+    this.mobileDrawer?.setEnabled(false);
     this.syncAppearanceDocuments();
     this.observer?.disconnect();
     window.clearTimeout(this.timer);

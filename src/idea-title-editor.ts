@@ -35,6 +35,7 @@ type Binding = {
 type Edit = {
   binding: Binding; original: string; lastText: string; raw: string | undefined;
   attributes: Map<string, string | null>; composing: boolean; imeEnded: boolean; pendingBlur: boolean;
+  inputPending: boolean;
   cleanup: () => void;
 };
 
@@ -264,7 +265,7 @@ export class IdeaTitleEditors {
     const original = link.textContent ?? '';
     const edit: Edit = {binding, original, lastText: original, raw: this.raw(binding),
       attributes: this.snapshot(link, ['contenteditable', 'spellcheck', 'aria-multiline', 'draggable', 'role']),
-      composing: false, imeEnded: false, pendingBlur: false, cleanup: () => {}};
+      composing: false, imeEnded: false, pendingBlur: false, inputPending: false, cleanup: () => {}};
     this.edit = edit;
     link.classList.add('bui-idea-title-editing'); link.setAttribute('contenteditable', 'plaintext-only');
     link.setAttribute('role', 'textbox'); link.setAttribute('spellcheck', 'false');
@@ -275,12 +276,33 @@ export class IdeaTitleEditors {
     const listen = <K extends keyof HTMLElementEventMap>(name: K, callback: (event: HTMLElementEventMap[K]) => void, capture = false) => {
       link.addEventListener(name, callback, capture); listeners.push([name, callback as EventListener, capture]);
     };
-    let compositionTimer = 0;
+    let compositionTimer = 0, inputTimer = 0;
     edit.cleanup = () => {
       for (const [name, fn, capture] of listeners) link.removeEventListener(name, fn, capture);
       if (compositionTimer) link.ownerDocument.defaultView!.clearTimeout(compositionTimer);
+      if (inputTimer) link.ownerDocument.defaultView!.clearTimeout(inputTimer);
     };
-    listen('input', () => {edit.lastText = link.textContent ?? '';});
+    listen('beforeinput', () => {
+      // Native editing can repaint Bases after changing the text node but
+      // before dispatching input. That intermediate value is our draft, not
+      // an external formula update. Keep the caret/editor alive until input
+      // records the new value; source/query changes are still rejected.
+      edit.inputPending = true;
+      if (inputTimer) link.ownerDocument.defaultView!.clearTimeout(inputTimer);
+      inputTimer = link.ownerDocument.defaultView!.setTimeout(() => {
+        inputTimer = 0;
+        if (this.edit !== edit || !edit.inputPending) return;
+        // A cancelled beforeinput has no matching input event.
+        edit.inputPending = false;
+        this.pruneEdit();
+        if (edit.pendingBlur) this.save(edit, true);
+      }, 0);
+    }, true);
+    listen('input', () => {
+      edit.lastText = link.textContent ?? ''; edit.inputPending = false;
+      if (inputTimer) {link.ownerDocument.defaultView!.clearTimeout(inputTimer); inputTimer = 0;}
+      if (edit.pendingBlur && !edit.composing) link.ownerDocument.defaultView!.queueMicrotask(() => this.save(edit, true));
+    }, true);
     listen('compositionstart', () => {edit.composing = true; edit.imeEnded = false;});
     listen('compositionend', () => {
       edit.composing = false; edit.imeEnded = true;
@@ -320,7 +342,7 @@ export class IdeaTitleEditors {
 
   private save(edit: Edit, blur: boolean, focus = false) {
     if (this.edit !== edit) return;
-    if (edit.composing) {edit.pendingBlur ||= blur; return;}
+    if (edit.composing || edit.inputPending) {edit.pendingBlur ||= blur; return;}
     const binding = edit.binding, {link, view, file} = binding;
     if (!this.writable(binding) || link.textContent !== edit.lastText || this.raw(binding) !== edit.raw) {
       this.close(edit); return;
@@ -357,7 +379,8 @@ export class IdeaTitleEditors {
   }
   private pruneEdit() {
     const edit = this.edit;
-    if (edit && (!this.writable(edit.binding) || edit.binding.link.textContent !== edit.lastText || this.raw(edit.binding) !== edit.raw)) this.close(edit);
+    if (edit && (!this.writable(edit.binding) || this.raw(edit.binding) !== edit.raw ||
+        (!edit.inputPending && !edit.composing && edit.binding.link.textContent !== edit.lastText))) this.close(edit);
   }
   private snapshot(el: HTMLElement, attributes: string[]) {
     return new Map(attributes.map(name => [name, el.getAttribute(name)]));

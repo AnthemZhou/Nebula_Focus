@@ -6,8 +6,13 @@ const ACTION = '.workspace-ribbon .side-dock-actions > .side-dock-ribbon-action'
 const HIDDEN = 'bui-ribbon-hidden';
 const FOOTER = '.workspace-sidedock-vault-profile > .workspace-drawer-vault-actions';
 const FOOTER_CLASS = 'bui-ribbon-vault-actions';
-const OBSERVED = '.workspace-ribbon, .side-dock-actions, .workspace-sidedock-vault-profile, .workspace-drawer-vault-actions';
+const VAULT_SWITCHER = '.workspace-sidedock-vault-profile > .workspace-drawer-vault-switcher';
+const VAULT_HEADER = '.bui-pages-desktop-header';
+const VAULT_CLASS = 'bui-header-vault-switcher';
+const VAULT_SOURCE_CLASS = 'bui-header-vault-source';
+const OBSERVED = '.workspace-ribbon, .side-dock-actions, .workspace-sidedock-vault-profile, .workspace-drawer-vault-actions, .bui-pages-desktop-header';
 interface FooterMove {element: HTMLElement; parent: HTMLElement; marker: Comment; destination: HTMLElement; hadClass: boolean}
+interface VaultMove extends FooterMove {parentHadClass: boolean}
 const known = [
   ['quick-switcher', 'file-search', /^(打开快速切换|Open quick switcher)$/i, true],
   ['command-palette', 'terminal', /^(打开命令面板|Open command palette)$/i, true],
@@ -41,6 +46,7 @@ export class RibbonController extends Component {
   private docs = new Map<Document, MutationObserver>();
   private previous = new Map<HTMLElement, boolean>();
   private footers = new Map<Document, FooterMove>();
+  private vaultSwitchers = new Map<Document, VaultMove>();
   private writes: Promise<unknown> = Promise.resolve();
 
   constructor(readonly plugin: Plugin, initial: unknown,
@@ -111,7 +117,7 @@ export class RibbonController extends Component {
   }
   private refresh() {
     for (const el of this.previous.keys()) if (!el.isConnected || !this.enabled || this.stopped) this.restore(el);
-    for (const doc of this.docs.keys()) this.refreshFooter(doc);
+    for (const doc of this.docs.keys()) {this.refreshFooter(doc); this.refreshVaultSwitcher(doc);}
     if (!this.enabled || this.stopped || !this.available) return;
     for (const doc of this.docs.keys()) for (const el of doc.querySelectorAll<HTMLElement>(ACTION)) {
       const item = this.identity(el); if (!item) {this.restore(el); continue;}
@@ -154,10 +160,42 @@ export class RibbonController extends Component {
     }
     move.marker.remove();
   }
+  /** Reuse the real vault selector rather than creating a second launcher.
+   * Both controls and their original listeners remain owned by Obsidian. */
+  private refreshVaultSwitcher(doc: Document) {
+    const destination = doc.querySelector<HTMLElement>(VAULT_HEADER);
+    const current = this.vaultSwitchers.get(doc);
+    if (current && (!this.enabled || this.stopped || !this.available || !destination ||
+        current.destination !== destination || !current.parent.isConnected ||
+        current.marker.parentNode !== current.parent || current.element.parentElement !== current.destination)) this.restoreVaultSwitcher(doc);
+    if (!this.enabled || this.stopped || !this.available || !destination || this.vaultSwitchers.has(doc)) return;
+    const element = doc.querySelector<HTMLElement>(VAULT_SWITCHER), parent = element?.parentElement;
+    // Unknown future host markup stays at its native location.
+    if (!element || !parent || !element.querySelector('.workspace-drawer-vault-name') ||
+        !destination.querySelector('.bui-pages-search-button')) return;
+    const marker = doc.createComment('nebula-focus-vault-switcher');
+    parent.insertBefore(marker, element);
+    this.vaultSwitchers.set(doc, {element, parent, marker, destination,
+      hadClass: element.classList.contains(VAULT_CLASS), parentHadClass: parent.classList.contains(VAULT_SOURCE_CLASS)});
+    element.classList.add(VAULT_CLASS); parent.classList.add(VAULT_SOURCE_CLASS);
+    destination.prepend(element);
+  }
+  private restoreVaultSwitcher(doc: Document) {
+    const move = this.vaultSwitchers.get(doc); if (!move) return;
+    this.vaultSwitchers.delete(doc);
+    move.element.classList.toggle(VAULT_CLASS, move.hadClass);
+    move.parent.classList.toggle(VAULT_SOURCE_CLASS, move.parentHadClass);
+    if (move.element.parentElement === move.destination) {
+      if (move.marker.parentNode === move.parent) move.parent.insertBefore(move.element, move.marker);
+      else move.element.remove();
+    }
+    move.marker.remove();
+  }
   private forget(doc: Document) {
     this.docs.get(doc)?.disconnect(); this.docs.delete(doc);
     for (const el of this.previous.keys()) if (el.ownerDocument === doc) this.restore(el);
     this.restoreFooter(doc);
+    this.restoreVaultSwitcher(doc);
   }
   onunload() {this.stopped = true; for (const doc of this.docs.keys()) this.forget(doc);}
 }

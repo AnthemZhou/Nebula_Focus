@@ -14,7 +14,7 @@ function nativeBound(target: object, key: PropertyKey): unknown {
   return method(value) ? value.bind(target) : value;
 }
 type QueryController = {
-  view?: unknown; isReadOnly?: boolean; viewContainerEl?: HTMLElement; viewHeaderEl?: HTMLElement;
+  view?: unknown; isReadOnly?: boolean; readOnly?: boolean; viewContainerEl?: HTMLElement; viewHeaderEl?: HTMLElement;
   newItemMenu: ItemMenu; requestNotifyView?: () => void;
 };
 type ItemMenu = {
@@ -25,7 +25,7 @@ type HistoryView = {
   type?: string; _loaded?: boolean; containerEl: HTMLElement; config?: {name?: unknown; query?: {file?: unknown} | null; groupBy?: {property?: unknown} | null} | null;
   queryController: QueryController; undoStack: unknown[]; redoStack: unknown[];
   undoTransaction: UnknownMethod; redoTransaction: UnknownMethod; createTransaction?: UnknownMethod;
-  createNoteInGroup?: UnknownMethod; isGroupedByFolder?: boolean; isReadOnly?: boolean;
+  createNoteInGroup?: UnknownMethod; isGroupedByFolder?: boolean; isReadOnly?: boolean; readOnly?: boolean;
   getEphemeralState?: () => unknown; setEphemeralState?: (state: unknown) => void; showError?: (error: unknown) => void;
 };
 /** A single-record table can edit its record without offering another record.
@@ -37,6 +37,9 @@ function allowsCreation(view: HistoryView): boolean {
     const get = field(config, 'get');
     return (method(get) ? get.call(config, 'nebulaAllowCreate') : field(config, 'nebulaAllowCreate')) !== false;
   } catch {return false;}
+}
+function readOnly(view: HistoryView): boolean {
+  return !!(view.isReadOnly || view.readOnly || view.queryController?.isReadOnly || view.queryController?.readOnly);
 }
 function optional(value: unknown, valid: (value: unknown) => boolean): boolean {return value === undefined || valid(value);}
 function htmlElement(value: unknown): value is HTMLElement {
@@ -64,15 +67,15 @@ function historyView(value: unknown): value is HistoryView {
     return htmlElement(value.containerEl) && method(value.undoTransaction) && method(value.redoTransaction) &&
       Array.isArray(value.undoStack) && Array.isArray(value.redoStack) &&
       optional(value.type, value => typeof value === 'string') &&
-      ['_loaded', 'isGroupedByFolder', 'isReadOnly'].every(key => optional(value[key], boolean)) &&
+      ['_loaded', 'isGroupedByFolder', 'isReadOnly', 'readOnly'].every(key => optional(value[key], boolean)) &&
       ['createTransaction', 'createNoteInGroup', 'getEphemeralState', 'setEphemeralState', 'showError'].every(key => optional(value[key], method)) &&
-      optional(controller.isReadOnly, boolean) && optional(controller.requestNotifyView, method) &&
+      optional(controller.isReadOnly, boolean) && optional(controller.readOnly, boolean) && optional(controller.requestNotifyView, method) &&
       optional(controller.viewContainerEl, htmlElement) && optional(controller.viewHeaderEl, htmlElement) &&
       (config.query == null || recordValue(config.query)) && (config.groupBy == null || recordValue(config.groupBy));
   } catch {return false;}
 }
 
-type Created = {file: TFile; path: string; content: string; ctime: number; mtime: number; removed: boolean; titleTouched?: boolean};
+type Created = {file: TFile; path: string; content: string; ctime: number; mtime: number; removed: boolean; titleTouched?: boolean; operation?: 'delete'};
 type RenameMarker = {changes: [{file: TFile; fromPath: string; toPath: string}]; state?: unknown};
 type Session = {key: string; leaf: WorkspaceLeaf; file: unknown};
 type Suspended = {session: Session; records: Map<unknown, Created>; properties: Set<unknown>; undo: unknown[]; redo: unknown[]; wasLast: boolean};
@@ -130,6 +133,59 @@ export class BaseCreationHistory {
   private renames = new WeakSet<object>();
   private last?: Binding;
   constructor(private app: App, private changed: (view: unknown) => void = () => {}) {}
+
+  canRemove(view: unknown, candidate: unknown): candidate is TFile {
+    const binding = this.bindings.get(view), path = field(candidate, 'path');
+    return !!binding && this.available(binding) &&
+      typeof path === 'string' && field(candidate, 'extension') === 'md' && this.app.vault.getFileByPath(path) === candidate;
+  }
+
+  /** Explicit row deletion is recoverable and shares the table's chronological
+   * history. Never interpret an empty title or a text Delete key as file deletion. */
+  async remove(view: unknown, candidate: unknown): Promise<void> {
+    this.attach(view);
+    const binding = this.bindings.get(view);
+    if (!binding || !this.canRemove(view, candidate)) throw Error('当前页面不可删除，未修改文件');
+    const file = candidate, path = file.path;
+    this.pending(binding, 1); this.last = binding;
+    return this.serial(binding, async () => {
+      if (!this.canRemove(view, file) || file.path !== path) throw Error('页面已移动或数据库已关闭，未删除');
+      const content = await this.app.vault.read(file);
+      const record: Created = {file, path, content, ctime: file.stat.ctime, mtime: file.stat.mtime, removed: false, operation: 'delete'};
+      if (!this.canRemove(view, file) || file.path !== path || this.liveDraft(record, binding))
+        throw Error('页面正在编辑或已移动，请完成编辑后再删除');
+      if (binding.menu.newlyCreatedFile === file) {
+        binding.menu.close?.();
+        const window = binding.view.containerEl.ownerDocument.defaultView;
+        if (!window) throw Error('笔记窗口已关闭，未移到回收站');
+        await new Promise<void>(resolve => window.setTimeout(resolve, 50));
+      }
+      const latest = await this.app.vault.read(file);
+      if (!this.canRemove(view, file) || file.path !== path || this.liveDraft(record, binding) || latest !== content)
+        throw Error('页面内容已变化，请重新选择删除');
+      const marker = {changes: [], state: binding.view.getEphemeralState?.()};
+      // History must be recoverable even when native deletion is set to permanent.
+      await this.app.vault.trash(file, false);
+      record.removed = true;
+      this.rememberRecord(binding, marker, record);
+      if (binding.live) {binding.view.queryController.requestNotifyView?.(); this.focus(binding);}
+    }, () => {this.pending(binding, -1);});
+  }
+
+  private rememberRecord(binding: Binding, marker: unknown, record: Created) {
+    const phone = binding.phone;
+    if (phone && this.phones.has(phone) && this.phoneOpen(phone)) {
+      phone.records.set(marker, record); phone.redo = []; phone.undo.push(marker); this.syncPhone(phone);
+    } else if (!phone && binding.live) {
+      binding.records.set(marker, record); binding.view.redoStack = []; binding.view.undoStack.push(marker);
+    } else if (!phone && binding.session && this.sessionOpen(binding.session)) {
+      const replacement = [...this.bindings.values()].find(peer => peer.live && !peer.phone && peer.session?.key === binding.session?.key);
+      const saved = this.suspended.get(binding.session.key);
+      if (replacement) {
+        replacement.records.set(marker, record); replacement.view.redoStack = []; replacement.view.undoStack.push(marker); this.notify(replacement);
+      } else if (saved) {saved.records.set(marker, record); saved.redo = []; saved.undo.push(marker);}
+    }
+  }
 
   /** Change only the basename through Obsidian's link-aware file manager.
    * The same serialized history owns creation, source properties and renames. */
@@ -469,7 +525,7 @@ export class BaseCreationHistory {
     const {view} = binding;
     return binding.live && (!binding.phone || this.phones.has(binding.phone) && this.phoneOpen(binding.phone) && !!binding.session && this.sessionOpen(binding.session)) &&
       view._loaded !== false && (view.containerEl.isConnected || !!binding.session && this.sessionOpen(binding.session)) &&
-      view.queryController?.view === view && !view.isReadOnly && !view.queryController?.isReadOnly;
+      view.queryController?.view === view && !readOnly(view);
   }
 
   private visible(binding: Binding): boolean {
@@ -583,12 +639,13 @@ export class BaseCreationHistory {
       if (binding.live) this.focus(binding);
       return;
     }
-    const current = () => binding.live && view._loaded !== false && !view.isReadOnly && !view.queryController?.isReadOnly &&
+    const current = () => binding.live && view._loaded !== false && !readOnly(view) &&
       source === (redo ? view.redoStack : view.undoStack) && target === (redo ? view.undoStack : view.redoStack) && source.at(-1) === marker;
     try {
-      if (!redo) {
+      const removing = record.operation === 'delete' ? redo : !redo;
+      if (removing) {
         if (record.file.path !== record.path || this.app.vault.getAbstractFileByPath(record.path) !== record.file)
-          throw Error('笔记已移动或被替换，未撤销新建');
+          throw Error('笔记已移动或被替换，未移到回收站');
         if (this.liveDraft(record, binding)) throw Error('笔记已有后续改动，请先撤销内容修改');
         const before = await this.app.vault.read(record.file);
         if (!current()) return;
@@ -597,22 +654,25 @@ export class BaseCreationHistory {
         // close flushes pending editor work; verify again after that work settles.
         if (binding.menu.newlyCreatedFile === record.file) binding.menu.close?.();
         const window = view.containerEl.ownerDocument.defaultView;
-        if (!window) throw Error('笔记窗口已关闭，未撤销新建');
+        if (!window) throw Error('笔记窗口已关闭，未移到回收站');
         await new Promise<void>(resolve => window.setTimeout(resolve, 50));
         if (!current()) return;
         const contents = await this.app.vault.read(record.file);
         if (!current()) return;
         if (this.liveDraft(record, binding) || record.file.path !== record.path ||
             this.app.vault.getAbstractFileByPath(record.path) !== record.file || !sameCreatedContent(record.content, contents))
-          throw Error('笔记已有后续改动，未撤销新建');
+          throw Error('笔记已有后续改动，未移到回收站');
         // Always use the vault's recoverable trash, regardless of delete prefs.
         await this.app.vault.trash(record.file, false);
         record.removed = true;
       } else {
-        if (this.app.vault.getAbstractFileByPath(record.path)) throw Error('原路径已有文件，未覆盖；无法重做新建');
+        if (this.app.vault.getAbstractFileByPath(record.path)) throw Error('原路径已有文件，未覆盖；无法恢复页面');
         const previous = record.file;
         record.file = await this.app.vault.create(record.path, record.content, {ctime: record.ctime, mtime: record.mtime});
         record.removed = false;
+        // Creation and deletion of the same page can coexist in this history.
+        // Both must follow the restored identity before the next undo/redo.
+        for (const peer of binding.records.values()) if (peer !== record && peer.file === previous) peer.file = record.file;
         // Property transactions following creation must target the restored TFile.
         for (const transaction of [...(binding.phone?.undo ?? view.undoStack), ...(binding.phone?.redo ?? view.redoStack)])
           if (recordValue(transaction) && Array.isArray(transaction.changes))

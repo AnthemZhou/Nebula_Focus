@@ -1217,3 +1217,127 @@ test('single-record creation restriction covers folder-group bypasses and plain 
   delete f.view.config.nebulaAllowCreate;
   await f.view.createNoteInGroup({key:new f.StringValue('Projects')});assert.equal(f.calls.create.length,1);
 });
+
+test('create → property → delete undo and redo stay chronological across both restored file identities',async t=>{
+  const f=fixture(t),file=await f.created(),path=file.path,baseline=f.content.get(file),creation=f.view.undoStack.at(-1);
+  await f.edit(file,'---\n领域: ["Blender"]\n---\n');const property=f.view.undoStack.at(-1),edited=f.content.get(file);
+  await f.history.remove(f.view,file);const deletion=f.view.undoStack.at(-1);
+  assert.deepEqual([...f.view.undoStack],[creation,property,deletion]);assert.equal(f.files.has(path),false);
+  assert.equal(f.menu.newlyCreatedFile,null,'the deleted new-item editor is closed');
+  await f.view.undoTransaction();const firstRestore=f.files.get(path);
+  assert.ok(firstRestore);assert.notEqual(firstRestore,file);assert.equal(f.content.get(firstRestore),edited);
+  assert.equal(property.changes[0].file,firstRestore);
+  await f.view.undoTransaction();assert.equal(f.content.get(firstRestore),baseline);
+  await f.view.undoTransaction();assert.equal(f.files.has(path),false);
+  await f.view.redoTransaction();const secondRestore=f.files.get(path);
+  assert.ok(secondRestore);assert.notEqual(secondRestore,firstRestore);assert.equal(property.changes[0].file,secondRestore);
+  await f.view.redoTransaction();assert.equal(f.content.get(secondRestore),edited);
+  await f.view.redoTransaction();assert.equal(f.files.has(path),false);
+  assert.deepEqual([...f.view.undoStack],[creation,property,deletion]);
+  assert.equal(f.calls.trash.length,3);assert.ok(f.calls.trash.every(call=>call.system===false));
+  assert.deepEqual(f.calls.notices,[],'successful file history stays silent');
+});
+
+test('deleting an existing renamed page restores its exact bytes, statistics and earlier history after remount',async t=>{
+  const f=fixture(t),ui=mountSurface(f),owner=ownSession(f,ui);
+  const bytes='---\r\nstate: "before"\r\n---\r\n# 中文正文\r\n\r\n![image](asset.png)\r\n';
+  const file=f.put('Ideas/Original.md',bytes),stats={...file.stat};
+  await f.history.rename(f.view,file,'新标题');const rename=f.view.undoStack.at(-1),path=file.path;
+  await f.history.remove(f.view,file);const deletion=f.view.undoStack.at(-1);assert.equal(f.files.has(path),false);
+  unmountView(f,ui);const fresh=rebuildView(f,owner);
+  assert.equal(fresh.view.undoStack.at(-1),deletion);
+  await fresh.view.undoTransaction();const restored=f.files.get(path);
+  assert.ok(restored);assert.notEqual(restored,file);assert.equal(f.content.get(restored),bytes);assert.deepEqual(restored.stat,stats);
+  assert.equal(rename.changes[0].file,restored);
+  await fresh.view.undoTransaction();assert.equal(restored.path,'Ideas/Original.md');
+  await fresh.view.redoTransaction();await fresh.view.redoTransaction();assert.equal(f.files.has(path),false);
+  assert.equal(f.calls.frontmatter,0,'deletion and restoration do not rewrite Markdown or properties');
+  assert.deepEqual(f.calls.notices,[]);
+});
+
+test('deletion history preserves collisions and later edits, retaining the marker for a safe retry',async t=>{
+  const f=fixture(t),file=f.put('Ideas/Existing.md','Original body'),path=file.path;
+  await f.history.remove(f.view,file);const marker=f.view.undoStack.at(-1);
+  const collision=f.put(path,'Unrelated replacement');await f.view.undoTransaction();
+  assert.equal(f.files.get(path),collision);assert.equal(f.content.get(collision),'Unrelated replacement');
+  assert.equal(f.view.undoStack.at(-1),marker);assert.equal(f.calls.create.length,0);
+  f.files.delete(path);f.setCreateHook(()=>{throw Error('restore failed');});await f.view.undoTransaction();
+  assert.equal(f.view.undoStack.at(-1),marker);assert.equal(f.files.has(path),false);
+  f.setCreateHook(null);await f.view.undoTransaction();const restored=f.files.get(path);
+  f.view.readOnly=true;await f.view.redoTransaction();
+  assert.equal(f.files.get(path),restored,'a view made readonly cannot redo deletion');
+  assert.equal(f.view.redoStack.at(-1),marker);delete f.view.readOnly;
+  f.content.set(restored,'User edit after restoring');await f.view.redoTransaction();
+  assert.equal(f.files.get(path),restored);assert.equal(f.content.get(restored),'User edit after restoring');
+  assert.equal(f.view.redoStack.at(-1),marker);assert.equal(f.calls.trash.length,1);
+  f.content.set(restored,'Original body');await f.view.redoTransaction();assert.equal(f.files.has(path),false);
+  assert.equal(f.view.undoStack.at(-1),marker);assert.equal(f.calls.trash.length,2);
+});
+
+test('explicit row deletion rejects stale, non-Markdown, readonly and invalidated views before touching files',async t=>{
+  const f=fixture(t),file=f.put('Ideas/Existing.md','Keep this body');
+  assert.equal(f.history.canRemove(f.view,file),true);
+  await assert.rejects(f.history.remove(f.view,{...file}),/不可删除/);
+  file.extension='png';await assert.rejects(f.history.remove(f.view,file),/不可删除/);file.extension='md';
+  for(const [target,key] of [[f.view,'readOnly'],[f.view,'isReadOnly'],[f.controller,'isReadOnly']]){
+    target[key]=true;assert.equal(f.history.canRemove(f.view,file),false);
+    await assert.rejects(f.history.remove(f.view,file),/不可删除/);delete target[key];
+  }
+  const queued=f.history.remove(f.view,file);f.view.isReadOnly=true;
+  await assert.rejects(queued,/已移动或数据库已关闭/);f.view.isReadOnly=false;
+  f.controller.view={};await assert.rejects(f.history.remove(f.view,file),/不可删除/);
+  assert.equal(f.calls.trash.length,0);assert.equal(f.view.undoStack.length,0);
+  assert.equal(f.files.get(file.path),file);assert.equal(f.content.get(file),'Keep this body');
+});
+
+test('row deletion protects unsaved drafts, last-moment disk changes and failed trash without inventing history',async t=>{
+  const f=fixture(t),file=f.put('Ideas/Existing.md','Saved body');
+  f.leaves.push({file,editor:{getValue:()=> 'Unsaved body'}});
+  await assert.rejects(f.history.remove(f.view,file),/正在编辑/);f.leaves.length=0;
+  let reads=0;f.setReadHook(()=>{if(++reads===2)f.content.set(file,'Concurrent edit');return f.content.get(file);});
+  await assert.rejects(f.history.remove(f.view,file),/内容已变化/);f.setReadHook(null);
+  assert.equal(f.calls.trash.length,0);assert.equal(f.content.get(file),'Concurrent edit');
+  f.setTrashHook(()=>{throw Error('trash unavailable');});await assert.rejects(f.history.remove(f.view,file),/trash unavailable/);
+  assert.equal(f.view.undoStack.length,0);assert.equal(f.files.get(file.path),file);
+  f.setTrashHook(null);await f.history.remove(f.view,file);assert.equal(f.view.undoStack.length,1);
+  await f.view.undoTransaction();assert.equal(f.content.get(f.files.get(file.path)),'Concurrent edit');
+});
+
+test('duplicate row-delete clicks serialize into one deletion and a queued undo restores it once',async t=>{
+  const f=fixture(t),file=f.put('Ideas/Existing.md','Body');let release,started;
+  const active=new Promise(resolve=>{started=resolve;});f.setTrashHook(()=>new Promise(resolve=>{release=resolve;started();}));
+  const first=f.history.remove(f.view,file);await active;
+  const second=assert.rejects(f.history.remove(f.view,file),/已移动或数据库已关闭/);
+  const undo=f.view.undoTransaction();f.setTrashHook(null);release();await first;await second;await undo;
+  const restored=f.files.get(file.path);assert.ok(restored);assert.notEqual(restored,file);
+  assert.equal(f.content.get(restored),'Body');assert.equal(f.calls.trash.length,1);
+  assert.equal(f.view.undoStack.length,0);assert.equal(f.view.redoStack.length,1);
+  assert.deepEqual(f.calls.notices,[]);
+});
+
+test('explicit deletion waits for the native new-item editor to flush before its final content check',async t=>{
+  const f=fixture(t),file=await f.created(),creation=f.view.undoStack.at(-1),close=f.menu.close.bind(f.menu);
+  let flushed;const flush=new Promise(resolve=>{flushed=resolve;});
+  f.menu.close=()=>{close();f.win.setTimeout(()=>{f.content.set(file,'Saved while closing the editor');flushed();},0);};
+  const result=await Promise.allSettled([f.history.remove(f.view,file),flush]);
+  assert.equal(result[0].status,'rejected','a native close flush must cancel deletion');
+  assert.equal(f.files.get(file.path),file);assert.equal(f.content.get(file),'Saved while closing the editor');
+  assert.equal(f.calls.trash.length,0);assert.deepEqual([...f.view.undoStack],[creation]);
+});
+
+test('phone row deletion shares chronology across tabs of the same Base without crossing database scopes',async t=>{
+  const f=fixture(t,{phone:true}),ui=mountSurface(f);externalBase(f,ui);
+  const file=await f.created(),path=file.path,baseline=f.content.get(file),second=anotherBaseTab(f);
+  const other=anotherBaseTab(f,{base:'Bases/Other.base'});
+  await editIn(f,second.view,file,'Blender');const property=second.view.undoStack.at(-1);
+  await f.history.remove(second.view,file);assert.equal(f.files.has(path),false);
+  assert.equal(f.view.undoStack,second.view.undoStack);assert.equal(other.view.undoStack.length,0);
+  await other.view.undoTransaction();assert.equal(f.files.has(path),false);
+  await f.view.undoTransaction();const restored=f.files.get(path);assert.equal(property.changes[0].file,restored);
+  await second.view.undoTransaction();assert.equal(f.content.get(restored),baseline);
+  second.controller.isReadOnly=true;await assert.rejects(f.history.remove(second.view,restored),/不可删除/);
+  await f.view.undoTransaction();assert.equal(f.files.has(path),false);second.controller.isReadOnly=false;
+  await second.view.redoTransaction();await f.view.redoTransaction();await second.view.redoTransaction();
+  assert.equal(f.files.has(path),false);assert.equal(other.view.undoStack.length,0);
+  assert.deepEqual(f.calls.notices,[]);
+});

@@ -2,11 +2,12 @@ import type {CachedMetadata} from 'obsidian';
 import {isDueProperty} from './model';
 
 export interface Reminder {id: string; path: string; title: string; source: string; line?: number; due?: string; kind: 'task' | 'deadline'}
-export interface ReminderPreferences {openOnStartup: boolean; databases: string[]}
+export interface ReminderPreferences {openOnStartup: boolean; databases: string[]; name?: string}
 export interface ReminderSection {key: string; label: string; dateLabel?: string; overdue: boolean; rows: Reminder[]}
 export function readReminderPreferences(value: unknown): ReminderPreferences {
   const saved = value && typeof value === 'object' ? value as Record<string, unknown> : {};
-  return {openOnStartup: saved.openOnStartup !== false, databases: Array.isArray(saved.databases)
+  const name = typeof saved.name === 'string' ? saved.name.replace(/[\r\n\t]/g, ' ').trim().slice(0, 80) : '';
+  return {...(name && name !== '提醒事项' ? {name} : {}), openOnStartup: saved.openOnStartup !== false, databases: Array.isArray(saved.databases)
     ? [...new Set(saved.databases.filter((path): path is string => typeof path === 'string' && path.endsWith('.base') &&
       !/[\\:|[\]#]/.test(path) && ![...path].some(char => char.charCodeAt(0) < 32) &&
       !path.split('/').some(part => !part || part.startsWith('.'))))].slice(0, 24) : []};

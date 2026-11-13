@@ -20,15 +20,23 @@ function fixture(initial, initialEnabled = true, options = {}) {
   class TFile {constructor(path) {this.path = path; this.name = path.split('/').pop(); this.extension = path.split('.').pop(); this.basename = this.name.slice(0, -(this.extension.length + 1));}}
   class TFolder {constructor(path, children) {this.path = path; this.name = path.split('/').pop(); this.children = children; for (const child of children) child.parent = this;}}
   const root = new TFolder('/', [new TFile('Home.md'), new TFolder('Home', [new TFile('Home/Child.md')]), new TFile('Alpha.md'), new TFile('Zebra.md')]);
-  let active = 'Home.md', failSave = false, activeType = 'markdown', collapsed = 0, failOpen = false;
-  const platform = {isMobileApp: !!options.mobile};
+  let active = 'Home.md', failSave = false, activeType = 'markdown', collapsed = 0, failOpen = false, sidebarFocused = false;
+  const platform = {isMobileApp: !!options.mobile, isPhone: !!options.mobile};
   const writes = [], opens = [], notices = [], menus = [], commands = [], created = [], modals = [], settingTabs = [], layoutReady = [];
   const contents = new Map(), metadata = new Map(), disk = new Map([['.obsidian/core-plugins.json', JSON.stringify({bookmarks: true})]]), reads = [];
+  const events = () => {
+    const listeners = new Set();
+    return {on(name, callback) {const ref = {name, callback}; listeners.add(ref); return ref;},
+      offref(ref) {listeners.delete(ref);},
+      trigger(name, ...args) {for (const ref of [...listeners]) if (ref.name === name) ref.callback(...args);},
+      count: () => listeners.size};
+  };
+  const vaultEvents = events(), metadataEvents = events(), workspaceEvents = events();
   let readBody = file => contents.get(file.path) ?? '';
   const leaves = [], revealed = [], viewStates = []; let switchHook;
   const addLeaf = (type, currentView, state = {type, state: {}}) => {
     const leaf = {view: currentView ?? {getViewType: () => type}, state,
-      getViewState() {return this.state;},
+      getViewState() {return this.state;}, getContainer: () => app.workspace.rootSplit, getRoot: () => app.workspace.leftSplit,
       async setViewState(next) {
         viewStates.push({leaf: this, state: next}); await switchHook?.(this, next);
         await this.view.onClose?.(); this.state = next;
@@ -38,22 +46,36 @@ function fixture(initial, initialEnabled = true, options = {}) {
     if (currentView) currentView.leaf = leaf; leaves.push(leaf); return leaf;
   };
   const find = (path, node = root) => node.path === path ? node : node.children?.map(child => find(path, child)).find(Boolean);
-  const app = {metadataCache: {getFileCache: file => metadata.get(file.path) ?? {}},
-    vault: {configDir: '.obsidian', getRoot: () => root, getName: () => '测试库', getAbstractFileByPath: path => find(path), on() {},
+  class View extends Component {constructor(leaf, type) {super(); this.leaf = leaf; this.type = type;} getViewType() {return this.type;}}
+  class FileView extends View {constructor(file, leaf) {super(leaf, 'markdown'); this.file = file;}}
+  const contentLeaf = {getContainer: () => app.workspace.rootSplit, getRoot: () => app.workspace.rootSplit,
+    get view() {return activeType === 'markdown' ? new FileView(find(active), this) : new View(this, activeType);}};
+  const app = {metadataCache: {...metadataEvents, getFileCache: file => metadata.get(file.path) ?? {}},
+    vault: {...vaultEvents, configDir: '.obsidian', getRoot: () => root, getName: () => '测试库', getAbstractFileByPath: path => find(path),
     async cachedRead(file) {reads.push(file.path); return readBody(file);},
     adapter: {async exists(path) {return disk.has(path);}, async read(path) {reads.push(path); if (!disk.has(path)) throw new Error('ENOENT'); return disk.get(path);}},
     async createFolder(path) {created.push({folder: path}); const parent = find(path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '/'); parent.children.push(new TFolder(path, []));},
     async create(path, content) {created.push({file: path, content}); const file = new TFile(path); const parent = find(path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '/'); parent.children.push(file); return file;}},
-    workspace: {on() {}, onLayoutReady(fn) {layoutReady.push(fn);}, getActiveFile: () => find(active),
-      getMostRecentLeaf: () => ({view: {getViewType: () => activeType}}), leftSplit: {collapse() {collapsed++;}},
+    workspace: {...workspaceEvents, rootSplit: {}, onLayoutReady(fn) {layoutReady.push(fn);}, getActiveFile: () => find(active),
+      getActiveViewOfType(Type) {const current = sidebarFocused ? view : contentLeaf.view; return current instanceof Type ? current : null;},
+      getMostRecentLeaf: () => contentLeaf, leftSplit: {collapse() {collapsed++;}},
       getLeavesOfType: type => leaves.filter(leaf => leaf.view.getViewType() === type),
       iterateAllLeaves: callback => leaves.forEach(callback), getLeftLeaf: split => split ? addLeaf('empty') : leaves[0] ?? addLeaf('empty'),
       revealLeaf: async leaf => {revealed.push(leaf);},
-      getLeaf: mode => ({async openFile(file, state) {if (failOpen) throw new Error('cannot open'); opens.push({path: file.path, mode, ...(state ? {state} : {})}); active = file.path; activeType = 'markdown';}})}};
-  class ItemView extends Component {constructor(leaf) {super(); this.leaf = leaf; this.app = app; this.contentEl = doc.createElement('div'); doc.body.append(this.contentEl);}}
-  class Modal {constructor() {this.app = app; this.modalEl = doc.createElement('div'); this.contentEl = doc.createElement('div'); this.modalEl.append(this.contentEl); doc.body.append(this.modalEl); modals.push(this);} setTitle() {} open() {this.closed = false; this.onOpen();} close() {if (this.closed) return; this.closed = true; this.onClose(); this.modalEl.remove();}}
+      getLeaf: mode => ({async openFile(file, state) {if (failOpen) throw new Error('cannot open'); opens.push({path: file.path, mode, ...(state ? {state} : {})}); active = file.path; activeType = 'markdown'; sidebarFocused = false;}})}};
+  class ItemView extends View {constructor(leaf) {super(leaf); this.app = app; this.contentEl = doc.createElement('div'); doc.body.append(this.contentEl);}}
+  class Modal {
+    constructor() {
+      this.app = app; this.containerEl = doc.createElement('div'); this.containerEl.className = 'modal-container';
+      this.containerEl.createDiv({cls: 'modal-bg'}); this.modalEl = this.containerEl.createDiv({cls: 'modal'});
+      this.contentEl = this.modalEl.createDiv({cls: 'modal-content'}); doc.body.append(this.containerEl); modals.push(this);
+    }
+    setTitle(title) {this.title = title;}
+    open() {this.closed = false; this.onOpen();}
+    close() {if (this.closed) return; this.closed = true; this.onClose(); this.containerEl.remove();}
+  }
   class Menu {constructor() {menus.push(this); this.items = [];} setUseNativeMenu() {return this;} addItem(fn) {const item = {setTitle(title) {this.title = title; return this;}, setIcon() {return this;}, setChecked() {return this;}, setDisabled(disabled) {this.disabled = disabled; return this;}, onClick(fn) {this.click = fn; return this;}}; fn(item); this.items.push(item); return this;} addSeparator() {} showAtPosition() {}}
-  const obsidian = {PluginSettingTab: class {constructor(app) {this.app = app;} update() {}}, Platform: platform, Component, ItemView, TFile, TFolder, Modal, Menu, Notice: class {constructor(value) {notices.push(value);}}, setIcon: (el, icon) => {el.dataset.icon = icon;},
+  const obsidian = {PluginSettingTab: class {constructor(app) {this.app = app;} update() {}}, Platform: platform, Component, View, ItemView, FileView, MarkdownView: FileView, TFile, TFolder, Modal, Menu, Notice: class {constructor(value) {notices.push(value);}}, setIcon: (el, icon) => {el.dataset.icon = icon;},
     normalizePath: path => path.replace(/\\/g, '/').replace(/\/+$/, ''),
     getAllTags: cache => [...(cache.tags ?? []).map(item => item.tag), ...(cache.frontmatter?.tags ?? []).map(tag => '#' + tag.replace(/^#/, ''))]};
   const module = {exports: {}};
@@ -61,13 +83,13 @@ function fixture(initial, initialEnabled = true, options = {}) {
   const ribbonIcon = doc.createElement('div');
   const plugin = {app, registerView() {}, addCommand(command) {commands.push(command);}, addRibbonIcon() {return ribbonIcon;}, addSettingTab(tab) {settingTabs.push(tab);}};
   const sidebar = new module.exports.PageSidebar(plugin, initial, async value => {if (failSave) throw new Error('disk full'); writes.push(JSON.parse(JSON.stringify(value)));}, initialEnabled);
-  const view = new module.exports.PageSidebarView({}, sidebar);
+  const view = new module.exports.PageSidebarView({getContainer: () => app.workspace.rootSplit, getRoot: () => app.workspace.leftSplit}, sidebar);
   const click = (el, options = {}) => el.dispatchEvent(new win.MouseEvent('click', {bubbles: true, cancelable: true, ...options}));
   const key = (el, name, options = {}) => el.dispatchEvent(new win.KeyboardEvent('keydown', {key: name, bubbles: true, cancelable: true, ...options}));
   const settle = () => new Promise(resolve => setImmediate(resolve));
   return {dom, doc, win, root, sidebar, view, writes, opens, notices, menus, commands, created, modals, settingTabs, layoutReady, ribbonIcon, find, click, key, settle,
     leaves, revealed, viewStates, addLeaf, app, contents, metadata, disk, reads, setReadBody: reader => {readBody = reader;}, setSwitchHook: hook => {switchHook = hook;},
-    collapsed: () => collapsed, platform, failOpen: () => {failOpen = true;},
+    collapsed: () => collapsed, platform, setActive: path => {active = path; activeType = 'markdown'; sidebarFocused = false;}, setActiveType: type => {activeType = type; sidebarFocused = false;}, focusSidebar: () => {sidebarFocused = true;}, failOpen: () => {failOpen = true;},
     row: id => [...doc.querySelectorAll('.bui-page-row')].find(row => row.dataset.id === id),
     failSave() {failSave = true;}, restoreSave() {failSave = false;}, close() {for (const current of [...sidebar.views]) current.onClose(); view.onClose(); sidebar.onunload(); win.close();}};
 }
@@ -87,7 +109,7 @@ test('project and page groups retain one tree hierarchy without copying page ent
   const f = fixture({expanded: ['Home']}); try {
     await f.view.onOpen();
     const groups = [...f.doc.querySelectorAll('.bui-pages-group')];
-    assert.deepEqual(groups.map(el => el.getAttribute('aria-label')), ['项目', '页面']);
+    assert.deepEqual(groups.map(el => f.doc.getElementById(el.getAttribute('aria-labelledby')).textContent), ['项目', '页面']);
     assert.deepEqual([...groups[0].querySelectorAll('.bui-page-row')].map(el => el.dataset.id), ['Home', 'Home/Child.md']);
     assert.deepEqual([...groups[1].querySelectorAll('.bui-page-row')].map(el => el.dataset.id), ['Alpha.md', 'Zebra.md']);
     assert.equal(f.doc.querySelectorAll('.bui-page-row[data-id="Home"]').length, 1);
@@ -109,10 +131,15 @@ test('desktop and mobile use one magnifier to open unified search without replac
       else assert.ok(f.doc.querySelector('.bui-pages-desktop-header'));
       f.click(search); const modal = f.modals.at(-1);
       assert.deepEqual([...modal.contentEl.querySelectorAll('.bui-sidebar-search-modes button')].map(el => el.textContent), ['直接搜索', '标签', '书签', '文件列表']);
+      assert.equal(modal.title, '搜索'); assert.equal(modal.modalEl.getAttribute('aria-label'), '搜索');
+      assert.equal(modal.contentEl.querySelector('.bui-sidebar-search-cancel'), null);
+      assert.deepEqual([...modal.contentEl.children].map(el => el.className), mobile
+        ? ['bui-sidebar-search-modes', 'bui-sidebar-search-results', 'bui-sidebar-search-header']
+        : ['bui-sidebar-search-header', 'bui-sidebar-search-results', 'bui-sidebar-search-modes']);
       const input = modal.contentEl.querySelector('input'); input.value = 'child'; input.dispatchEvent(new f.win.Event('input'));
       assert.equal(modal.contentEl.querySelector('.bui-sidebar-search-title').textContent, 'Child');
       assert.equal(f.row('Home/Child.md'), undefined, 'finder does not expand or filter the underlying tree');
-      f.click(modal.contentEl.querySelector('.bui-sidebar-search-cancel'));
+      f.key(input, 'Escape'); assert.equal(modal.closed, true);
       assert.ok(f.doc.querySelector('.bui-pages-search-button')); assert.deepEqual(f.viewStates, []);
       assert.equal(f.doc.querySelector('.bui-pages-create [data-icon]').dataset.icon, 'square-pen');
       assert.deepEqual(f.opens, []); assert.deepEqual(f.writes, []);
@@ -125,10 +152,8 @@ test('mobile page and creation navigation close the drawer; expansion and failed
     await f.view.onOpen();
     f.click(f.row('Home').querySelector('.bui-page-disclosure')); await f.settle(); assert.equal(f.collapsed(), 0);
     f.click(f.row('Alpha.md')); await f.settle(); assert.equal(f.collapsed(), 1);
-    f.click(f.doc.querySelector('.bui-pages-create'));
-    const modal = f.modals[0]; modal.contentEl.querySelector('input').value = 'New';
-    modal.contentEl.querySelector('form').dispatchEvent(new f.win.Event('submit', {bubbles: true, cancelable: true})); await f.settle();
-    assert.equal(f.collapsed(), 2); assert.equal(f.opens.at(-1).path, 'New.md');
+    f.click(f.doc.querySelector('.bui-pages-create')); await f.settle();
+    assert.equal(f.modals.length, 0); assert.equal(f.collapsed(), 2); assert.equal(f.opens.at(-1).path, '未命名.md');
     f.failOpen(); f.click(f.row('Zebra.md')); await f.settle(); assert.equal(f.collapsed(), 2); assert.equal(f.notices.length, 1);
   } finally {f.close();}
 });
@@ -263,6 +288,120 @@ test('pin buttons toggle pages and folder projects without navigation; pinned se
   } finally {f.close();}
 });
 
+test('captured pinned-row clicks navigate through the main controller; pin actions and dragging never navigate', async () => {
+  const f = fixture({favorites: ['Alpha.md']}); const calls = [];
+  try {
+    f.sidebar.rightWorkspace = {async openFileInMain(file) {calls.push(file.path); f.setActive(file.path); return {};}};
+    f.view.leaf = {getContainer: () => f.app.workspace.rootSplit, getRoot: () => f.app.workspace.leftSplit}; await f.view.onOpen();
+    const row = f.doc.querySelector('.bui-page-favorite'), button = row.querySelector('.bui-page-favorite-open');
+    let captured; row.setPointerCapture = id => {captured = id;}; row.hasPointerCapture = id => captured === id;
+    row.releasePointerCapture = () => {captured = undefined;};
+    const pointer = (target, type, y) => {
+      const event = new f.win.MouseEvent(type, {bubbles: true, cancelable: true, button: 0, clientX: 30, clientY: y});
+      Object.defineProperty(event, 'pointerId', {value: 3}); Object.defineProperty(event, 'pointerType', {value: 'mouse'});
+      target.dispatchEvent(event);
+    };
+    pointer(button, 'pointerdown', 40); assert.equal(captured, 3);
+    pointer(row, 'pointerup', 40); f.click(row); await f.settle();
+    assert.deepEqual(calls, ['Alpha.md'], 'pointer capture retargets click to the row, which still opens the pinned page');
+    f.click(f.doc.querySelector('.bui-page-favorite .bui-page-pin')); await f.settle();
+    assert.deepEqual(calls, ['Alpha.md']); assert.deepEqual(f.sidebar.settings.favorites, []);
+    await f.sidebar.update(state => ({...state, favorites: ['Alpha.md']}));
+    const dragging = f.doc.querySelector('.bui-page-favorite');
+    f.doc.elementFromPoint = () => f.doc.body;
+    pointer(dragging.querySelector('.bui-page-favorite-open'), 'pointerdown', 40);
+    pointer(dragging, 'pointermove', 60); pointer(dragging, 'pointerup', 60); f.click(dragging); await f.settle();
+    assert.deepEqual(calls, ['Alpha.md'], 'drag completion cannot also open the page');
+  } finally {f.close();}
+});
+
+test('only the successful pinned or tree navigation source is selected, including mobile touch clicks', async () => {
+  for (const mobile of [false, true]) {
+    const f = fixture({favorites: ['Home', 'Alpha.md']}, true, {mobile}); try {
+      await f.view.onOpen();
+      const highlights = () => [...f.doc.querySelectorAll('.bui-page-row.is-active, .bui-page-favorite.is-active')];
+      assert.equal(highlights().length, 1); assert.ok(highlights()[0].classList.contains('bui-page-favorite'));
+      assert.equal(f.row('Home').getAttribute('aria-selected'), 'false');
+      f.click(f.row('Home')); await f.settle();
+      assert.equal(highlights().length, 1); assert.equal(highlights()[0], f.row('Home'));
+      assert.equal(f.doc.querySelector('.bui-page-favorite-open').getAttribute('aria-current'), 'false');
+      f.click(f.doc.querySelector('.bui-page-favorite-open')); await f.settle();
+      assert.equal(highlights().length, 1); assert.ok(highlights()[0].classList.contains('bui-page-favorite'));
+      assert.equal(f.row('Home').getAttribute('aria-selected'), 'false');
+      f.setActive('Zebra.md'); f.view.revealActive('Zebra.md');
+      assert.equal(highlights().length, 1); assert.equal(highlights()[0], f.row('Zebra.md'));
+      f.failOpen(); f.click(f.doc.querySelector('.bui-page-favorite-open')); await f.settle();
+      assert.equal(highlights().length, 1); assert.equal(highlights()[0], f.row('Zebra.md'), 'failed navigation does not select the clicked shortcut');
+      assert.deepEqual(f.sidebar.settings.favorites, ['Home', 'Alpha.md']);
+    } finally {f.close();}
+  }
+});
+
+test('mobile pinned navigation uses the active content view while recent-leaf visibility still points at Reminders', async () => {
+  for (const controlled of [false, true]) {
+    const f = fixture({favorites: ['Alpha.md']}, true, {mobile: true}); try {
+      const stale = {view: {getViewType: () => 'nebula-reminders'}, getContainer: () => f.app.workspace.rootSplit,
+        getRoot: () => f.app.workspace.rootSplit};
+      f.app.workspace.getMostRecentLeaf = () => stale;
+      // Some mobile hosts expose a drawer container here. Content belongs to
+      // the workspace root, so this must not scope the active note out.
+      f.view.leaf.getContainer = () => f.app.workspace.leftSplit;
+      f.setActiveType('nebula-reminders');
+      if (controlled) f.sidebar.rightWorkspace = {async openFileInMain(file) {f.setActive(file.path); return {};}};
+      await f.view.onOpen();
+      f.click(f.doc.querySelector('.bui-page-favorite-open')); await f.settle();
+      assert.equal(f.collapsed(), 1, 'successful navigation closes the drawer even when recent-leaf visibility is stale');
+      const selected = () => [...f.doc.querySelectorAll('.bui-page-row.is-active, .bui-page-favorite.is-active')];
+      assert.equal(selected().length, 1); assert.equal(selected()[0].dataset.id, 'Alpha.md');
+      assert.ok(selected()[0].classList.contains('bui-page-favorite'));
+      assert.equal(f.row('Alpha.md').getAttribute('aria-selected'), 'false');
+      f.focusSidebar(); f.view.syncActivePage();
+      assert.equal(selected().length, 1, 'sidebar focus retains the last actual content leaf, not the stale visibility fallback');
+      f.setActiveType('nebula-reminders'); f.view.syncActivePage(); assert.equal(selected().length, 0);
+      assert.deepEqual(f.sidebar.settings.favorites, ['Alpha.md']);
+    } finally {f.close();}
+  }
+});
+
+test('non-file content clears stale selection, while sidebar focus and duplicate events preserve the current note', async () => {
+  const f = fixture({favorites: ['Home']}, true, {mobile: true}); try {
+    await f.view.onOpen(); f.sidebar.onload();
+    const selected = () => [...f.doc.querySelectorAll('.bui-page-row.is-active, .bui-page-favorite.is-active')];
+    assert.equal(selected().length, 1);
+    let renders = 0; const original = f.view.render.bind(f.view); f.view.render = () => {renders++; original();};
+    f.setActiveType('nebula-reminders');
+    assert.equal(f.app.workspace.getActiveFile().path, 'Home.md', 'host still reports its last file in a non-file view');
+    f.app.workspace.trigger('active-leaf-change'); f.app.workspace.trigger('file-open', f.find('Home.md'));
+    await f.settle(); assert.equal(selected().length, 0); assert.equal(renders, 1);
+    f.app.workspace.trigger('active-leaf-change'); await f.settle(); assert.equal(renders, 1, 'unchanged non-file selection does not rerender');
+    f.setActive('Alpha.md'); f.app.workspace.trigger('active-leaf-change'); f.app.workspace.trigger('file-open', f.find('Alpha.md'));
+    await f.settle(); assert.equal(selected().length, 1); assert.equal(selected()[0], f.row('Alpha.md')); assert.equal(renders, 2);
+    f.focusSidebar(); f.app.workspace.trigger('active-leaf-change', f.view.leaf); await f.settle();
+    assert.equal(selected()[0], f.row('Alpha.md')); assert.equal(renders, 2, 'focusing a sidebar retains the actual content page selection');
+    f.setActiveType('empty'); f.app.workspace.trigger('active-leaf-change'); f.sidebar.onunload(); await f.settle();
+    assert.equal(renders, 2, 'unload cancels queued selection refresh');
+  } finally {f.close();}
+});
+
+test('non-file content never selects or auto-expands plain folders with an undefined file path', async () => {
+  for (const pinned of [false, true]) {
+    const f = fixture({favorites: pinned ? ['Finance'] : []}, true, {mobile: true}); try {
+      const Folder = f.find('Home').constructor, File = f.find('Alpha.md').constructor;
+      f.root.children.push(new Folder('Finance', [new File('Finance/Workbench.md')]));
+      f.setActiveType('nebula-reminders'); await f.view.onOpen();
+      assert.ok(f.row('Finance'), 'a directory without a folder note is visible');
+      assert.equal(f.row('Finance').getAttribute('aria-expanded'), 'false');
+      assert.equal(f.doc.querySelector('.bui-page-row.is-active, .bui-page-favorite.is-active'), null);
+      assert.equal(f.doc.querySelector('[aria-selected="true"], [aria-current="page"]'), null);
+      if (pinned) assert.ok(f.doc.querySelector('.bui-page-favorite[data-id="Finance"]'));
+      f.view.revealActive(undefined);
+      assert.equal(f.doc.querySelector('.bui-page-row.is-active, .bui-page-favorite.is-active'), null);
+      assert.equal(f.row('Finance').getAttribute('aria-expanded'), 'false');
+      assert.deepEqual(f.writes, []); assert.deepEqual(f.opens, []);
+    } finally {f.close();}
+  }
+});
+
 test('hidden pages disappear from tree, search and favorites, and return without losing preferences', async () => {
   const f = fixture({favorites: ['Home', 'Alpha.md'], hiddenPaths: ['Home', 'Home.md', 'Alpha.md'], expanded: ['Home'], futurePreference: 'keep'});
   try {
@@ -327,19 +466,23 @@ test('pointer cancellation and a destination outside the tree leave order and fi
   } finally {f.close();}
 });
 
-test('new child pages create a matching folder without renaming the parent, reject duplicate names and double submit', async () => {
+test('root and child actions create unique blank pages directly, coalesce fast repeats and preserve the parent', async () => {
   const f = fixture(); try {
     await f.view.onOpen();
-    f.click(f.row('Alpha.md').querySelector('button[aria-label="在 Alpha 下新建页面"]'));
-    const modal = f.modals[0], form = modal.contentEl.querySelector('form'), input = form.querySelector('input'); input.value = 'Child';
-    const submit = () => form.dispatchEvent(new f.win.Event('submit', {bubbles: true, cancelable: true}));
-    submit(); submit(); await f.settle();
-    assert.deepEqual(f.created, [{folder: 'Alpha'}, {file: 'Alpha/Child.md', content: ''}]); assert.ok(f.find('Alpha.md'));
-    assert.equal(f.opens[0].path, 'Alpha/Child.md'); assert.ok(f.row('Alpha/Child.md'));
-    f.click(f.row('Alpha').querySelector('button[aria-label="在 Alpha 下新建页面"]'));
-    const other = f.modals[1]; other.contentEl.querySelector('input').value = 'Child';
-    other.contentEl.querySelector('form').dispatchEvent(new f.win.Event('submit', {bubbles: true, cancelable: true})); await f.settle();
-    assert.match(other.contentEl.querySelector('[role="alert"]').textContent, /已存在/); assert.equal(f.created.length, 2);
+    f.click(f.row('Alpha.md').querySelector('button[data-icon="plus"]'));
+    f.click(f.row('Alpha.md').querySelector('button[data-icon="plus"]')); await f.settle();
+    assert.equal(f.modals.length, 0);
+    assert.deepEqual(f.created, [{folder: 'Alpha'}, {file: 'Alpha/未命名.md', content: ''}]); assert.ok(f.find('Alpha.md'));
+    assert.equal(f.opens[0].path, 'Alpha/未命名.md'); assert.ok(f.row('Alpha/未命名.md'));
+    f.click(f.row('Alpha').querySelector('button[data-icon="plus"]')); await f.settle();
+    assert.equal(f.created.at(-1).file, 'Alpha/未命名 1.md');
+    f.click(f.doc.querySelector('.bui-pages-create')); await f.settle();
+    assert.equal(f.created.at(-1).file, '未命名.md');
+    f.click(f.doc.querySelector('.bui-pages-create'), {detail: 2}); await f.settle();
+    assert.equal(f.created.at(-1).file, '未命名.md', 'the second click of a desktop double-click cannot create another page');
+    f.click(f.doc.querySelector('.bui-pages-create')); await f.settle();
+    assert.equal(f.created.at(-1).file, '未命名 1.md');
+    assert.ok(f.created.filter(item => item.file).every(item => item.content === ''));
   } finally {f.close();}
 });
 
@@ -469,7 +612,7 @@ test('page, pin and keyboard navigation use the main group; explicit main-tab an
   try {
     f.sidebar.rightWorkspace = {async openFileInMain(file, anchor, newTab) {calls.push({path: file.path, anchor, newTab}); return {};},
       async openFile(file) {calls.push({path: file.path, explicit: true});}};
-    f.view.leaf = {getContainer: () => ({})};
+    f.view.leaf = {getContainer: () => f.app.workspace.rootSplit, getRoot: () => f.app.workspace.leftSplit};
     await f.view.onOpen();
     f.click(f.row('Alpha.md')); await f.settle();
     f.click(f.doc.querySelector('.bui-page-favorite-open'), {metaKey: true}); await f.settle();
@@ -495,6 +638,112 @@ test('the optional reminders entry opens the new controller and closes only a mo
   } finally {f.close();}
 });
 
+test('top shortcuts retain creation and expose reminder rename without opening a page', async () => {
+  const f = fixture(); let renamed = 0, name = '工作计划';
+  try {
+    f.sidebar.openReminders = async () => {}; f.sidebar.reminderName = () => name;
+    f.sidebar.renameReminders = () => {renamed++; name = '下一步'; f.sidebar.refresh();};
+    await f.view.onOpen();
+    const shortcuts = f.doc.querySelector('.bui-pages-shortcuts');
+    assert.deepEqual([...shortcuts.children].map(el => el.textContent), ['新建页面', '工作计划']);
+    assert.equal(f.doc.querySelector('.bui-pages-footer'), null);
+    assert.ok(shortcuts.compareDocumentPosition(f.doc.querySelector('.bui-pages-scroll')) & f.win.Node.DOCUMENT_POSITION_FOLLOWING);
+    f.doc.querySelector('.bui-pages-reminders').dispatchEvent(new f.win.MouseEvent('contextmenu', {bubbles: true, cancelable: true}));
+    f.menus.at(-1).items.find(item => item.title === '重命名').click();
+    assert.equal(renamed, 1); assert.equal(f.doc.querySelector('.bui-pages-reminders').textContent, '下一步');
+    assert.deepEqual(f.opens, []); assert.deepEqual(f.created, []);
+  } finally {f.close();}
+});
+
+test('mobile footer places the original settings action before New page, restores it on close, and supports late native headers', async () => {
+  for (const late of [false, true]) {
+    const f = fixture(undefined, true, {mobile: true}); let settingsOpened = 0;
+    try {
+      const drawer = f.doc.body.createDiv({cls: 'workspace-drawer mod-left'});
+      const header = drawer.createDiv({cls: 'workspace-drawer-header'});
+      const settings = f.doc.createElement('button'); settings.className = 'workspace-drawer-header-icon mod-settings';
+      settings.addEventListener('click', () => {settingsOpened++;});
+      if (!late) header.append(settings);
+      await f.view.onOpen();
+      if (late) {header.append(settings); await f.settle();}
+      const footer = f.doc.querySelector('.bui-pages-mobile-footer');
+      assert.deepEqual([...footer.children].map(el => el.className), ['bui-pages-mobile-settings-slot', 'bui-pages-create']);
+      assert.equal(f.doc.querySelector('.bui-pages-shortcuts .bui-pages-create'), null);
+      assert.equal(f.doc.querySelectorAll('.bui-pages-create').length, 1);
+      assert.equal(footer.querySelector('.mod-settings'), settings, 'move the real native settings control, preserving its handler');
+      f.click(settings); assert.equal(settingsOpened, 1);
+      f.click(footer.querySelector('.bui-pages-create')); await f.settle();
+      assert.equal(f.modals.length, 0); assert.equal(f.opens.at(-1).path, '未命名.md');
+      await f.view.onClose(); assert.equal(settings.parentElement, header);
+      f.click(settings); assert.equal(settingsOpened, 2, 'native appearance retains the original settings button');
+    } finally {f.close();}
+  }
+});
+
+test('mobile startup selects Pages instead of a stale bookmark drawer and retains main focus', async () => {
+  for (const openOnStartup of [true, false]) {
+    const f = fixture({openOnStartup}, true, {mobile: true}); try {
+      const pages = f.addLeaf('nebula-pages'), bookmark = f.addLeaf('bookmarks');
+      const main = {view: {getViewType: () => 'markdown'}, path: 'Home.md'};
+      let selectedDrawer = bookmark, activeLeaf = main, drawerClosed = false, release;
+      const pending = new Promise(resolve => {release = resolve;});
+      f.app.workspace.leftSplit.collapse = () => {drawerClosed = true;};
+      f.app.workspace.revealLeaf = async leaf => {
+        f.revealed.push(leaf); selectedDrawer = leaf; drawerClosed = false;
+        if (f.revealed.length === 1) await pending;
+      };
+      f.app.workspace.setActiveLeaf = leaf => {activeLeaf = leaf;};
+      f.sidebar.onload(); f.layoutReady.forEach(ready => ready());
+      await new Promise(resolve => f.win.setTimeout(resolve, 5));
+      assert.equal(selectedDrawer, pages, 'the native drawer selector no longer points to bookmarks');
+      assert.equal(drawerClosed, true, 'drawer is closed even while deferred loading is pending');
+      assert.equal(activeLeaf, main, 'preparing the drawer must not activate its leaf');
+      release(); await f.settle();
+      assert.equal(drawerClosed, true); assert.equal(activeLeaf, main);
+      assert.equal(pages.view.getViewType(), 'nebula-pages'); assert.equal(bookmark.view.getViewType(), 'bookmarks');
+      assert.equal(f.leaves.length, 2, 'existing sidebar leaves are reused without deleting bookmarks');
+      await f.sidebar.open(); assert.equal(drawerClosed, false, 'an explicit sidebar command still opens it');
+      assert.equal(selectedDrawer, pages); assert.equal(activeLeaf, main);
+      assert.deepEqual(f.created, []); assert.deepEqual(f.writes, []);
+    } finally {f.close();}
+  }
+});
+
+test('failed mobile startup reveal still closes the drawer without changing the main page', async () => {
+  const f = fixture(undefined, true, {mobile: true}); try {
+    f.addLeaf('file-explorer'); let closed = true;
+    f.app.workspace.leftSplit.collapse = () => {closed = true;};
+    f.app.workspace.revealLeaf = async () => {closed = false; throw new Error('failed reveal');};
+    f.sidebar.onload(); f.layoutReady.forEach(ready => ready());
+    await new Promise(resolve => f.win.setTimeout(resolve, 5)); await f.settle();
+    assert.equal(closed, true); assert.equal(f.app.workspace.getActiveFile().path, 'Home.md');
+    assert.equal(f.notices.length, 1); assert.deepEqual(f.created, []);
+  } finally {f.close();}
+});
+
+test('sidebar actions show one full-title card beside the row, without native or host title bubbles', async () => {
+  const f = fixture(); try {
+    await f.view.onOpen(); let run;
+    f.win.setTimeout = fn => {run = fn; return 1;}; f.win.clearTimeout = () => {};
+    const row = f.row('Home'), action = row.querySelector('button[data-icon="plus"]');
+    row.getBoundingClientRect = () => ({left: 20, right: 220, top: 70, bottom: 100, width: 200, height: 30});
+    assert.equal(action.hasAttribute('title'), false); assert.equal(action.hasAttribute('aria-label'), false);
+    assert.equal(f.doc.getElementById(action.getAttribute('aria-labelledby')).textContent, '在 Home 下新建页面');
+    assert.equal(f.doc.querySelector('.bui-pages-tree [aria-label]'), null, 'group labels must not leak a 项目 tooltip on hover');
+    action.dispatchEvent(new f.win.Event('pointerenter')); run();
+    const tooltip = f.doc.querySelector('.bui-page-action-tooltip');
+    assert.equal(tooltip.querySelector('.bui-page-action-tooltip-title').textContent, 'Home');
+    assert.match(tooltip.textContent, /新建子页面/); assert.equal(tooltip.style.left, '228px'); assert.equal(tooltip.style.top, '70px');
+    assert.equal(action.getAttribute('aria-describedby'), tooltip.id);
+    row.querySelector('.bui-page-pin').dispatchEvent(new f.win.Event('pointerenter')); run();
+    assert.equal(f.doc.querySelectorAll('.bui-page-action-tooltip').length, 1); assert.equal(tooltip.isConnected, false);
+    f.doc.querySelector('.bui-pages-scroll').dispatchEvent(new f.win.Event('scroll'));
+    assert.equal(f.doc.querySelector('.bui-page-action-tooltip'), null);
+    action.dispatchEvent(new f.win.Event('pointerenter')); f.view.render(); run();
+    assert.equal(f.doc.querySelector('.bui-page-action-tooltip'), null, 'detached row cannot revive its tooltip');
+  } finally {f.close();}
+});
+
 test('mobile search finds collapsed page titles without changing the tree, preserves its query and cancels without navigation', async () => {
   const f = fixture(undefined, true, {mobile: true}); try {
     await f.view.onOpen(); f.click(f.doc.querySelector('.bui-pages-search-button'));
@@ -507,7 +756,7 @@ test('mobile search finds collapsed page titles without changing the tree, prese
     f.key(input, 'Escape'); assert.equal(modal.closed, true); assert.deepEqual(f.opens, []); assert.equal(f.collapsed(), 0);
     f.click(f.doc.querySelector('.bui-pages-search-button')); const reopened = f.modals.at(-1);
     assert.equal(reopened.contentEl.querySelector('input').value, 'child');
-    f.click(reopened.contentEl.querySelector('.bui-sidebar-search-cancel')); assert.equal(reopened.closed, true);
+    f.key(reopened.contentEl.querySelector('input'), 'Escape'); assert.equal(reopened.closed, true);
     assert.deepEqual(f.writes, []); assert.deepEqual(f.created, []);
   } finally {f.close();}
 });
@@ -521,6 +770,54 @@ test('mobile search respects IME composition and opens its chosen result in the 
     assert.equal(modal.closed, false); assert.deepEqual(f.opens, []);
     input.dispatchEvent(new f.win.CompositionEvent('compositionend')); f.key(input, 'Enter'); await f.settle();
     assert.deepEqual(f.opens, [{path: 'Home/Child.md', mode: false}]); assert.equal(modal.closed, true); assert.equal(f.collapsed(), 1);
+  } finally {f.close();}
+});
+
+test('phone search can clear without losing input focus and close without navigating; desktop retains outside dismissal', async () => {
+  for (const mobile of [false, true]) {
+    const f = fixture(undefined, true, {mobile}); try {
+      await f.view.onOpen(); f.click(f.doc.querySelector('.bui-pages-search-button'));
+      const modal = f.modals.at(-1), input = modal.contentEl.querySelector('input');
+      const clear = modal.contentEl.querySelector('[aria-label="清空搜索"]');
+      const close = modal.contentEl.querySelector('[aria-label="关闭搜索"]');
+      if (!mobile) {assert.equal(clear, null); assert.equal(close, null); continue;}
+      assert.ok(clear.hidden);
+      input.value = 'child'; input.dispatchEvent(new f.win.Event('input'));
+      assert.equal(clear.hidden, false);
+      input.dispatchEvent(new f.win.CompositionEvent('compositionstart'));
+      f.click(clear);
+      assert.equal(input.value, ''); assert.equal(f.doc.activeElement, input); assert.ok(clear.hidden);
+      assert.equal(f.view.captureNavigation().mobileQuery ?? '', '');
+      assert.equal(modal.closed, false); assert.equal(f.collapsed(), 0);
+      input.value = '保留'; input.dispatchEvent(new f.win.Event('input'));
+      f.click(close); await f.settle();
+      assert.equal(modal.closed, true); assert.equal(f.view.captureNavigation().mobileQuery, '保留');
+      assert.deepEqual(f.opens, []); assert.equal(f.collapsed(), 0);
+    } finally {f.close();}
+  }
+});
+
+test('every search mode dismisses from its backdrop or Escape while inside taps retain the current picker', async () => {
+  const f = fixture(undefined, true, {mobile: true}); try {
+    await f.view.onOpen();
+    for (const mode of ['直接搜索', '标签', '书签', '文件列表']) {
+      for (const dismiss of ['backdrop', 'escape']) {
+        f.click(f.doc.querySelector('.bui-pages-search-button'));
+        const modal = f.modals.at(-1), input = modal.contentEl.querySelector('input');
+        const button = [...modal.contentEl.querySelectorAll('.bui-sidebar-search-modes button')].find(el => el.textContent === mode);
+        f.click(button); await f.settle();
+        modal.contentEl.querySelector('.bui-sidebar-search-header').dispatchEvent(new f.win.MouseEvent('pointerdown', {bubbles: true}));
+        assert.equal(modal.closed, false);
+        input.value = '保留查询'; input.dispatchEvent(new f.win.Event('input'));
+        if (dismiss === 'backdrop') modal.containerEl.querySelector('.modal-bg').dispatchEvent(new f.win.MouseEvent('pointerdown', {bubbles: true}));
+        else f.key(button, 'Escape');
+        assert.equal(modal.closed, true, `${mode} closes on ${dismiss}`);
+        assert.equal(f.view.captureNavigation().mobileQuery, '保留查询');
+        await f.settle(); assert.equal(modal.contentEl.childElementCount, 0, 'late async results cannot refill a closed modal');
+      }
+    }
+    assert.equal(f.collapsed(), 0); assert.deepEqual(f.opens, []); assert.deepEqual(f.viewStates, []);
+    assert.deepEqual(f.writes, []); assert.deepEqual(f.created, []);
   } finally {f.close();}
 });
 
@@ -546,27 +843,218 @@ test('missing mobile compositionend cannot block explicit search actions or disc
   } finally {f.close();}
 });
 
-test('committing IME input during a result tap preserves the pressed result, focus and committed query', async () => {
+test('one pointer or touch tap opens the pressed result even when IME completion and keyboard blur occur before click', async () => {
+  for (const start of ['pointerdown', 'touchstart']) {
+    const f = fixture(undefined, true, {mobile: true}); try {
+      await f.view.onOpen(); f.click(f.doc.querySelector('.bui-pages-search-button'));
+      const modal = f.modals.at(-1), input = modal.contentEl.querySelector('input');
+      const result = [...modal.contentEl.querySelectorAll('.bui-sidebar-search-result')].find(button =>
+        button.querySelector('.bui-sidebar-search-title')?.textContent === 'Alpha');
+      input.dispatchEvent(new f.win.CompositionEvent('compositionstart')); input.value = 'alpha';
+      const press = start === 'pointerdown'
+        ? new f.win.MouseEvent(start, {bubbles: true, cancelable: true, button: 0, clientX: 30, clientY: 40})
+        : new f.win.Event(start, {bubbles: true, cancelable: true});
+      if (start === 'pointerdown') for (const [key, value] of Object.entries({pointerType: 'touch', pointerId: 7, isPrimary: true}))
+        Object.defineProperty(press, key, {value});
+      result.querySelector('.bui-sidebar-search-title').dispatchEvent(press);
+      input.dispatchEvent(new f.win.CompositionEvent('compositionend'));
+      assert.equal(result.isConnected, true, `${start}: compositionend must retain the pressed result until click`);
+      input.dispatchEvent(new f.win.Event('input'));
+      assert.equal(result.isConnected, true, 'the final input event must also retain the pressed result');
+      assert.equal(f.view.captureNavigation().mobileQuery, 'alpha');
+      // iOS often reports no relatedTarget when the software keyboard closes.
+      input.blur();
+      assert.equal(result.isConnected, true, 'blur must retain the same result');
+      const end = start === 'touchstart' ? new f.win.Event('touchend', {bubbles: true})
+        : new f.win.MouseEvent('pointerup', {bubbles: true, button: 0, clientX: 30, clientY: 40});
+      if (start === 'pointerdown') for (const [key, value] of Object.entries({pointerType: 'touch', pointerId: 7, isPrimary: true}))
+        Object.defineProperty(end, key, {value});
+      result.dispatchEvent(end);
+      f.click(result); await f.settle();
+      assert.deepEqual(f.opens, [{path: 'Alpha.md', mode: false}]);
+      assert.equal(modal.closed, true); assert.equal(f.collapsed(), 1);
+      assert.equal(f.view.captureNavigation().mobileQuery, 'alpha');
+      assert.deepEqual(f.viewStates, []); assert.deepEqual(f.writes, []); assert.deepEqual(f.created, []);
+    } finally {f.close();}
+  }
+});
+
+test('touch result taps activate on release once, while scroll, cancellation and long presses cannot navigate through a compatibility click', async () => {
+  for (const gesture of ['move', 'cancel', 'scroll', 'longpress', 'tap', 'keyboard']) {
+    const f = fixture(undefined, true, {mobile: true}); try {
+      await f.view.onOpen(); f.click(f.doc.querySelector('.bui-pages-search-button'));
+      const modal = f.modals.at(-1);
+      const result = [...modal.contentEl.querySelectorAll('.bui-sidebar-search-result')].find(button =>
+        button.querySelector('.bui-sidebar-search-title')?.textContent === 'Alpha');
+      const target = result.querySelector('.bui-sidebar-search-title');
+      const pointer = (type, timeStamp, x = 30, y = 40) => {
+        const event = new f.win.MouseEvent(type, {bubbles: true, cancelable: true, button: 0, clientX: x, clientY: y});
+        for (const [key, value] of Object.entries({pointerType: 'touch', pointerId: 7, isPrimary: true, timeStamp}))
+          Object.defineProperty(event, key, {value});
+        // A touched button implicitly captures its pointer, including a move
+        // outside its bounds and the subsequent release/cancellation.
+        target.dispatchEvent(event);
+      };
+      let release;
+      const open = modal.actions.openPage;
+      modal.actions.openPage = async (...args) => {const opened = await open(...args); await new Promise(resolve => {release = resolve;}); return opened;};
+      pointer('pointerdown', 1000);
+      if (gesture === 'move') {pointer('pointermove', 1020, 45); pointer('pointermove', 1040);}
+      if (gesture === 'cancel' || gesture === 'keyboard') pointer('pointercancel', 1040);
+      if (gesture === 'scroll') modal.contentEl.querySelector('.bui-sidebar-search-results').dispatchEvent(new f.win.Event('scroll'));
+      pointer('pointerup', gesture === 'longpress' ? 1700 : 1100);
+      if (gesture === 'tap') {
+        assert.equal(f.opens.length, 1, 'a touch opens on pointerup even if WebKit never delivers click');
+      } else assert.deepEqual(f.opens, [], `${gesture} must not open on pointerup`);
+      if (gesture === 'keyboard') f.key(result, 'Enter');
+      // WebViews can emit this compatibility click even after a cancelled
+      // gesture; keyboard Enter also activates a native button via click.
+      f.click(result, {detail: gesture === 'keyboard' ? 0 : 1}); await f.settle();
+      if (gesture === 'tap' || gesture === 'keyboard') {
+        assert.deepEqual(f.opens, [{path: 'Alpha.md', mode: false}]);
+        assert.equal(modal.closed, false, 'the pending navigation is not counted twice');
+        release(); await f.settle(); assert.equal(modal.closed, true); assert.equal(f.collapsed(), 1);
+      } else {
+        assert.deepEqual(f.opens, [], `${gesture} must suppress the trailing compatibility click`);
+        assert.equal(modal.closed, false); assert.equal(f.collapsed(), 0);
+      }
+    } finally {f.close();}
+  }
+});
+
+test('touching search categories preserves both the open and the dismissed software keyboard instead of moving or forcing focus', async () => {
+  for (const keyboardOpen of [true, false]) {
+    const f = fixture(undefined, true, {mobile: true}); try {
+      await f.view.onOpen(); f.click(f.doc.querySelector('.bui-pages-search-button'));
+      const modal = f.modals.at(-1), input = modal.contentEl.querySelector('input');
+      if (!keyboardOpen) input.blur();
+      const originalFocus = f.doc.activeElement;
+      for (const mode of ['标签', '书签', '文件列表', '直接搜索']) {
+        const button = [...modal.contentEl.querySelectorAll('.bui-sidebar-search-modes button')].find(el => el.textContent === mode);
+        const press = new f.win.MouseEvent('pointerdown', {bubbles: true, cancelable: true, button: 0});
+        Object.defineProperty(press, 'pointerType', {value: 'touch'});
+        button.dispatchEvent(press);
+        // Model the browser's default focus transfer, which jsdom omits.
+        if (!press.defaultPrevented) button.focus();
+        assert.equal(press.defaultPrevented, true, `${mode} suppresses the default focus transfer`);
+        button.dispatchEvent(new f.win.MouseEvent('pointerup', {bubbles: true}));
+        f.click(button); await f.settle();
+        assert.equal(f.doc.activeElement, originalFocus, `${mode} preserves keyboard state ${keyboardOpen ? 'open' : 'closed'}`);
+        assert.equal(button.getAttribute('aria-pressed'), 'true');
+        assert.equal(modal.closed, false);
+      }
+      assert.deepEqual(f.opens, []); assert.deepEqual(f.viewStates, []);
+    } finally {f.close();}
+  }
+});
+
+test('unchanged query blur, blank taps and duplicate input preserve body results without reading notes or publishing query changes again', async () => {
   const f = fixture(undefined, true, {mobile: true}); try {
+    f.contents.set('Alpha.md', '已经记录预算讨论，稍后补充预算讨论二。');
     await f.view.onOpen(); f.click(f.doc.querySelector('.bui-pages-search-button'));
     const modal = f.modals.at(-1), input = modal.contentEl.querySelector('input');
-    const result = [...modal.contentEl.querySelectorAll('.bui-sidebar-search-result')].find(button =>
-      button.querySelector('.bui-sidebar-search-title')?.textContent === 'Alpha');
-    input.dispatchEvent(new f.win.CompositionEvent('compositionstart')); input.value = 'alpha';
-    result.dispatchEvent(new f.win.MouseEvent('pointerdown', {bubbles: true}));
-    input.dispatchEvent(new f.win.CompositionEvent('compositionend'));
-    assert.equal(result.isConnected, true, 'compositionend must retain the pressed result until click');
-    input.dispatchEvent(new f.win.Event('input'));
-    assert.equal(result.isConnected, true, 'the final input event must also retain the pressed result');
-    assert.equal(f.view.captureNavigation().mobileQuery, 'alpha');
-    result.focus();
-    assert.equal(result.isConnected, true, 'blur must retain the same result');
-    assert.equal(f.doc.activeElement, result);
-    f.click(result); await f.settle();
-    assert.deepEqual(f.opens, [{path: 'Alpha.md', mode: false}]);
-    assert.equal(modal.closed, true); assert.equal(f.collapsed(), 1);
-    assert.equal(f.view.captureNavigation().mobileQuery, 'alpha');
-    assert.deepEqual(f.viewStates, []); assert.deepEqual(f.writes, []); assert.deepEqual(f.created, []);
+    const changes = [], changed = modal.actions.changed;
+    modal.actions.changed = query => {changes.push(query); changed(query);};
+    input.value = '预算讨论'; input.dispatchEvent(new f.win.Event('input'));
+    await new Promise(resolve => setTimeout(resolve, 170)); await f.settle();
+    const result = modal.contentEl.querySelector('.bui-sidebar-search-result.is-body-match');
+    assert.ok(result); assert.deepEqual(changes, ['预算讨论']);
+    const reads = [...f.reads];
+    input.blur();
+    const blank = modal.contentEl.querySelector('.bui-sidebar-search-results');
+    blank.dispatchEvent(new f.win.MouseEvent('pointerdown', {bubbles: true}));
+    f.click(blank); input.dispatchEvent(new f.win.Event('input'));
+    await new Promise(resolve => setTimeout(resolve, 170)); await f.settle();
+    assert.deepEqual(f.reads, reads, 'focus-only events must not repeat full-text reads');
+    assert.equal(modal.contentEl.querySelector('.bui-sidebar-search-result.is-body-match'), result);
+    assert.deepEqual(changes, ['预算讨论']);
+    input.value = '预算讨论二'; input.dispatchEvent(new f.win.Event('input'));
+    await new Promise(resolve => setTimeout(resolve, 170)); await f.settle();
+    assert.ok(f.reads.length > reads.length, 'an actual query change still searches the body');
+    assert.deepEqual(changes, ['预算讨论', '预算讨论二']);
+    const readsBeforeSwitch = [...f.reads];
+    const bodyResult = modal.contentEl.querySelector('.bui-sidebar-search-result.is-body-match');
+    const results = modal.contentEl.querySelector('.bui-sidebar-search-results');
+    results.scrollTop = 137;
+    f.click(modal.contentEl.querySelector('.bui-sidebar-search-modes [aria-pressed="true"]'));
+    await new Promise(resolve => setTimeout(resolve, 170)); await f.settle();
+    assert.deepEqual(f.reads, readsBeforeSwitch, 'the selected category is not an implicit full-text refresh');
+    assert.equal(modal.contentEl.querySelector('.bui-sidebar-search-result.is-body-match'), bodyResult);
+    const mode = label => f.click([...modal.contentEl.querySelectorAll('.bui-sidebar-search-modes button')].find(button => button.textContent === label));
+    mode('标签'); results.scrollTop = 23; mode('直接搜索');
+    assert.equal(modal.contentEl.querySelector('.bui-sidebar-search-result.is-body-match'), bodyResult, 'returning to a category reuses its result nodes');
+    assert.equal(results.scrollTop, 137, 'each category retains its scroll position');
+    mode('标签'); assert.equal(results.scrollTop, 23); mode('直接搜索');
+    await new Promise(resolve => setTimeout(resolve, 170)); await f.settle();
+    assert.deepEqual(f.reads, readsBeforeSwitch, 'returning to the same query does not search Markdown again');
+    assert.deepEqual(changes, ['预算讨论', '预算讨论二']);
+    modal.close(); assert.deepEqual(changes, ['预算讨论', '预算讨论二']);
+  } finally {f.close();}
+});
+
+test('pending body and bookmark searches survive category round trips and complete only into their own cached results', async () => {
+  const f = fixture(undefined, true, {mobile: true}); try {
+    const bodies = new Map(); f.setReadBody(file => new Promise(resolve => bodies.set(file.path, resolve)));
+    f.disk.set('.obsidian/bookmarks.json', 'pending');
+    const read = f.app.vault.adapter.read;
+    let finishBookmarks;
+    f.app.vault.adapter.read = path => {
+      if (path !== '.obsidian/bookmarks.json') return read(path);
+      f.reads.push(path); return new Promise(resolve => {finishBookmarks = resolve;});
+    };
+    await f.view.onOpen(); f.click(f.doc.querySelector('.bui-pages-search-button'));
+    const modal = f.modals.at(-1), input = modal.contentEl.querySelector('input');
+    const mode = label => f.click([...modal.contentEl.querySelectorAll('.bui-sidebar-search-modes button')].find(button => button.textContent === label));
+    input.value = '异步正文'; input.dispatchEvent(new f.win.Event('input'));
+    await new Promise(resolve => setTimeout(resolve, 170)); await f.settle();
+    assert.equal(bodies.size, 4);
+    mode('书签'); await f.settle(); assert.equal(typeof finishBookmarks, 'function');
+    const startedReads = [...f.reads];
+    mode('文件列表'); mode('直接搜索'); mode('书签'); mode('文件列表');
+    await new Promise(resolve => setTimeout(resolve, 170)); await f.settle();
+    assert.deepEqual(f.reads, startedReads, 'revisiting a pending category must not restart its request');
+    for (const [path, resolve] of bodies) resolve(path === 'Alpha.md' ? '这里包含异步正文内容。' : '');
+    finishBookmarks(JSON.stringify({items: [{type: 'file', path: 'Home/Child.md', title: '异步正文书签'}]}));
+    await f.settle();
+    assert.equal(modal.contentEl.querySelector('.is-body-match'), null);
+    assert.doesNotMatch(modal.contentEl.textContent, /异步正文书签/, 'background completions cannot leak into the file category');
+    mode('直接搜索');
+    assert.equal(modal.contentEl.querySelector('.is-body-match .bui-sidebar-search-title').textContent, 'Alpha');
+    assert.doesNotMatch(modal.contentEl.textContent, /正在查找正文/);
+    mode('书签');
+    assert.equal(modal.contentEl.querySelector('.bui-sidebar-search-title').textContent, '异步正文书签');
+    assert.doesNotMatch(modal.contentEl.textContent, /正在读取书签/);
+    assert.deepEqual(f.reads, startedReads); assert.deepEqual(f.opens, []);
+  } finally {f.close();}
+});
+
+test('query changes and vault or metadata updates invalidate cached search categories without retaining stale rows or listeners', async () => {
+  const f = fixture(undefined, true, {mobile: true}); try {
+    f.contents.set('Alpha.md', '第一笔预算'); f.contents.set('Home/Child.md', '第二笔预算');
+    f.metadata.set('Alpha.md', {tags: [{tag: '#旧标签'}]});
+    await f.view.onOpen();
+    const listenerCount = () => f.app.vault.count() + f.app.metadataCache.count();
+    const baseline = listenerCount();
+    f.click(f.doc.querySelector('.bui-pages-search-button'));
+    const modal = f.modals.at(-1), input = modal.contentEl.querySelector('input');
+    const mode = label => f.click([...modal.contentEl.querySelectorAll('.bui-sidebar-search-modes button')].find(button => button.textContent === label));
+    const search = async text => {input.value = text; input.dispatchEvent(new f.win.Event('input')); await new Promise(resolve => setTimeout(resolve, 170)); await f.settle();};
+    const titles = () => [...modal.contentEl.querySelectorAll('.bui-sidebar-search-title')].map(el => el.textContent);
+    await search('第一笔'); assert.deepEqual(titles(), ['Alpha']);
+    const previous = modal.contentEl.querySelector('.is-body-match');
+    await search('第二笔'); assert.deepEqual(titles(), ['Child']); assert.equal(previous.isConnected, false);
+    const readsBeforeChange = f.reads.length;
+    mode('文件列表');
+    f.contents.set('Alpha.md', '第二笔预算已移动到这篇'); f.contents.set('Home/Child.md', '内容已归档');
+    f.app.vault.trigger('modify', f.find('Alpha.md')); f.app.vault.trigger('modify', f.find('Home/Child.md'));
+    mode('直接搜索'); await new Promise(resolve => setTimeout(resolve, 170)); await f.settle();
+    assert.deepEqual(titles(), ['Alpha']); assert.ok(f.reads.length > readsBeforeChange);
+    await search(''); mode('标签'); assert.deepEqual(titles(), ['#旧标签']);
+    mode('文件列表'); f.metadata.set('Alpha.md', {tags: [{tag: '#新标签'}]});
+    f.app.metadataCache.trigger('changed', f.find('Alpha.md'));
+    mode('标签'); assert.deepEqual(titles(), ['#新标签']);
+    modal.close(); assert.equal(listenerCount(), baseline, 'closing search removes its source-change listeners');
+    f.app.vault.trigger('modify', f.find('Alpha.md')); await f.settle(); assert.equal(modal.contentEl.childElementCount, 0);
   } finally {f.close();}
 });
 
@@ -604,6 +1092,7 @@ test('direct search finds Markdown body text and discards asynchronous matches a
     await new Promise(resolve => setTimeout(resolve, 170)); await f.settle();
     assert.deepEqual([...modal.contentEl.querySelectorAll('.bui-sidebar-search-title')].map(el => el.textContent), ['Child']);
     assert.match(modal.contentEl.textContent, /正文 · 1/); assert.match(modal.contentEl.textContent, /一次预算讨论/);
+    assert.match(modal.contentEl.querySelector('.bui-sidebar-search-result.is-body-match .bui-sidebar-search-path').textContent, /一次预算讨论/);
     const releases = []; f.setReadBody(() => new Promise(resolve => releases.push(resolve)));
     input.value = '迟到结果'; input.dispatchEvent(new f.win.Event('input'));
     await new Promise(resolve => setTimeout(resolve, 170)); assert.ok(releases.length);
@@ -692,9 +1181,50 @@ test('new sidebar pages route to the main group instead of whichever native tab 
   try {
     f.sidebar.rightWorkspace = {async openFileInMain(file) {routes.push(file.path); return {};}};
     await f.view.onOpen(); f.click(f.doc.querySelector('.bui-pages-create'));
-    const modal = f.modals.at(-1); modal.contentEl.querySelector('input').value = 'New main page';
-    modal.contentEl.querySelector('form').dispatchEvent(new f.win.Event('submit', {bubbles: true, cancelable: true})); await f.settle();
-    assert.deepEqual(routes, ['New main page.md']); assert.deepEqual(f.opens, []);
-    assert.deepEqual(f.created, [{file: 'New main page.md', content: ''}]); assert.equal(modal.closed, true);
+    await f.settle();
+    assert.deepEqual(routes, ['未命名.md']); assert.deepEqual(f.opens, []);
+    assert.deepEqual(f.created, [{file: '未命名.md', content: ''}]); assert.equal(f.modals.length, 0);
   } finally {f.close();}
+});
+
+test('new page creation retains failures safely and allows retry without overwriting a blank page', async () => {
+  const f = fixture(undefined, true, {mobile: true}); try {
+    const create = f.app.vault.create; f.app.vault.create = async () => {throw new Error('read only');};
+    await f.sidebar.createPage(); assert.deepEqual(f.created, []); assert.deepEqual(f.opens, []); assert.equal(f.collapsed(), 0);
+    assert.match(f.notices.at(-1), /无法新建页面/);
+    f.app.vault.create = create; f.failOpen();
+    await f.sidebar.createPage();
+    assert.deepEqual(f.created, [{file: '未命名.md', content: ''}]); assert.ok(f.find('未命名.md'));
+    assert.equal(f.collapsed(), 0); assert.match(f.notices.at(-1), /页面已创建，但未能打开/);
+    f.sidebar.rightWorkspace = {async openFileInMain(file) {f.setActive(file.path); return {};}};
+    await f.sidebar.createPage();
+    assert.equal(f.created.at(-1).file, '未命名 1.md'); assert.equal(f.collapsed(), 1);
+    f.failSave(); await f.sidebar.createPage(f.sidebar.tree().find(node => node.id === 'Home'));
+    assert.equal(f.created.at(-1).file, 'Home/未命名.md'); assert.equal(f.app.workspace.getActiveFile().path, 'Home/未命名.md');
+    assert.equal(f.collapsed(), 2, 'a failed expansion preference save must not block opening the created page');
+    assert.match(f.notices.at(-1), /侧栏设置未能保存/); assert.equal(f.modals.length, 0);
+  } finally {f.close();}
+});
+
+test('direct creation selects a visible native title on desktop and never focuses an iPhone keyboard', async () => {
+  for (const mode of ['title', 'hidden-title', 'phone', 'title-changed']) {
+    const f = fixture(undefined, true, {mobile: mode === 'phone'}); try {
+      const NativeMarkdownView = f.app.workspace.getMostRecentLeaf().view.constructor;
+      let titleFocused = 0, editorFocused = 0, cursor;
+      const contentEl = f.doc.body.createDiv();
+      const title = contentEl.createDiv({cls: 'inline-title', text: '未命名', attr: {contenteditable: 'true'}});
+      title.getClientRects = () => mode === 'hidden-title' ? [] : [{}]; title.focus = () => {if (mode === 'title-changed') throw new Error('native view changed'); titleFocused++;};
+      const nativeView = new NativeMarkdownView(undefined, undefined);
+      Object.assign(nativeView, {contentEl, getMode: () => 'source', editor: {focus() {editorFocused++;}, setCursor(...args) {cursor = args;}}});
+      const leaf = {view: nativeView};
+      f.sidebar.rightWorkspace = {async openFileInMain(file) {nativeView.file = file; f.setActive(file.path); return leaf;}};
+      await f.sidebar.createPage();
+      assert.equal(f.modals.length, 0); assert.deepEqual(f.created, [{file: '未命名.md', content: ''}]);
+      assert.equal(f.notices.length, 0, 'an optional title focus failure is not a navigation failure');
+      assert.equal(titleFocused, mode === 'title' ? 1 : 0); assert.equal(editorFocused, mode === 'hidden-title' ? 1 : 0);
+      if (mode === 'title') assert.equal(f.doc.getSelection().toString(), '未命名');
+      if (mode === 'hidden-title') assert.deepEqual(cursor, [0, 0]);
+      if (mode === 'phone') assert.equal(f.collapsed(), 1);
+    } finally {f.close();}
+  }
 });

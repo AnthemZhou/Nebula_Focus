@@ -5,6 +5,7 @@ import type {RightWorkspaceController} from './right-workspace';
 export const REMINDERS_VIEW = 'nebula-reminders';
 export class RemindersController extends Component {
   preferences: ReminderPreferences;
+  onNameChange?: () => void;
   readonly views = new Set<RemindersView>();
   private stopped = false;
   private enabled: boolean;
@@ -21,6 +22,12 @@ export class RemindersController extends Component {
     super(); this.preferences = readReminderPreferences(initial); this.enabled = enabled;
   }
   get app() {return this.plugin.app;}
+  get displayName() {return this.preferences.name ?? '提醒事项';}
+  async rename() {
+    await this.open();
+    if (this.stopped || !this.enabled) return;
+    for (const view of this.views) if (view.leaf === this.app.workspace.getMostRecentLeaf()) {view.beginRename(); return;}
+  }
   onload() {
     this.plugin.registerView(REMINDERS_VIEW, leaf => new RemindersView(leaf, this));
     this.plugin.addCommand({id: 'open-reminders', name: '打开提醒事项', checkCallback: checking => {
@@ -73,6 +80,10 @@ export class RemindersController extends Component {
     }
     if (!this.stopped && this.enabled && leaf.getViewState().type === REMINDERS_VIEW) {
       await workspace.revealLeaf(leaf);
+      if (this.stopped || !this.enabled || leaf.getViewState().type !== REMINDERS_VIEW) return;
+      // Revealing a tab alone does not always make it the active main page.
+      // Do not focus an embedded editor (or raise a mobile keyboard) here.
+      workspace.setActiveLeaf(leaf, {focus: false});
       if (Platform.isMobileApp) workspace.leftSplit.collapse();
       this.schedule();
     }
@@ -120,7 +131,20 @@ export class RemindersController extends Component {
     const work = this.writes.then(async () => {
       if (this.stopped) return false;
       const next = readReminderPreferences(change(this.preferences)); await this.save(next);
-      this.preferences = next; if (!this.stopped) for (const view of this.views) view.renderDatabases(); return true;
+      const renamed = next.name !== this.preferences.name;
+      this.preferences = next;
+      if (!this.stopped) {
+        const views = [...this.views];
+        for (const view of views) {view.renderTitle(); view.renderDatabases();}
+        if (renamed) this.onNameChange?.();
+        for (const view of renamed ? views : []) {
+          if (this.stopped) break;
+          if (!this.views.has(view) || view.leaf.view !== view || view.leaf.getViewState().type !== REMINDERS_VIEW) continue;
+          try {await view.leaf.setViewState({...view.leaf.getViewState(), active: false});}
+          catch (error) {console.error('[Nebula Focus] 提醒事项标签标题暂未刷新', error);}
+        }
+      }
+      return true;
     }).catch(error => {console.error('[Nebula Focus] 提醒事项设置未保存', error); new Notice('提醒事项设置未保存，请重试'); return false;});
     this.writes = work; return work;
   }
@@ -142,20 +166,60 @@ export class RemindersView extends ItemView {
   private databases?: HTMLElement;
   private databaseComponent?: Component;
   private databaseSignature = '';
+  private titleEl?: HTMLElement;
+  private titleInput?: HTMLInputElement;
   constructor(leaf: WorkspaceLeaf, readonly host: RemindersController) {super(leaf);}
   getViewType() {return REMINDERS_VIEW;}
-  getDisplayText() {return '提醒事项';}
+  getDisplayText() {return this.host.displayName;}
   getIcon() {return 'list-todo';}
   async onOpen() {
     this.databaseSignature = '';
+    this.titleInput = undefined;
     this.contentEl.classList.add('nf-reminders'); this.contentEl.replaceChildren(); this.host.views.add(this);
     const header = this.contentEl.createDiv({cls: 'nf-reminders-header'});
-    header.createEl('h1', {text: '提醒事项'});
+    this.titleEl = header.createEl('h1', {text: this.host.displayName, attr: {tabindex: '0', role: 'button', 'aria-label': '重命名提醒事项'}});
+    this.titleEl.addEventListener('click', () => this.beginRename());
+    this.titleEl.addEventListener('keydown', event => {
+      if (event.target === this.titleEl && (event.key === 'Enter' || event.key === ' ')) {event.preventDefault(); this.beginRename();}
+    });
     header.createEl('button', {text: '添加数据库'}).addEventListener('click', () => this.host.chooseDatabase());
     this.contentEl.createEl('p', {cls: 'nf-reminders-description', text: '来自笔记中的未完成任务与截止日期。点开来源继续处理。'});
     this.list = this.contentEl.createDiv({cls: 'nf-reminders-list'});
     this.databases = this.contentEl.createDiv({cls: 'nf-reminder-databases'});
     this.renderReminders(); this.renderDatabases(); this.host.requestRefresh();
+  }
+  renderTitle() {if (this.titleEl && !this.titleInput) this.titleEl.textContent = this.host.displayName;}
+  beginRename() {
+    if (!this.titleEl || this.titleInput) return;
+    this.titleEl.replaceChildren();
+    const input = this.titleEl.createEl('input', {cls: 'nf-reminders-title-input', attr: {'aria-label': '提醒事项名称', maxlength: '80'}});
+    this.titleInput = input; input.value = this.host.displayName;
+    let finished = false, composing = false, blurredDuringComposition = false;
+    const finish = (commit: boolean) => {
+      if (finished || composing || this.titleInput !== input || !input.isConnected) return;
+      finished = true; const value = input.value.trim(); this.titleInput = undefined;
+      this.renderTitle();
+      if (commit && value && value !== this.host.displayName) void this.host.update(state => ({...state, name: value}));
+    };
+    input.addEventListener('compositionstart', () => {composing = true;});
+    input.addEventListener('compositionend', () => {
+      composing = false;
+      // iOS may blur the field before delivering the final composition value.
+      // Wait until that input turn completes, then commit only if focus stayed
+      // away and the same view/editor is still mounted.
+      if (blurredDuringComposition) void Promise.resolve().then(() => {
+        blurredDuringComposition = false;
+        if (input.ownerDocument.activeElement !== input) finish(true);
+      });
+    });
+    input.addEventListener('keydown', event => {
+      event.stopPropagation(); if (event.isComposing || composing) return;
+      if (event.key === 'Enter' || event.key === 'Escape') {event.preventDefault(); finish(event.key === 'Enter');}
+    });
+    input.addEventListener('blur', () => {
+      if (composing) blurredDuringComposition = true;
+      else finish(true);
+    }); input.focus(); input.select();
   }
   renderReminders() {
     if (!this.list) return;
@@ -207,6 +271,7 @@ export class RemindersView extends ItemView {
   }
   async onClose() {
     this.host.views.delete(this);
+    this.titleInput = undefined; this.titleEl = undefined;
     if (this.databaseComponent) this.removeChild(this.databaseComponent);
     this.databaseComponent = undefined; this.contentEl.replaceChildren();
   }

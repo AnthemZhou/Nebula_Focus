@@ -28,9 +28,14 @@ function fixture(initial, mobile = false, emulatedMobile = false) {
 
 function addNativeFooter(doc) {
   const profile = doc.createElement('div'); profile.className = 'workspace-sidedock-vault-profile';
-  profile.innerHTML = '<button class="workspace-drawer-vault-switcher">Vault</button><div class="workspace-drawer-vault-actions"><span class="clickable-icon"><svg class="help"></svg></span><span class="clickable-icon"><svg class="lucide-settings"></svg></span></div><span class="native-trailing">Keep order</span>';
+  profile.innerHTML = '<div class="workspace-drawer-vault-switcher"><div class="workspace-drawer-vault-switcher-icon"></div><div class="workspace-drawer-vault-name">Vault</div></div><div class="workspace-drawer-vault-actions"><span class="clickable-icon"><svg class="help"></svg></span><span class="clickable-icon"><svg class="lucide-settings"></svg></span></div><span class="native-trailing">Keep order</span>';
   doc.body.append(profile);
   return {profile, actions: profile.querySelector('.workspace-drawer-vault-actions'), trailing: profile.lastChild};
+}
+
+function addDesktopHeader(doc) {
+  const header = doc.createElement('div'); header.className = 'bui-pages-toolbar bui-pages-desktop-header';
+  header.innerHTML = '<button class="bui-pages-search-button">Search</button>'; doc.body.append(header); return header;
 }
 
 test('known optional tools are compact by default; unfamiliar tools and native settings remain untouched', () => {
@@ -148,5 +153,58 @@ test('footer placement is per-window and leaves mobile controls in the native va
     assert.equal(mockPhone.actions.parentElement, mockPhone.profile);
     f.handlers['window-close'](null, popout.window); assert.equal(other.actions.parentElement, other.profile);
     assert.notEqual(main.actions.parentElement, main.profile);
+  } finally {f.close(); phone.close(); emulated.close(); popout.window.close();}
+});
+
+test('desktop vault selector moves before search with original listeners and returns to its exact native slot', () => {
+  const f = fixture(); try {
+    const {profile, actions} = addNativeFooter(f.doc), before = profile.innerHTML;
+    const switcher = profile.querySelector('.workspace-drawer-vault-switcher'), header = addDesktopHeader(f.doc);
+    switcher.setAttribute('style', 'color: inherit'); let calls = 0;
+    switcher.addEventListener('click', () => calls++); f.controller.onload();
+    assert.equal(header.firstElementChild, switcher); assert.equal(switcher.nextElementSibling.className, 'bui-pages-search-button');
+    assert.equal(actions.parentElement, f.doc.querySelector('.side-dock-settings'));
+    assert.equal(profile.classList.contains('bui-header-vault-source'), true);
+    assert.equal(f.doc.querySelectorAll('.workspace-drawer-vault-switcher').length, 1);
+    switcher.click(); assert.equal(calls, 1); assert.equal(switcher.getAttribute('style'), 'color: inherit');
+    f.controller.setEnabled(false);
+    assert.equal(profile.firstElementChild, switcher); assert.equal(switcher.nextElementSibling, actions);
+    assert.equal(profile.classList.contains('bui-header-vault-source'), false); switcher.click(); assert.equal(calls, 2);
+    assert.equal(profile.innerHTML, before.replace('class="workspace-drawer-vault-switcher"', 'class="workspace-drawer-vault-switcher" style="color: inherit"'));
+    f.controller.setEnabled(true); f.controller.onunload();
+    assert.equal(profile.firstElementChild, switcher); assert.equal(switcher.nextElementSibling, actions);
+    assert.equal(header.querySelector('.workspace-drawer-vault-switcher'), null); assert.deepEqual(f.writes, []);
+  } finally {f.close();}
+});
+
+test('late or replaced desktop headers and profiles retain a single native vault control without resurrecting removed nodes', async () => {
+  const f = fixture(); try {
+    const first = addNativeFooter(f.doc), switcher = first.profile.firstElementChild; f.controller.onload();
+    assert.equal(switcher.parentElement, first.profile, 'native position remains until a supported header exists');
+    const header = addDesktopHeader(f.doc); await f.settle(); assert.equal(switcher.parentElement, header);
+    header.remove(); await f.settle(); assert.equal(switcher.parentElement, first.profile);
+    const nextHeader = addDesktopHeader(f.doc); await f.settle(); assert.equal(switcher.parentElement, nextHeader);
+    const replacement = addNativeFooter(f.doc), nextSwitcher = replacement.profile.firstElementChild;
+    first.profile.remove(); await f.settle(); assert.equal(switcher.isConnected, false);
+    assert.equal(nextSwitcher.parentElement, nextHeader); assert.equal(f.doc.querySelectorAll('.workspace-drawer-vault-switcher').length, 1);
+    nextSwitcher.remove(); await f.settle(); f.controller.setEnabled(false);
+    assert.equal(nextSwitcher.isConnected, false, 'a native removal is never undone');
+    assert.equal(replacement.profile.classList.contains('bui-header-vault-source'), false);
+  } finally {f.close();}
+});
+
+test('vault header placement stays per-window and does not change mobile or unknown host controls', () => {
+  const f = fixture(), phone = fixture(undefined, true), emulated = fixture(undefined, false, true);
+  const popout = new JSDOM('<body></body>');
+  try {
+    const main = addNativeFooter(f.doc), other = addNativeFooter(popout.window.document), mobile = addNativeFooter(phone.doc), mock = addNativeFooter(emulated.doc);
+    const headers = [addDesktopHeader(f.doc), addDesktopHeader(popout.window.document), addDesktopHeader(phone.doc), addDesktopHeader(emulated.doc)];
+    const switchers = [main, other, mobile, mock].map(item => item.profile.firstElementChild);
+    f.controller.onload(); f.handlers['window-open'](null, popout.window); phone.controller.onload(); emulated.controller.onload();
+    assert.equal(switchers[0].parentElement, headers[0]); assert.equal(switchers[1].parentElement, headers[1]);
+    assert.equal(switchers[2].parentElement, mobile.profile); assert.equal(switchers[3].parentElement, mock.profile);
+    f.handlers['window-close'](null, popout.window); assert.equal(switchers[1].parentElement, other.profile);
+    f.controller.setEnabled(false); switchers[0].querySelector('.workspace-drawer-vault-name').remove();
+    f.controller.setEnabled(true); assert.equal(switchers[0].parentElement, main.profile, 'unrecognised host markup stays native');
   } finally {f.close(); phone.close(); emulated.close(); popout.window.close();}
 });

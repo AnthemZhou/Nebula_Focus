@@ -58,6 +58,64 @@ test('plain title clicks edit the original link at the clicked caret; only nativ
   } finally {f.close();}
 });
 
+test('continuous deletion keeps the caret when Bases repaints between the native text mutation and input, including an empty title',()=>{
+  for (const kind of ['property','filename']) for (const direction of ['Backward','Forward']) {
+    const renames=[],f=fixture({rename(view,file,value){renames.push(value);}});try {
+      f.link.textContent='未命名';f.raw['这里写想法']='未命名';f.file.basename='未命名';
+      if (kind==='filename') {
+        f.row.cells[0].prop='file.name';f.cell.parentElement.dataset.property='file.name';
+        f.view.config.name='文件';
+      }
+      f.titles.refresh(f.view);f.click(f.link);
+      let expected='未命名';
+      while (expected) {
+        const offset=direction==='Backward'?expected.length:0;
+        const selection=f.doc.getSelection(),range=f.doc.createRange();
+        range.setStart(f.link.firstChild,offset);range.collapse(true);selection.removeAllRanges();selection.addRange(range);
+        f.key(f.link,direction==='Backward'?'Backspace':'Delete');
+        f.link.dispatchEvent(new f.win.InputEvent('beforeinput',{bubbles:true,cancelable:true,inputType:`deleteContent${direction}`}));
+        expected=direction==='Backward'?expected.slice(0,-1):expected.slice(1);
+        f.link.firstChild.data=expected;
+        range.setStart(f.link.firstChild,direction==='Backward'?expected.length:0);range.collapse(true);
+        // Obsidian's synchronous render observer can run before the input
+        // event records the browser's deletion. This is the reported race.
+        f.titles.refresh(f.view);
+        assert.equal(f.doc.activeElement,f.link);assert.equal(f.link.getAttribute('contenteditable'),'plaintext-only');
+        assert.equal(selection.anchorNode,f.link.firstChild);assert.equal(selection.anchorOffset,direction==='Backward'?expected.length:0);
+        f.link.dispatchEvent(new f.win.InputEvent('input',{bubbles:true,inputType:`deleteContent${direction}`}));
+        f.link.dispatchEvent(new f.win.KeyboardEvent('keyup',{key:direction==='Backward'?'Backspace':'Delete',bubbles:true}));
+        f.titles.refresh(f.view);assert.equal(f.link.textContent,expected);assert.equal(f.doc.activeElement,f.link);
+        assert.deepEqual(f.writes,[]);assert.deepEqual(renames,[]);
+      }
+      f.key(f.link,'Enter');
+      if (kind==='filename') assert.deepEqual(renames,['']);
+      else {assert.equal(f.writes.length,1);assert.equal(f.writes[0].value,'');}
+      assert.equal(f.link.hasAttribute('contenteditable'),false);
+    } finally {f.close();}
+  }
+});
+
+test('an input transaction still rejects a changed source, while IME and cancelled beforeinput keep normal save/cancel behavior',async()=>{
+  const f=fixture();try {
+    f.titles.refresh(f.view);f.click(f.link);
+    f.link.dispatchEvent(new f.win.InputEvent('beforeinput',{bubbles:true,inputType:'deleteContentBackward'}));
+    f.raw['这里写想法']='外部更新';f.titles.refresh(f.view);
+    assert.equal(f.link.hasAttribute('contenteditable'),false);assert.deepEqual(f.writes,[]);
+    f.raw['这里写想法']='原来的想法';f.click(f.link);
+    f.link.dispatchEvent(new f.win.CompositionEvent('compositionstart'));
+    f.link.firstChild.data='输入中';f.titles.refresh(f.view);
+    assert.equal(f.link.getAttribute('contenteditable'),'plaintext-only');
+    f.link.dispatchEvent(new f.win.InputEvent('input',{bubbles:true,inputType:'insertCompositionText'}));
+    f.link.dispatchEvent(new f.win.CompositionEvent('compositionend'));
+    f.key(f.link,'Escape');assert.equal(f.link.textContent,'原来的想法');assert.deepEqual(f.writes,[]);
+    f.click(f.link);
+    f.link.dispatchEvent(new f.win.InputEvent('beforeinput',{bubbles:true,cancelable:true,inputType:'deleteContentBackward'}));
+    await new Promise(resolve=>f.win.setTimeout(resolve,5));
+    f.edit('取消空操作后继续编辑');f.key(f.link,'Enter');
+    assert.equal(f.writes.length,1);assert.equal(f.writes[0].value,'取消空操作后继续编辑');
+  } finally {f.close();}
+});
+
 test('renderer whitespace and outer cell padding start the same frameless editor at the end before native click handlers consume them',()=>{
   const f=fixture();try {
     let nativeClicks=0;

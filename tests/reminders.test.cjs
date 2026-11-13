@@ -26,8 +26,8 @@ function fixture(initial, options={}) {
   class WorkspaceTabs {constructor(){this.children=[];}}
   class ItemView extends Component {constructor(leaf){super();this.leaf=leaf;this.app=app;this.contentEl=doc.createElement('div');doc.body.append(this.contentEl);}}
   class FuzzySuggestModal {constructor(app){this.app=app;}setPlaceholder(){}open(){pickers.push(this);}}
-  const files=new Map(),content=new Map(),metadata=new Map(),reads=[],fileWrites=[],saves=[],notices=[],renders=[],commands=[],factories=new Map(),ready=[],leaves=[],revealed=[],pickers=[],navigation=[];
-  const events=new Map(),rootSplit={},mainTabs=new WorkspaceTabs();let failSave=false,readHook,renderHook,stateHook;
+  const files=new Map(),content=new Map(),metadata=new Map(),reads=[],fileWrites=[],saves=[],notices=[],renders=[],commands=[],factories=new Map(),ready=[],leaves=[],revealed=[],activated=[],pickers=[],navigation=[];
+  const events=new Map(),rootSplit={},mainTabs=new WorkspaceTabs();let failSave=false,readHook,renderHook,stateHook,active;
   const on=(scope,name,fn)=>{const key=scope+':'+name; if(!events.has(key))events.set(key,new Set());events.get(key).add(fn);return {off:()=>events.get(key).delete(fn)};};
   const emit=(scope,name,...args)=>{for(const fn of events.get(scope+':'+name)??[])fn(...args);};
   const mutate=(...args)=>{fileWrites.push(args);throw Error('Unexpected source write');};
@@ -36,7 +36,7 @@ function fixture(initial, options={}) {
     modify:mutate,create:mutate,delete:mutate,process:mutate,trash:mutate,on:(name,fn)=>on('vault',name,fn)},
     metadataCache:{getFileCache:file=>metadata.get(file.path),on:(name,fn)=>on('metadata',name,fn)},
     workspace:{rootSplit,iterateRootLeaves:fn=>{for(const leaf of leaves)if(fn(leaf))break;},createLeafInParent(parent,index){const leaf=addLeaf('empty',undefined,parent);parent.children.splice(parent.children.indexOf(leaf),1);parent.children.splice(index,0,leaf);return leaf;},
-      getLeaf:()=>addLeaf('empty'),revealLeaf:async leaf=>{revealed.push(leaf);},onLayoutReady:fn=>ready.push(fn),leftSplit:{collapse(){}}}};
+      getLeaf:()=>addLeaf('empty'),getMostRecentLeaf:()=>active,revealLeaf:async leaf=>{revealed.push(leaf);},setActiveLeaf(leaf,options){active=leaf;activated.push({leaf,options});},onLayoutReady:fn=>ready.push(fn),leftSplit:{collapse(){}}}};
   const plugin={app,registerView:(type,factory)=>factories.set(type,factory),addCommand:command=>commands.push(command)};
   const api={Component,ItemView,WorkspaceTabs,TFile,FuzzySuggestModal,Platform:{isMobileApp:!!options.mobile},Plugin:class{},Notice:class{constructor(message){notices.push(message);}},setIcon:(el,icon)=>{el.dataset.icon=icon;},
     MarkdownRenderer:{async render(...args){renders.push(args);return renderHook?.(...args);}}};
@@ -54,7 +54,7 @@ function fixture(initial, options={}) {
   const flush=async()=>{for(let round=0;timers.size&&round<10;round++){const batch=[...timers.values()];timers.clear();for(const fn of batch)fn();await settle();}};
   const mount=async()=>{const leaf=addLeaf('empty');const view=new module.exports.RemindersView(leaf,controller);leaf.view=view;leaf.state={type:module.exports.REMINDERS_VIEW};await view.onOpen();return view;};
   const rename=(file,path)=>{const old=file.path;files.delete(old);files.set(path,file);content.set(path,content.get(old));content.delete(old);metadata.set(path,metadata.get(old));metadata.delete(old);file.path=path;emit('vault','rename',file,old);};
-  return {controller,app,win,doc,files,content,metadata,reads,fileWrites,saves,notices,renders,commands,factories,ready,leaves,revealed,pickers,navigation,put,emit,settle,flush,mount,rename,addLeaf,
+  return {controller,app,win,doc,files,content,metadata,reads,fileWrites,saves,notices,renders,commands,factories,ready,leaves,revealed,activated,pickers,navigation,put,emit,settle,flush,mount,rename,addLeaf,
     failSave:value=>{failSave=value;},readHook:fn=>{readHook=fn;},renderHook:fn=>{renderHook=fn;},stateHook:fn=>{stateHook=fn;},
     async close(){controller.unload();for(const view of [...controller.views])await view.onClose();win.close();}};
 }
@@ -225,5 +225,74 @@ test('scheduled date sections keep overdue dates next to their source and retain
     assert.equal(view.contentEl.querySelector('[data-section="date:2099-01-02"]').open,false);
     assert.equal(f.controller.rows[0].title,'Old task 📅 2000-01-01','display formatting does not mutate data');
     assert.deepEqual(f.fileWrites,[]);
+  }finally{await f.close();}
+});
+
+test('reminder title renames persist only plugin preferences; IME Enter and Escape never commit', async()=>{
+  const f=fixture();try{
+    f.controller.onload();let view=await f.mount();
+    view.beginRename();let input=f.doc.querySelector('.nf-reminders-title-input');
+    input.dispatchEvent(new f.win.CompositionEvent('compositionstart'));
+    input.value='我的待办';input.dispatchEvent(new f.win.KeyboardEvent('keydown',{key:'Enter',bubbles:true,isComposing:true}));
+    await f.settle();assert.equal(f.saves.length,0);assert.equal(f.doc.activeElement,input);
+    input.dispatchEvent(new f.win.CompositionEvent('compositionend'));
+    input.dispatchEvent(new f.win.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await f.settle();
+    assert.equal(f.controller.displayName,'我的待办');assert.equal(f.saves.at(-1).name,'我的待办');
+    view=[...f.controller.views][0];assert.equal(view.getDisplayText(),'我的待办');
+    view.beginRename();input=f.doc.querySelector('.nf-reminders-title-input');input.value='不保存';
+    input.dispatchEvent(new f.win.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await f.settle();
+    assert.equal(f.controller.displayName,'我的待办');assert.equal(f.saves.length,1);
+    f.failSave(true);view.beginRename();input=f.doc.querySelector('.nf-reminders-title-input');input.value='失败的名称';
+    input.dispatchEvent(new f.win.Event('blur'));await f.settle();
+    assert.equal(f.controller.displayName,'我的待办');assert.equal(f.doc.querySelector('.nf-reminders-header h1').textContent,'我的待办');
+    assert.deepEqual(f.fileWrites,[]);
+  }finally{await f.close();}
+});
+
+test('title composition commits once after blur but never after the view closes or refocuses', async()=>{
+  for(const action of ['blur','close','refocus']){
+    const f=fixture();try{
+      f.controller.onload();const view=await f.mount();view.beginRename();
+      const input=f.doc.querySelector('.nf-reminders-title-input');
+      input.dispatchEvent(new f.win.CompositionEvent('compositionstart'));input.value='我的';input.blur();
+      assert.equal(f.saves.length,0);
+      if(action==='close')await view.onClose();
+      if(action==='refocus')input.focus();
+      input.value='我的计划';input.dispatchEvent(new f.win.CompositionEvent('compositionend'));await f.settle();
+      assert.equal(f.saves.length,action==='blur'?1:0);
+      assert.equal(f.controller.displayName,action==='blur'?'我的计划':'提醒事项');
+      if(action==='close'){
+        await view.onOpen();view.beginRename();
+        assert.equal(f.doc.activeElement,f.doc.querySelector('.nf-reminders-title-input'),'reopening the same view has no stale editor reference');
+      }
+      assert.deepEqual(f.fileWrites,[]);
+    }finally{await f.close();}
+  }
+});
+
+test('sidebar rename activates the opened reminder page and does not focus a stale view after disable', async()=>{
+  const f=fixture();try{
+    f.controller.onload();const view=await f.mount();await f.controller.rename();
+    assert.deepEqual(f.activated.at(-1),{leaf:view.leaf,options:{focus:false}});
+    assert.equal(f.doc.activeElement,f.doc.querySelector('.nf-reminders-title-input'));
+    await view.onClose();const gate=deferred();
+    f.app.workspace.revealLeaf=async()=>{await gate.promise;};
+    const pending=f.controller.rename();await f.settle();f.controller.setEnabled(false);gate.resolve();await pending;
+    assert.equal(f.doc.querySelector('.nf-reminders-title-input'),null);
+    assert.equal(f.activated.length,1,'disabled pending navigation cannot change the active page');
+    assert.deepEqual(f.fileWrites,[]);
+  }finally{await f.close();}
+});
+
+test('a failed native header refresh does not misreport an already-saved rename or block sidebar updates', async()=>{
+  const f=fixture();try{
+    f.controller.onload();const view=await f.mount();let sidebar=0,headers=0;
+    f.controller.onNameChange=()=>{sidebar++;};
+    f.stateHook(()=>{headers++;throw Error('Header unavailable');});
+    assert.equal(await f.controller.update(state=>({...state,name:'待推进'})),true);
+    assert.equal(f.controller.displayName,'待推进');assert.equal(sidebar,1);assert.equal(headers,1);
+    assert.deepEqual(f.notices,[]);assert.deepEqual(f.fileWrites,[]);
+    assert.equal(view.contentEl.querySelector('h1').textContent,'待推进');
+    assert.equal(await f.controller.setOpenOnStartup(false),true);assert.equal(headers,1,'ordinary preferences never re-enter header refresh');
   }finally{await f.close();}
 });

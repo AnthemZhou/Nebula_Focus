@@ -353,7 +353,7 @@ test('mobile navigation ignores desktop modifiers and reuses ordinary tabs witho
   } finally {await f.close();}
 });
 
-test('sidebar navigation opens in the main region while right tabs have focus, and explicit tabs stay in main', async () => {
+test('desktop sidebar navigation reuses the main page even when requested as a new tab', async () => {
   const f = fixture({revealActivates: false}); try {
     await f.start(); f.left.getViewState().pinned = false;
     const right = await f.controller.navigateFile(f.files.get('Notes/Beta.md'), f.left), before = clone(right.getViewState());
@@ -364,13 +364,56 @@ test('sidebar navigation opens in the main region while right tabs have focus, a
     f.setActive(right); assert.equal(await f.controller.openFileInMain(f.files.get('Notes/Beta.md')), main);
     assert.equal(f.active(), main, 'reusing an existing main tab also activates it');
     f.setActive(right); const duplicate = await f.controller.openFileInMain(f.files.get('Notes/Beta.md'), undefined, true);
-    assert.notEqual(duplicate, main); assert.equal(duplicate.parent, f.leftGroup); assert.equal(f.leaves.length, 3);
+    assert.equal(duplicate, main); assert.equal(duplicate.parent, f.leftGroup); assert.equal(f.leaves.length, 2);
     assert.equal(f.active(), duplicate); assert.equal(f.activations.length, 3);
     assert.equal(f.splits.length, 1); assert.deepEqual(right.getViewState(), before);
     const internal = await f.controller.navigateFile(f.files.get('Views/Ideas.base'), main);
     assert.equal(internal.parent, right.parent, 'record links keep the managed right region');
     assert.equal(f.splits.length, 1);
   } finally {await f.close();}
+});
+
+test('only main groups receive single-page headers, retaining every restored leaf and native-mode state', async () => {
+  const f = fixture(); try {
+    const second = f.addLeaf(f.leftGroup, {type: 'markdown', state: {file: 'Notes/Beta.md', mode: 'source', draft: 'unsaved'}});
+    const right = f.addLeaf(new f.WorkspaceTabs(f.main), {type: 'bases', state: {file: 'Views/Ideas.base'}});
+    const pop = f.addLeaf(new f.WorkspaceTabs(f.popout), {type: 'markdown', state: {file: 'Notes/Alpha.md'}});
+    const makeGroup = members => {
+      const group = f.doc.createElement('div'); group.className = 'workspace-tabs'; f.doc.body.append(group);
+      for (const leaf of members) {const content = f.doc.createElement('div'); group.append(content); leaf.view.containerEl = content;}
+      return group;
+    };
+    const mainEl = makeGroup([f.left, second]), rightEl = makeGroup([right]), popEl = makeGroup([pop]);
+    const before = f.leaves.map(leaf => clone(leaf.getViewState()));
+    await f.start();
+    assert.equal(mainEl.classList.contains('nf-main-region'), true);
+    assert.equal(popEl.classList.contains('nf-main-region'), true);
+    assert.equal(rightEl.classList.contains('nf-main-region'), false, 'right companion tabs keep native tab headers');
+    assert.deepEqual(f.leaves.map(leaf => leaf.getViewState()), before, 'no restored tab or editor is closed or overwritten');
+    await f.controller.setEnabled(false);
+    assert.equal(f.doc.querySelectorAll('.nf-main-region').length, 0, 'native appearance immediately restores every tab');
+    await f.controller.setEnabled(true); await f.tick();
+    assert.equal(mainEl.classList.contains('nf-main-region'), true);
+    f.controller.unload();
+    assert.equal(f.doc.querySelectorAll('.nf-main-region').length, 0);
+    assert.deepEqual(f.leaves.map(leaf => leaf.getViewState()), before);
+  } finally {await f.close();}
+});
+
+test('main-header ownership follows moved groups without affecting mobile or leaving stale classes', async () => {
+  for (const mobile of [false, true]) {
+    const f = fixture({mobile}); try {
+      const first = f.doc.createElement('div'), replacement = f.doc.createElement('div');
+      first.className = replacement.className = 'workspace-tabs'; f.doc.body.append(first, replacement);
+      const content = f.doc.createElement('div'); first.append(content); f.left.view.containerEl = content;
+      await f.start(); assert.equal(first.classList.contains('nf-main-region'), !mobile);
+      replacement.append(content); f.event('layout-change'); await f.tick();
+      assert.equal(first.classList.contains('nf-main-region'), false);
+      assert.equal(replacement.classList.contains('nf-main-region'), !mobile);
+      f.event('active-leaf-change', f.left); await f.tick();
+      assert.equal(replacement.classList.contains('nf-main-region'), !mobile);
+    } finally {await f.close();}
+  }
 });
 
 test('main navigation protects pinned pages and stays inside the source window', async () => {

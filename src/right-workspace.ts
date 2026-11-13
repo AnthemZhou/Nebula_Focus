@@ -45,6 +45,7 @@ export class RightWorkspaceController extends Component {
   private savedSignature: string;
   private retiringHome?: Promise<void>;
   private linkDocuments = new Map<Document, () => void>();
+  private mainRegions = new Set<HTMLElement>();
 
   constructor(readonly plugin: Plugin, private options: RightWorkspaceOptions) {
     super(); this.enabled = options.enabled ?? true;
@@ -68,6 +69,7 @@ export class RightWorkspaceController extends Component {
       this.ribbon.hidden = !this.isEnabled;
     }
     this.registerEvent(this.app.workspace.on('layout-change', () => this.schedule()));
+    this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.schedule()));
     // The enhanced workspace offers one optional right-hand region. Use the
     // host's DOM menus for page/tab layout actions so scoped presentation can
     // omit native split commands without changing core commands or settings.
@@ -76,7 +78,7 @@ export class RightWorkspaceController extends Component {
     }));
     this.trackLinks(this.app.workspace.containerEl.ownerDocument);
     this.registerEvent(this.app.workspace.on('window-open', (_workspace, win) => this.trackLinks(win.document)));
-    this.registerEvent(this.app.workspace.on('window-close', (_workspace, win) => this.untrackLinks(win.document)));
+    this.registerEvent(this.app.workspace.on('window-close', (_workspace, win) => {this.untrackLinks(win.document); this.schedule();}));
     this.app.workspace.onLayoutReady(() => {
       if (this.stopped) return; this.ready = true; this.restoreGroups(); this.schedule();
       for (const leaf of this.leaves()) if (leaf.view.containerEl) this.trackLinks(leaf.view.containerEl.ownerDocument);
@@ -91,15 +93,18 @@ export class RightWorkspaceController extends Component {
     if (!this.allowedFile(file)) return Promise.resolve(undefined);
     return this.openNew(anchor, leaf => leaf.openFile(file, {active: false}), leaf => leaf.getViewState().state?.file === file.path, () => this.allowedFile(file));
   }
-  /** Sidebar navigation belongs to the main content region even while a right
-   * tab has focus. An explicit new tab stays in that same main group. */
+  /** Sidebar navigation belongs to the single main page even while a right
+   * tab has focus. Mobile retains its native explicit new-tab gesture. Existing
+   * pinned/restored leaves stay intact, but only the selected main header is
+   * presented; optional companion tabs belong to the right-hand region. */
   openFileInMain(file: TFile, anchor = this.current(), newTab = false): Promise<WorkspaceLeaf | undefined> {
     return this.enqueue(async () => {
       if (!this.allowedFile(file) || (anchor && !this.live(anchor))) return undefined;
       const workspace = this.app.workspace, container = anchor?.getContainer() ?? workspace.rootSplit;
       const {content, main} = this.regions(container);
       const scope = Platform.isMobileApp ? content : content.filter(leaf => leaf.parent === main);
-      const existing = !newTab && scope.find(leaf => leaf.getViewState().state?.file === file.path);
+      const createTab = Platform.isMobileApp && newTab;
+      const existing = !createTab && scope.find(leaf => leaf.getViewState().state?.file === file.path);
       if (existing) {
         await workspace.revealLeaf(existing);
         if (!this.isEnabled || !this.live(existing) || existing.getViewState().state?.file !== file.path) return undefined;
@@ -110,7 +115,7 @@ export class RightWorkspaceController extends Component {
       const preferred = anchor && scope.includes(anchor) ? anchor : recent && scope.includes(recent) ? recent : scope[0];
       const target = preferred ? workspace.getMostRecentLeaf(preferred.parent) ?? preferred : undefined;
       let leaf: WorkspaceLeaf, created = true;
-      if (!newTab && target && scope.includes(target) && !target.getViewState().pinned) {leaf = target; created = false;}
+      if (!createTab && target && scope.includes(target) && !target.getViewState().pinned) {leaf = target; created = false;}
       else if (preferred?.parent instanceof WorkspaceTabs) leaf = workspace.createLeafInParent(preferred.parent, content.filter(item => item.parent === preferred.parent).length);
       else leaf = workspace.getLeaf('tab');
       this.busy.add(leaf);
@@ -194,6 +199,7 @@ export class RightWorkspaceController extends Component {
   setEnabled(enabled: boolean): Promise<void> {
     this.enabled = enabled; if (this.ribbon) this.ribbon.hidden = !this.isEnabled;
     if (enabled) {this.schedule(); return Promise.resolve();}
+    this.clearMainPresentation();
     return this.clearStarts();
   }
 
@@ -325,6 +331,29 @@ export class RightWorkspaceController extends Component {
     if (Platform.isMobileApp) return;
     for (const container of new Set(this.leaves().map(leaf => leaf.getContainer()))) this.regions(container);
   }
+  /** Keep the host's selected tab as the main page title. Hiding sibling tab
+   * headers is intentionally presentation-only: deferred editors, pins and
+   * unsaved state must survive the appearance toggle or plugin unload. */
+  private syncMainPresentation() {
+    const next = new Set<HTMLElement>();
+    if (this.isEnabled && !Platform.isMobileApp) {
+      for (const container of new Set(this.leaves().map(leaf => leaf.getContainer()))) {
+        const {content, main} = this.regions(container);
+        for (const leaf of content) {
+          if (leaf.parent !== main) continue;
+          const group = leaf.view.containerEl?.closest<HTMLElement>('.workspace-tabs');
+          if (group) {next.add(group); break;}
+        }
+      }
+    }
+    for (const el of this.mainRegions) if (!next.has(el)) el.classList.remove('nf-main-region');
+    for (const el of next) el.classList.add('nf-main-region');
+    this.mainRegions = next;
+  }
+  private clearMainPresentation() {
+    for (const el of this.mainRegions) el.classList.remove('nf-main-region');
+    this.mainRegions.clear();
+  }
   private persistGroups() {
     if (!this.ready || this.stopped || Platform.isMobileApp) return;
     const layouts = this.layoutGroups(), groups: GroupState[] = [];
@@ -352,6 +381,7 @@ export class RightWorkspaceController extends Component {
       void this.retireHomeViews();
       if (!this.isEnabled) {void this.clearStarts(); return;}
       this.restoreGroups();
+      this.syncMainPresentation();
       // Native '+' remains native. Only its empty leaf in our own group gets
       // the start page; ordinary links and unrelated tab groups are untouched.
       for (const leaf of this.leaves()) {
@@ -423,6 +453,7 @@ export class RightWorkspaceController extends Component {
   onunload() {
     this.stopped = true; this.enabled = false; window.clearTimeout(this.timer); this.timer = 0;
     for (const doc of this.linkDocuments.keys()) this.untrackLinks(doc);
+    this.clearMainPresentation();
     this.ribbon?.remove(); void this.clearStarts(); this.views.clear();
   }
 }

@@ -1,61 +1,63 @@
-# Nebula Focus 1.3.0 — Codex-like workspace and reminders
+# Nebula Focus 1.4.0 — Focused navigation and full-screen mobile search
 
 [中文](#中文) · [English](#english)
 
 ## 中文
 
-1.3.0 将页面导航、提醒事项与原生 Bases 整合为 Codex-like 工作区，支持桌面和 iPhone。最低要求 Obsidian **1.14.5**；数据库视图需要启用 **Bases** 核心插件。
+1.4.0 完善 Codex-like 工作区的导航与编辑：主页面更专注，iPhone 搜索变为全屏页面，新建与删除记录更直接。最低要求 Obsidian **1.14.5**；数据库视图需要启用 **Bases** 核心插件。
 
-### 新增与调整
+### 本次更新
 
-- **提醒事项取代旧 Home 入口。** 只读汇总 Markdown 未完成任务与支持的截止日期，按逾期、今天、明天、后续日期和未设日期排列；点击回到来源。可添加已有 `.base` 数据库引用，不复制记录。默认冷启动打开，关闭启动选项后恢复上次页面。旧 `home` 配置与 `Nebula Views/Home/` 文件保留。
-- **侧栏统一搜索与置顶。** 桌面和手机均从顶部右侧放大镜进入「直接搜索、标签、书签、文件列表」，切换模式不替换侧栏。原有收藏成为项目上方的置顶区域，页面和项目可直接点击图钉置顶或取消；完整操作改用右键菜单。去除文件夹装饰图标，统一层级缩进。长标题右侧渐隐，悬停约 300 毫秒后滚动，不再弹出重复全称。
-- **明确主区与右侧导航。** 侧栏页面、置顶和搜索结果打开主内容区。正文内部链接、提醒来源与表格页面图标默认打开右侧标签区，Command / Ctrl 点击改为主区。根据实际布局定位主区，复用已有目标页面和第二个内容组，避免插件继续增加分栏或创建上下分屏；旧布局不会被强制关闭。
-- **统一阅读与字体。** 参考 Codex 调整正文、表格、侧栏、滚动条和工具栏；桌面侧栏、底部仓库区及主／右内容区改用圆角边界，协调阅读与编辑模式的行距基线。可选离线内置 **霞鹜文楷 / LXGW WenKai**，默认仍跟随 Obsidian；代码保留等宽字体。原生外观恢复颜色、排版、左侧工具和实际文件列表。
-- **桌面外部归档。** 从页面右键菜单归档到库外，复制并校验后才将源文件移入库内回收站；管理器支持浏览与恢复。手机不显示该入口，侧栏底部也不重复放置归档按钮。
-- **iPhone 导航与编辑修复。** 黑色侧栏保留顶部库切换、搜索及底部新建页面，露出的主区使用圆角。搜索支持连续中文输入，处理输入法确认与点击结果交错时的刷新，进入文件列表后仍保留搜索入口。成功打开结果后收起侧栏。表格图标间距、字号与末行新建更紧凑；继续复用同一个测试库。
-
-原有通用表格、自动 Base、关联记录、按币种收支汇总、标签管理和数据库撤销继续保留。手机隐藏额外撤销／重做按钮行，内部历史与命令入口仍在；外观切换快捷键仍为 **⌘⌥U / Ctrl+Alt+U**。桌面单独按住 Command / Ctrl 可打开快捷键速查。
+- **直接新建页面。** 点击侧栏「新建页面」立即创建空白 Markdown 并在主区打开，不再先弹出命名窗口；在页面原生标题处命名即可。自动避开同名文件，重复点击不会同时创建多页；手机打开后收起侧栏。
+- **iPhone 全屏搜索。** 顶部切换直接搜索、标签、书签和文件列表，底部输入区随键盘调整。结果一次轻点即可打开；切换分类保持键盘原有状态，收起键盘不会再次搜索，返回已查看分类复用结果与滚动位置。查询或源数据变化时更新缓存。桌面搜索保留宽面板与底部分类。
+- **表格编辑与整行删除。** 修复连续按 Delete / Backspace 时输入光标消失、长标题被裁切的问题。首列的「⋯ → 将页面移到回收站」可移除整条记录及对应笔记，并通过数据库会话历史撤销／重做；保护未保存草稿、文件身份和恢复路径冲突。桌面行操作悬停覆盖在文字右侧，不再永久挤占标题空间。
+- **专注的主区与侧栏。** 桌面主区只显示当前页面标题，按需保留右侧标签区；底层原生标签和未保存状态仍保留。修复置顶页打开位置、重复选中背景和标签切换的黄色高光。库切换移到顶部搜索左侧，导航文字、分界线、圆角和悬停说明统一整理。
+- **可改名提醒事项与简化设置。** 提醒事项可在页面、侧栏菜单或设置里改名；常用字体、提醒名称与启动选项直接显示，其余选项收进「更多设置」。调整提醒分组、日期与折叠箭头间距。
+- **手机侧栏与明暗外观。** 新建页面移至底部右侧，设置放在其左侧；打开应用时侧栏保持收起。展开侧栏时，露出的主区使用圆角与渐变遮罩。统一手机文字基线、背景和标签周边的呈现；原生外观切换继续恢复原生控件与排版。
 
 ### 数据与升级
 
-浏览、外观和布局不向 Markdown 正文插入 UI 代码。主动编辑内容仍更新源笔记；查询与列配置保存在 `.base`，偏好保存在插件 `data.json`。导入的 Notion 公式与汇总是来源快照，不会因外观增强自动在本地重算；缺失值不当作零。公开示例全部为虚构数据。
+外观调整不向 Markdown 正文插入 UI 代码；用户主动新建、编辑、改名或删除时才变更相应笔记。列与查询配置留在 `.base`，偏好留在 `data.json`。本次删除动作固定移入库内 `.trash`，不会永久删除；数据库历史属于当前会话，不跨重启保存，也不接管其他删除入口。手机仍隐藏额外撤销／重做按钮行。
 
-更新时保留现有 `data.json`，替换 `.obsidian/plugins/nebula-focus/` 下的 `main.js`、`manifest.json`、`styles.css`，然后重载。iPhone 等待同步完成后重新打开 Obsidian，必要时彻底关闭并重开以清理旧代码缓存。内置字体随 `main.js` 分发，不需要额外下载。
+更新时保留 `data.json`，替换 `.obsidian/plugins/nebula-focus/` 下的 `main.js`、`manifest.json`、`styles.css`，再重载插件。iPhone 等待同步完成后重新打开 Obsidian；旧代码仍缓存时彻底关闭并重开应用。可选霞鹜文楷仍随 `main.js` 离线分发。
 
-Release 附件提供安装 ZIP、公开源码 ZIP、虚构示例 ZIP 和校验文件。GitHub 发布、官方社区目录审核与客户端更新同步分别进行，本说明不代表目录审核已经完成。
+附件包括三个标准运行文件、安装 ZIP、公开源码 ZIP、虚构示例 ZIP 和 ZIP 校验文件。GitHub Release 与社区目录审核、客户端更新同步是不同阶段。
 
-### 验证范围
+### 验证
 
-构建、自动回归、桌面明暗主题检查和手机证据分别记录于[测试记录](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/TESTING.md)。iPhone 记录区分直接触摸与镜像检查；已有连续中文输入、字体切换、搜索模式切换和结果导航等实际证据，不代表 Android、iPad、第三方主题或所有移动生命周期均完成验证。详见[iPhone 测试](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/mobile-testing.md)。
+- 完整自动测试 **775/775** 通过，严格 TypeScript 构建通过；Lint **0 错误、40 项警告**。有意保留的兼容性与 API 建议见[检查说明](https://github.com/AnthemZhou/Nebula_Focus/blob/1.4.0/docs/review-warnings.md)。
+- Mac 实测连续删字、表格删除及撤销／重做、主区导航、原生外观恢复与明暗主题。
+- iPhone 搜索的单击打开、键盘状态与分类缓存获得直接触摸确认；直接新建、原生标题改名与侧栏收起通过真机镜像检查。没有将镜像结果当作新增中文软键盘验收；手机整行删除本轮未单独真机补测。
+- 回归检查后，两端原有 **241 篇 Markdown** 内容未变；临时测试笔记已移到回收站，未新建测试库。
 
-使用说明：[提醒事项](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/home.md) · [页面侧栏](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/page-sidebar.md) · [工作区规则](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/workspace-layout.md) · [字体](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/fonts.md) · [外部归档](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/external-archives.md)
+详见[测试记录](https://github.com/AnthemZhou/Nebula_Focus/blob/1.4.0/docs/TESTING.md)、[iPhone 测试](https://github.com/AnthemZhou/Nebula_Focus/blob/1.4.0/docs/mobile-testing.md)、[撤销范围](https://github.com/AnthemZhou/Nebula_Focus/blob/1.4.0/docs/undo-coverage.md)。
 
 ## English
 
-Version 1.3.0 brings page navigation, Reminders and native Bases into a Codex-like workspace for desktop and iPhone. It requires Obsidian **1.14.5** and the **Bases** core plugin for database views.
+Version 1.4.0 refines navigation and editing in the Codex-like workspace: a focused main page, full-screen iPhone search, and more direct page creation and removal. It requires Obsidian **1.14.5**, with the **Bases** core plugin enabled for database views.
 
-### Features and changes
+### Changes
 
-- **Reminders replaces the old Home entry.** Read unfinished Markdown tasks and supported page deadlines, grouped into overdue, today, tomorrow, later dates and undated items. Open each source or add references to existing `.base` databases without copying records. Reminders opens on cold startup by default; disable that option to resume the previous page. Existing `home` preferences and `Nebula Views/Home/` files remain stored.
-- **Unified sidebar search and pins.** The top-right magnifier on desktop and mobile opens Direct Search, Tags, Bookmarks and Files without replacing the sidebar. Existing favorites appear in a dedicated section above Projects. Pin or unpin projects and pages directly; full actions stay in context menus. Decorative folder icons are removed, child indentation is consistent, and overflowing titles fade then scroll after about 300ms without duplicate tooltips.
-- **Clear main/right navigation.** Sidebar pages, pins and search results open the main content region. Internal content links, reminder sources and table page icons open on the right; Command / Ctrl-click targets the main region. Routing uses the actual layout, reusing existing destination pages and the second content group rather than adding more groups or top/bottom splits. Older layouts are not forcibly closed.
-- **Consistent reading and fonts.** Notes, tables, the sidebar, scrollbars and tools take cues from Codex. Desktop sidebar, vault footer and main/right content groups have rounded boundaries, with a shared text-leading baseline across reading and editing. Optional bundled **LXGW WenKai** works offline; Follow Obsidian remains the default and code stays monospace. Native appearance restores colors, typography, left tools and the actual file explorer.
-- **Desktop external archives.** Archive through page context menus to a location outside the vault. Files are copied and verified before sources move to vault trash; the manager can browse and restore them. Mobile exposes no archive controls, and the sidebar footer does not duplicate the action.
-- **iPhone navigation and editing fixes.** The black drawer retains vault switching and search at the top, with a compose action below and rounded exposed content. Search supports continuous Chinese input, preserves tapped results during IME commits, and retains its entry after file browsing. Successful result navigation closes the drawer. Table icon spacing, typography and final-row creation are more compact, while testing reuses the same vault.
-
-Reusable tables, automatic Bases, linked records, per-currency cash-flow summaries, tag management and database undo remain available. Mobile hides the extra undo/redo row while retaining history and commands. **⌘⌥U / Ctrl+Alt+U** still switches appearance; hold Command / Ctrl alone on desktop for shortcut help.
+- **Create pages directly.** New page immediately creates an empty Markdown file and opens it in the main region without a naming dialog. Name it through the native page title. Filename collisions and concurrent clicks are guarded; mobile closes the drawer after opening.
+- **Full-screen iPhone search.** Categories sit above results; the bottom input follows the keyboard. One tap opens a result. Category changes preserve the keyboard's open/closed state; dismissing the keyboard does not restart searching. Revisiting a category reuses its results and scroll position, with invalidation when the query or source data changes. Desktop retains a wide search panel with categories below.
+- **Table editing and row removal.** Fix lost focus during consecutive Delete / Backspace input and clipped long titles. The first-column menu can move the record's note to vault trash, with database-session undo/redo and checks for unsaved drafts, stale file identities and restore collisions. Desktop row actions overlay the title edge on hover instead of reserving permanent space.
+- **Focused main region and sidebar.** The desktop main group displays the current page title, while optional companion tabs remain on the right. Native leaves and unsaved state are preserved underneath. Fix pinned-page routing, duplicate selection backgrounds and yellow navigation flashes. Move vault switching beside top search and refine navigation type, dividers, corners and hover information.
+- **Rename Reminders and simplify settings.** Change its name from the page, sidebar menu or settings. Font, reminder name and startup settings are immediately visible; advanced options live under More settings. Reminder groups, date metadata and disclosure spacing are more consistent.
+- **Mobile drawer and theme refinements.** New page sits at bottom right, with Settings on its left; startup keeps the drawer closed. Exposed main content has rounded corners and a native fading backdrop. Mobile typography and light/dark surfaces are coordinated; native appearance continues to restore host controls and styling.
 
 ### Data and updating
 
-Browsing and layout never insert UI markup into Markdown bodies. Explicit edits still update source notes; `.base` files store queries and columns, while plugin `data.json` stores preferences. Imported Notion formulas and rollups remain snapshots rather than becoming executable local formulas through visual enhancement. Missing values are not zero. All public examples are fictional.
+Presentation changes do not insert UI code into Markdown bodies. Explicit creation, editing, renaming and removal change the relevant notes. Queries and columns stay in `.base`; preferences stay in `data.json`. This row-removal action always uses vault `.trash`, not permanent deletion. Database history is session-local, does not survive restart, and does not capture other deletion entry points. Mobile still hides the extra undo/redo row.
 
-Keep `data.json`, replace `main.js`, `manifest.json` and `styles.css` in `.obsidian/plugins/nebula-focus/`, then reload. On iPhone, wait for synchronization and reopen Obsidian; fully quit and restart if older code remains cached. The optional font ships inside `main.js`, with no extra download.
+Keep `data.json`, replace `main.js`, `manifest.json` and `styles.css` in `.obsidian/plugins/nebula-focus/`, then reload. On iPhone, wait for sync and reopen Obsidian; fully quit and restart if old code remains cached. Optional LXGW WenKai remains embedded in `main.js` for offline use.
 
-Release assets include installation, public-source and fictional-example ZIPs plus checksums. GitHub publication, official community-directory review and client update synchronization are separate stages; these notes do not claim that directory review has completed.
+Assets include the three standard runtime files, installation/source/fictional-example ZIPs and ZIP checksums. GitHub publication, community-directory review and client update synchronization are separate stages.
 
-### Validation scope
+### Validation
 
-Build results, automated regression checks, desktop theme checks and mobile evidence are recorded separately in [testing](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/TESTING.md). The iPhone record distinguishes direct touch from Mirroring, including observed Chinese input, font switching, search modes and result navigation. This does not establish coverage of Android, iPad, third-party themes or every mobile lifecycle boundary. See [iPhone testing](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/mobile-testing.md).
+- **775/775** automated checks and the strict TypeScript build pass. Lint reports **zero errors and 40 warnings**; retained compatibility and API recommendations are explained in [review notes](https://github.com/AnthemZhou/Nebula_Focus/blob/1.4.0/docs/review-warnings.md).
+- Mac checks cover consecutive text deletion, record removal and undo/redo, main-region navigation, native restoration and both themes.
+- Direct iPhone touch confirms single-tap search navigation, keyboard state and category caching. Physical Mirroring verifies direct creation, native-title rename and drawer dismissal. That is not a new Chinese software-keyboard acceptance claim; mobile row deletion was not separately retested on-device this round.
+- The **241 existing Markdown notes** across both vaults remain unchanged after regression checks. Temporary notes were moved to trash, and the existing phone test vault was reused.
 
-Guides: [Reminders](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/home.md) · [Page sidebar](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/page-sidebar.md) · [Workspace rules](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/workspace-layout.md) · [Fonts](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/fonts.md) · [External archives](https://github.com/AnthemZhou/Nebula_Focus/blob/1.3.0/docs/external-archives.md)
+See [testing](https://github.com/AnthemZhou/Nebula_Focus/blob/1.4.0/docs/TESTING.md), [iPhone evidence](https://github.com/AnthemZhou/Nebula_Focus/blob/1.4.0/docs/mobile-testing.md) and [undo coverage](https://github.com/AnthemZhou/Nebula_Focus/blob/1.4.0/docs/undo-coverage.md).

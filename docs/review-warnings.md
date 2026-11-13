@@ -4,6 +4,10 @@
 
 ## 中文
 
+### 1.4.0 检查与表格删除
+
+1.4.0 全量 Lint 为 **0 错误、40 项警告**，严格构建与 **775/775** 自动测试通过。相比 1.3.0 增加一项 `obsidianmd/prefer-file-manager-trash-file`：表格行菜单刻意使用 `vault.trash(file, false)`，保证删除进入库内回收站，并与会话撤销／重做一致，避免宿主“永久删除”偏好破坏可恢复约定。其余 39 项警告未增加；未关闭规则。以下版本的数量是对应历史检查结果。
+
 ### 1.3.0 检查与外部归档
 
 外部归档有两处 `vault.trash(..., false)`：经过校验的源文件，以及归档后空的项目目录。这里刻意固定使用本地回收站，避免用户的宿主删除偏好设置为永久删除时违背归档的可恢复保证；对应的两项 API 偏好警告保持可见，不抑制规则。1.3.0 本地 Lint 为 **0 错误、39 项警告**；以下 1.1.2 数量属于历史版本，不代表当前版本的总数。
@@ -56,6 +60,10 @@ npm test
 插件由 Obsidian 的社区插件更新功能安装新版，不自行下载、替换执行代码。手机同步库仍可原处更新，继续复用同一个测试库。
 
 ## English
+
+### 1.4.0 checks and table-row removal
+
+Full 1.4.0 lint reports **zero errors and 40 warnings**; the strict build and **775/775** automated tests pass. The one additional `obsidianmd/prefer-file-manager-trash-file` warning since 1.3.0 is deliberate: table-row removal uses `vault.trash(file, false)` to preserve recoverable vault trash and session undo/redo, even when the host deletion preference is permanent. The other 39 warnings have not increased, and no rule was disabled. Counts below describe their respective historical checkpoints.
 
 ### 1.3.0 checks and archive API choice
 

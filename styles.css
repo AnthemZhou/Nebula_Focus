@@ -980,6 +980,39 @@ body.bui-enabled .bui-ideas-base[data-bui-wrap="false"] .bui-idea-title:not(.bui
 }
 body.bui-enabled .bui-idea-title-cell button:focus-visible { outline: 2px solid var(--interactive-accent); }
 
+/* Record actions float over the title instead of narrowing its wrapping area.
+   The real cell and inert height probe therefore use exactly the same width;
+   hover never changes line breaks or the row's measured height. */
+body.bui-enabled .bui-row-actions-cell > button.bui-row-menu-button {
+  position: absolute; inset-inline-end: 3px; top: 3px; width: 26px; height: 26px;
+  min-width: 0; min-height: 0; padding: 4px; margin: 0; border: 0; border-radius: 5px;
+  box-shadow: none; color: var(--text-muted); background: var(--background-primary);
+  opacity: 0; pointer-events: none; --icon-size: 16px; z-index: 3;
+}
+body.bui-enabled .bui-row-menu-button::before {
+  content: ''; position: absolute; z-index: -1; inset-block: 0;
+  inset-inline-start: -18px; inset-inline-end: 0; border-radius: inherit;
+  background: linear-gradient(to right, transparent, var(--background-primary) 18px);
+  pointer-events: none;
+}
+body.bui-enabled .bui-row-menu-button:dir(rtl)::before {
+  background: linear-gradient(to left, transparent, var(--background-primary) 18px);
+}
+body.bui-enabled .bui-row-actions-cell:hover > .bui-row-menu-button,
+body.bui-enabled .bui-row-actions-cell > .bui-row-menu-button:focus-visible {
+  opacity: 1; pointer-events: auto;
+}
+body.bui-enabled .bui-row-actions-cell > .bui-row-menu-button:hover {color: var(--text-normal);}
+body.bui-enabled .bui-row-actions-cell > .bui-row-menu-button:focus-visible {
+  outline: 2px solid var(--interactive-accent); outline-offset: -2px;
+}
+/* Touch has no hover: retain a reachable quiet action in the first line. Its
+   overlay and 44px tap target do not consume title width or increase height. */
+body.bui-enabled:is(.is-mobile, .bui-touch) .bui-row-actions-cell > button.bui-row-menu-button {
+  width: 44px; height: 44px; inset-inline-end: 0; top: 0; padding: 12px;
+  opacity: 1; pointer-events: auto; color: var(--text-faint);
+}
+
 /* Column option management uses Obsidian's native surface and control tokens. */
 .bui-tag-manager {
   z-index: var(--layer-popover);
@@ -1042,6 +1075,10 @@ body.bui-enabled.bui-touch {
   --bui-title-size: calc(var(--bui-mobile-font-size) * 1.625);
 }
 body.bui-enabled.is-mobile {
+  --bui-mobile-font-size: max(17px, var(--font-text-size, 16px));
+  --bui-reading-size: var(--bui-mobile-font-size);
+  --line-height-normal: 1.6;
+  --line-height-tight: 1.5;
   --font-ui-large: var(--bui-ui-size);
   --mobile-sidebar-background: var(--background-secondary);
   --mobile-sidebar-radius: 18px;
@@ -1049,15 +1086,44 @@ body.bui-enabled.is-mobile {
   --modal-sidebar-background: var(--background-secondary);
 }
 body.bui-enabled.is-mobile.theme-dark {
-  --background-primary: #1c1c1c;
-  --background-primary-alt: #282828;
-  --background-secondary: #171717;
-  --background-secondary-alt: #171717;
-  --background-modifier-form-field: #282828;
-  --text-normal: #ededed;
-  --text-muted: #b4b4b4;
-  --bui-navigation-text: #e2e2e2;
+  --background-primary: #000000;
+  --background-primary-alt: #171719;
+  --background-secondary: #101012;
+  --background-secondary-alt: #1a1a1c;
+  --background-modifier-form-field: #1c1c1e;
+  --background-modifier-form-field-hover: #242426;
+  --background-modifier-hover: rgba(255, 255, 255, .075);
+  --background-modifier-active-hover: rgba(255, 255, 255, .12);
+  --background-modifier-border: #2b2b2f;
+  --background-modifier-border-hover: #3a3a40;
+  --background-modifier-border-focus: #63636b;
+  --text-normal: #f5f5f5;
+  --text-muted: #b1b1b8;
+  --text-faint: #85858d;
+  --bui-navigation-text: #f5f5f5;
+  --interactive-normal: #1c1c1e;
+  --interactive-hover: #29292d;
 }
+body.bui-enabled.is-mobile.theme-light {
+  --background-primary: #ffffff;
+  --background-primary-alt: #f4f4f5;
+  --background-secondary: #f7f7f8;
+  --background-secondary-alt: #efeff2;
+  --background-modifier-form-field: #f2f2f3;
+  --background-modifier-form-field-hover: #e8e8ed;
+  --background-modifier-hover: rgba(0, 0, 0, .045);
+  --background-modifier-active-hover: rgba(0, 0, 0, .075);
+  --background-modifier-border: #dedee3;
+  --background-modifier-border-hover: #c6c6ce;
+  --background-modifier-border-focus: #8e8e93;
+  --text-normal: #1c1c1e;
+  --text-muted: #63636b;
+  --text-faint: #85858d;
+  --bui-navigation-text: #1c1c1e;
+  --interactive-normal: #efeff2;
+  --interactive-hover: #e4e4e9;
+}
+
 /* A black phone drawer sits behind the rounded current page. Keep the native
    drawer transform/width, so swipe gestures still use Obsidian's geometry. */
 body.bui-enabled.is-mobile.theme-dark .workspace-drawer.mod-left {
@@ -1067,10 +1133,27 @@ body.bui-enabled.is-mobile.theme-dark .workspace-drawer.mod-left {
 }
 body.bui-enabled.is-phone .workspace-drawer.mod-left {--mobile-sidebar-radius: 0px;}
 body.bui-enabled.is-phone.theme-dark .workspace {background: #000;}
-body.bui-enabled.is-phone .workspace.is-left-sidedock-open > .workspace-split.mod-root {
+body.bui-enabled.is-phone .workspace.is-left-sidedock-open > .workspace-split.mod-root,
+body.bui-enabled.is-phone .workspace > .workspace-split.mod-root.is-sliding-sidebar,
+body.bui-enabled.is-phone .workspace > .workspace-split.mod-root:has(> .bui-legacy-drawer-backdrop) {
   border-radius: 28px; overflow: hidden; isolation: isolate;
   mask-image: none; -webkit-mask-image: none;
   box-shadow: 0 0 0 1px var(--background-modifier-border);
+}
+/* Older hosts attach this same native node beside the translated page. The
+   compatibility controller moves it inside, matching the current host layout. */
+body.bui-enabled.is-phone .workspace-split.mod-root > .bui-legacy-drawer-backdrop {
+  position: absolute; inset: 0; width: 100%; height: 100%; flex: none;
+  z-index: calc(var(--layer-popover) + 2);
+}
+/* Obsidian writes continuous opacity on these backdrops during drag and
+   settle. Recolor that native layer without observing frames or replacing
+   swipe geometry; dark content becomes subtly lighter as the drawer opens. */
+body.bui-enabled.is-phone.theme-dark :is(.workspace > .workspace-drawer-backdrop, .workspace-split.mod-root > .workspace-drawer-backdrop, .mobile-navbar > .workspace-drawer-navbar-backdrop) {
+  background-color: rgb(255 255 255 / 8%);
+}
+body.bui-enabled.is-phone.theme-light :is(.workspace > .workspace-drawer-backdrop, .workspace-split.mod-root > .workspace-drawer-backdrop, .mobile-navbar > .workspace-drawer-navbar-backdrop) {
+  background-color: rgb(0 0 0 / 4.5%);
 }
 /* Keep a visible strip of the current page. Use the native width variables so
    Obsidian's drawer drag/reveal calculations use the same measured width.
@@ -1087,7 +1170,7 @@ body.bui-enabled.is-mobile .bui-page-sidebar {
   line-height: 1.5;
 }
 body.bui-enabled.is-mobile .workspace-leaf-content[data-type="markdown"] {
-  --line-height-normal: 1.65;
+  --line-height-normal: 1.6;
 }
 @media (any-pointer: coarse) {
   body.bui-enabled { --bui-touch-target: 44px; }
@@ -1448,6 +1531,37 @@ body.bui-enabled .bui-pages-toolbar button.bui-pages-icon-button {width: 30px; h
 body.bui-enabled:not(.is-mobile) .bui-pages-toolbar.bui-pages-desktop-header {justify-content: flex-end; padding-bottom: 8px;}
 body.bui-enabled:not(.is-mobile) .bui-pages-desktop-header button.bui-pages-search-button {margin-inline-start: auto; width: 32px; height: 32px; color: var(--text-muted); border-radius: 50%;}
 body.bui-enabled:not(.is-mobile) .bui-pages-desktop-header .bui-pages-search-button svg {width: 18px; height: 18px;}
+/* Desktop reuses the real vault picker in the sidebar header. */
+body.bui-enabled:not(.is-mobile) .bui-pages-desktop-header {
+  min-width: 0;
+}
+body.bui-enabled:not(.is-mobile) .bui-pages-desktop-header > .bui-header-vault-switcher {
+  display: flex; align-items: center; gap: 6px;
+  flex: 1 1 auto; min-width: 0; max-width: none;
+  height: 32px; padding: 4px 6px; margin: 0;
+  border-radius: 8px; color: var(--text-normal);
+  font-family: inherit; font-size: var(--nav-item-size); font-weight: 500; line-height: 1.4;
+  cursor: pointer;
+}
+body.bui-enabled:not(.is-mobile) .bui-header-vault-switcher:hover {
+  background: var(--background-modifier-hover);
+}
+body.bui-enabled:not(.is-mobile) .bui-header-vault-switcher > .workspace-drawer-vault-name {
+  flex: 1 1 auto; min-width: 0; max-width: none;
+  font: inherit; color: inherit;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+body.bui-enabled:not(.is-mobile) .bui-header-vault-switcher > .workspace-drawer-vault-switcher-icon {
+  flex: 0 0 auto; display: flex; align-items: center; color: var(--text-muted);
+}
+body.bui-enabled:not(.is-mobile) .bui-header-vault-switcher > .workspace-drawer-vault-switcher-icon svg {
+  width: 14px; height: 14px;
+}
+/* Comments preserve native slots. Leave future/third-party footer controls visible. */
+body.bui-enabled:not(.is-mobile) .workspace-sidedock-vault-profile.bui-header-vault-source:not(:has(> *)) {
+  display: none;
+}
+
 body.bui-enabled .bui-page-sidebar button.bui-page-pin.is-pinned {color: var(--text-accent);}
 body.bui-enabled .bui-page-sidebar button.bui-page-pin:focus-visible {outline: 2px solid var(--interactive-accent); outline-offset: -2px;}
 
@@ -1478,7 +1592,9 @@ body.bui-enabled:not(.is-mobile) .bui-pages-group + .bui-pages-group {margin-top
   line-height: var(--line-height-tight); letter-spacing: var(--nav-item-letter-spacing, normal);
   cursor: pointer; user-select: none; -webkit-user-select: none;
 }
-.bui-page-row:hover {background: var(--nav-item-background-hover, var(--background-modifier-hover)); color: var(--nav-item-color-hover, var(--text-normal)); font-weight: var(--nav-item-weight-hover, var(--nav-item-weight, 400));}
+@media (hover: hover) {
+  .bui-page-row:hover {background: var(--nav-item-background-hover, var(--background-modifier-hover)); color: var(--nav-item-color-hover, var(--text-normal)); font-weight: var(--nav-item-weight-hover, var(--nav-item-weight, 400));}
+}
 .bui-page-row.is-active {background: var(--nav-item-background-active, var(--background-modifier-hover)); color: var(--nav-item-color-active, var(--text-normal)); font-weight: var(--nav-item-weight-active, var(--nav-item-weight, 400));}
 .bui-page-row:focus-visible {outline: 2px solid var(--interactive-accent); outline-offset: -2px;}
 .bui-page-icon {display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 20px; flex-shrink: 0; color: var(--text-faint);}
@@ -1513,7 +1629,10 @@ body.bui-enabled:not(.is-mobile) .bui-pages-group + .bui-pages-group {margin-top
 .bui-page-row.drop-before::before, .bui-page-favorite.drop-before::before {top: -1px;}
 .bui-page-row.drop-after::after, .bui-page-favorite.drop-after::after {bottom: -1px;}
 .bui-page-favorite {position: relative; display: flex; align-items: center; gap: 4px; border-radius: var(--nav-item-radius, var(--radius-s)); padding-right: 4px; margin-bottom: var(--nav-item-margin-bottom, 2px);}
-.bui-page-favorite:hover, .bui-page-favorite:focus-within {background: var(--nav-item-background-hover, var(--background-modifier-hover));}
+@media (hover: hover) {
+  .bui-page-favorite:hover {background: var(--nav-item-background-hover, var(--background-modifier-hover));}
+}
+.bui-page-favorite:has(:focus-visible) {background: var(--nav-item-background-hover, var(--background-modifier-hover));}
 .bui-page-favorite.is-active {background: var(--nav-item-background-active, var(--background-modifier-hover));}
 .bui-page-sidebar .bui-page-favorite-open {
   display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; padding: var(--nav-item-padding, 4px 8px 4px 24px); height: auto;
@@ -1551,16 +1670,31 @@ body.bui-enabled.is-mobile .bui-pages-toolbar button.bui-pages-search-button {
 body.bui-enabled.is-mobile .bui-pages-search-button svg {width: 22px; height: 22px;}
 body.bui-enabled.is-mobile .view-content.bui-page-sidebar {position: relative; padding: 8px 12px 0;}
 body.bui-enabled.is-mobile .bui-pages-scroll {padding-bottom: 84px; scrollbar-width: thin;}
-body.bui-enabled.is-mobile .bui-pages-footer {
+body.bui-enabled.is-mobile :is(.bui-pages-footer, .bui-pages-mobile-footer) {
   position: absolute; inset-inline: 12px; bottom: 0; z-index: 3;
   padding: 16px 4px 12px; margin: 0; border: 0; pointer-events: none;
   background: linear-gradient(to top, var(--background-secondary) 30%, transparent);
 }
-body.bui-enabled.is-mobile .bui-page-sidebar button.bui-pages-create {
+body.bui-enabled.is-mobile :is(.bui-pages-footer, .bui-pages-mobile-footer) button.bui-pages-create {
   pointer-events: auto; width: fit-content; max-width: calc(100% - 56px); min-height: 44px;
   gap: 9px; padding: 10px 18px; border-radius: 26px; font-size: var(--bui-mobile-font-size);
   background: var(--interactive-accent); color: var(--text-on-accent);
   box-shadow: 0 3px 16px #00000020;
+}
+body.bui-enabled.is-mobile .bui-pages-mobile-footer {
+  display: flex; justify-content: flex-end; align-items: center; gap: 10px;
+  /* The native drawer-inner already reserves the bottom safe area. */
+  bottom: 0;
+}
+body.bui-enabled.is-mobile .bui-pages-mobile-settings-slot {
+  width: 44px; height: 44px; flex: 0 0 44px; pointer-events: none;
+}
+body.bui-enabled.is-mobile .bui-pages-mobile-settings-slot > .workspace-drawer-header-icon.mod-settings {
+  position: static; width: 44px; height: 44px; padding: 10px; margin: 0;
+  pointer-events: auto;
+}
+body.bui-enabled.is-mobile .bui-pages-mobile-footer button.bui-pages-create {
+  flex: 0 1 auto; margin: 0; white-space: nowrap;
 }
 body.bui-enabled.is-mobile .bui-pages-create svg {width: 20px; height: 20px;}
 body.bui-enabled.is-mobile .bui-page-sidebar button.bui-page-disclosure {left: 4px; width: 18px; min-height: 40px;}
@@ -1579,45 +1713,123 @@ body.bui-enabled.is-phone .workspace-drawer.mod-left:has(.bui-pages-mobile-heade
 }
 body.bui-enabled.is-phone .workspace-drawer.mod-left:has(.bui-pages-mobile-header) .workspace-drawer-header-name-text {font-size: calc(var(--bui-mobile-font-size) * 1.125);}
 body.bui-enabled.is-phone .workspace-drawer.mod-left:has(.bui-pages-mobile-header) .workspace-drawer-header-info {display: none;}
-body.bui-enabled.is-phone .workspace-drawer.mod-left:has(.bui-pages-mobile-header) .workspace-drawer-header-icon.mod-settings {
+body.bui-enabled.is-phone .workspace-drawer.mod-left:has(.bui-pages-mobile-header) .workspace-drawer-header .workspace-drawer-header-icon.mod-settings {
   position: absolute; right: 16px; bottom: calc(max(16px, var(--safe-area-inset-bottom, 0px)) + 12px);
   width: 44px; height: 44px; padding: 10px; pointer-events: auto;
 }
 body.bui-enabled.is-phone .workspace-drawer.mod-left:has(.workspace-drawer-header-name select) .bui-pages-vault-name {visibility: hidden;}
 
-/* Shared search is a temporary destination picker. The input remains native
-   for keyboard and IME behavior on desktop and phone. */
-body.bui-enabled .modal.bui-sidebar-search-modal {padding: 16px; width: min(640px, 96vw);}
-body.bui-enabled .bui-sidebar-search-modal .modal-content {display: flex; flex-direction: column; overflow: hidden; margin: 0; min-height: 0;}
-body.bui-enabled .bui-sidebar-search-header {display: flex; align-items: center; gap: 10px; flex: 0 0 auto;}
-body.bui-enabled input.bui-sidebar-search-input {flex: 1; min-width: 0; height: 44px; font-size: var(--bui-mobile-font-size, var(--bui-ui-size)); border-radius: 14px;}
-body.bui-enabled .bui-sidebar-search-cancel {min-height: 44px; padding: 8px; border: 0; box-shadow: none; background: transparent; color: var(--text-muted); font-size: inherit;}
-body.bui-enabled .bui-sidebar-search-modes {display: flex; flex-wrap: nowrap; gap: 6px; padding: 12px 0; flex: 0 0 auto; overflow-x: auto; scrollbar-width: none;}
-body.bui-enabled .bui-sidebar-search-modes button {flex: 0 0 auto; min-height: 40px; padding: 8px 12px; box-shadow: none; border: 0; border-radius: 20px; font-size: inherit; background: transparent; color: var(--text-muted);}
-body.bui-enabled .bui-sidebar-search-modes button:is(.is-active, [aria-pressed="true"]) {background: var(--background-modifier-hover); color: var(--text-normal);}
-body.bui-enabled .bui-sidebar-search-results {overflow-y: auto; min-height: 0; padding-bottom: 16px; overscroll-behavior: contain;}
-body.bui-enabled .bui-sidebar-search-section h3 {margin: 12px 8px 6px; font-size: .875em; font-weight: 400; color: var(--text-muted);}
+/* Search keeps its native input, focus trap and keyboard behavior. Only the
+   scoped shell changes: flat header, scrollable results, fixed bottom modes. */
+body.bui-enabled .modal.bui-sidebar-search-modal {
+  display: flex; flex-direction: column; width: min(820px, calc(100vw - 48px)); max-width: calc(100vw - 48px);
+  height: min(560px, calc(100dvh - 96px)); max-height: calc(100dvh - 96px); margin: 0; padding: 0;
+  overflow: hidden; border: 1px solid var(--background-modifier-border); border-radius: 18px;
+  background: var(--background-primary); color: var(--text-normal); font: var(--bui-ui-size) / 1.5 var(--font-interface);
+}
+body.bui-enabled .bui-sidebar-search-modal > :is(.modal-header, .modal-header-button, .modal-close-button) {display: none;}
+body.bui-enabled .bui-sidebar-search-modal .modal-content {
+  display: flex; flex: 1; flex-direction: column; overflow: hidden; margin: 0; padding: 0; min-height: 0;
+}
+body.bui-enabled .bui-sidebar-search-header {
+  display: flex; align-items: center; gap: 12px; flex: 0 0 auto; min-height: 56px; padding: 0 20px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+body.bui-enabled .bui-sidebar-search-field {display: contents;}
+body.bui-enabled .bui-sidebar-search-icon {display: flex; flex: 0 0 auto; color: var(--text-muted);}
+body.bui-enabled .bui-sidebar-search-icon svg {width: 20px; height: 20px;}
+body.bui-enabled input.bui-sidebar-search-input,
+body.bui-enabled input.bui-sidebar-search-input:is(:hover, :focus, :focus-visible, :active) {
+  flex: 1; min-width: 0; width: 100%; height: 56px; margin: 0; padding: 0; border: 0; border-radius: 0;
+  outline: none; box-shadow: none; background: transparent; color: var(--text-normal); font: inherit;
+  -webkit-appearance: none; appearance: none;
+}
+body.bui-enabled input.bui-sidebar-search-input::placeholder {color: var(--text-muted); opacity: 1;}
+body.bui-enabled .bui-sidebar-search-results {
+  flex: 1 1 auto; overflow-y: auto; min-height: 0; padding: 8px 12px; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb-bg) transparent;
+}
+body.bui-enabled .bui-sidebar-search-section h3 {margin: 12px 12px 6px; font: inherit; color: var(--text-muted);}
 body.bui-enabled :is(button, a).bui-sidebar-search-result {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 100%; height: auto; min-height: 48px;
-  padding: 10px 8px; border: 0; border-radius: 10px; box-shadow: none; background: transparent; color: var(--text-normal);
-  font: inherit; white-space: normal; text-align: start; text-decoration: none;
+  display: flex; align-items: center; gap: 16px; width: 100%; height: auto; min-height: 44px;
+  padding: 9px 12px; border: 0; border-radius: 9px; box-shadow: none; background: transparent; color: var(--text-normal);
+  font: inherit; white-space: nowrap; text-align: start; text-decoration: none;
 }
 body.bui-enabled :is(button, a).bui-sidebar-search-result:hover {background: var(--background-modifier-hover);}
-body.bui-enabled .bui-sidebar-search-title {font-size: inherit; overflow-wrap: anywhere;}
-body.bui-enabled .bui-sidebar-search-path {font-size: .8125em; line-height: 1.4; color: var(--text-muted); overflow-wrap: anywhere;}
-body.bui-enabled .bui-sidebar-search-back {align-self: flex-start; min-height: 44px; padding: 8px; border: 0; box-shadow: none; background: transparent; color: var(--text-accent); font: inherit;}
+body.bui-enabled :is(button, a).bui-sidebar-search-result:focus-visible {
+  outline: 2px solid var(--interactive-accent); outline-offset: -2px; background: var(--background-modifier-hover);
+}
+body.bui-enabled .bui-sidebar-search-title {flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font: inherit;}
+body.bui-enabled .bui-sidebar-search-path {
+  flex: 0 1 auto; max-width: 45%; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  color: var(--text-muted); font: inherit; text-align: end;
+}
+body.bui-enabled .bui-sidebar-search-result.is-body-match {flex-direction: column; align-items: stretch; gap: 3px;}
+body.bui-enabled .bui-sidebar-search-result.is-body-match .bui-sidebar-search-path {
+  display: -webkit-box; max-width: none; white-space: normal; text-align: start; overflow-wrap: anywhere;
+  -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+body.bui-enabled .bui-sidebar-search-back {
+  align-self: flex-start; min-height: 44px; padding: 8px 12px; border: 0; box-shadow: none;
+  background: transparent; color: var(--text-accent); font: inherit;
+}
 body.bui-enabled .bui-sidebar-search-location,
-body.bui-enabled .bui-sidebar-search-note {margin: 8px; font-size: .875em; line-height: 1.5; color: var(--text-muted); overflow-wrap: anywhere;}
+body.bui-enabled .bui-sidebar-search-note {margin: 8px 12px; font: inherit; color: var(--text-muted); overflow-wrap: anywhere;}
 body.bui-enabled .bui-sidebar-search-kind {display: inline-flex; vertical-align: -.15em; margin-inline-end: 8px; color: var(--text-muted);}
 body.bui-enabled .bui-sidebar-search-kind svg {width: 18px; height: 18px;}
-body.bui-enabled.is-mobile .modal.bui-sidebar-search-modal {font-size: var(--bui-mobile-font-size); max-height: var(--dialog-max-height, 90vh);}
-body.bui-enabled.is-phone .modal-container:has(> .bui-sidebar-search-modal) {bottom: var(--keyboard-height, 0px); align-items: stretch;}
-body.bui-enabled.is-phone .modal.bui-sidebar-search-modal {
-  width: 100%; max-width: 100%; height: 100%; max-height: 100%; margin: 0; border-radius: 0;
-  padding: calc(var(--safe-area-inset-top, 0px) + 12px) max(16px, var(--safe-area-inset-right, 0px)) max(16px, var(--safe-area-inset-bottom, 0px)) max(16px, var(--safe-area-inset-left, 0px));
+body.bui-enabled .bui-sidebar-search-modes {
+  display: flex; flex: 0 0 auto; align-items: center; gap: 4px; min-height: 48px; padding: 6px 12px;
+  border-top: 1px solid var(--background-modifier-border); overflow-x: auto; scrollbar-width: none;
 }
-body.bui-enabled.is-phone .bui-sidebar-search-modal .modal-content {padding: 0; flex: 1;}
-body.bui-enabled.is-phone .modal.bui-sidebar-search-modal > :is(.modal-header, .modal-header-button, .modal-close-button) {display: none;}
+body.bui-enabled .bui-sidebar-search-modes button {
+  flex: 0 0 auto; min-height: 36px; height: auto; padding: 6px 12px; box-shadow: none; border: 0; border-radius: 8px;
+  font: inherit; background: transparent; color: var(--text-muted);
+}
+body.bui-enabled .bui-sidebar-search-modes button:is(:hover, [aria-pressed="true"]) {background: var(--background-modifier-hover); color: var(--text-normal);}
+body.bui-enabled.is-mobile .modal.bui-sidebar-search-modal {font-size: var(--bui-mobile-font-size);}
+body.bui-enabled.is-phone .modal-container:has(> .bui-sidebar-search-modal) {
+  /* iOS also reserves keyboard space with container padding. Keep the overlay
+     full-screen: subtracting that space again via bottom collapses the panel. */
+  top: 0; bottom: 0; height: auto; align-items: stretch; justify-content: stretch; box-sizing: border-box;
+  padding: var(--safe-area-inset-top, 0px) var(--safe-area-inset-right, 0px) max(var(--safe-area-inset-bottom, 0px), var(--keyboard-height, 0px)) var(--safe-area-inset-left, 0px);
+  background: var(--background-primary);
+}
+body.bui-enabled.is-phone .modal-container:has(> .bui-sidebar-search-modal) > .modal-bg {display: none;}
+body.bui-enabled.is-phone .modal.bui-sidebar-search-modal {
+  width: 100%; max-width: 100%; height: 100%; max-height: 100%; min-height: 0; flex: 1;
+  margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none;
+}
+body.bui-enabled.is-phone .bui-sidebar-search-header {
+  order: 2; padding: 8px 12px; gap: 10px; min-height: 64px; border: 0; background: var(--background-primary);
+}
+body.bui-enabled.is-phone .bui-sidebar-search-field {
+  display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; height: 48px; padding-inline: 14px 6px;
+  border: 1px solid var(--background-modifier-border); border-radius: 24px; background: var(--background-primary-alt);
+}
+body.bui-enabled.is-phone input.bui-sidebar-search-input,
+body.bui-enabled.is-phone input.bui-sidebar-search-input:is(:hover, :focus, :focus-visible, :active) {height: 46px;}
+body.bui-enabled.is-phone input.bui-sidebar-search-input::-webkit-search-cancel-button {display: none;}
+body.bui-enabled.is-phone :is(.bui-sidebar-search-close, .bui-sidebar-search-clear) {
+  display: flex; flex: 0 0 auto; align-items: center; justify-content: center; margin: 0; padding: 0;
+  border: 0; box-shadow: none; background: transparent; color: var(--text-muted);
+}
+body.bui-enabled.is-phone .bui-sidebar-search-close {
+  width: 48px; height: 48px; border: 1px solid var(--background-modifier-border); border-radius: 50%; color: var(--text-normal);
+  background: var(--background-primary-alt);
+}
+body.bui-enabled.is-phone .bui-sidebar-search-close svg {width: 22px; height: 22px;}
+body.bui-enabled.is-phone .bui-sidebar-search-clear {width: 40px; height: 44px;}
+body.bui-enabled.is-phone .bui-sidebar-search-clear svg {width: 18px; height: 18px;}
+body.bui-enabled.is-phone .bui-sidebar-search-clear[hidden] {display: none;}
+body.bui-enabled.is-phone .bui-sidebar-search-results {order: 1; padding: 6px 12px;}
+body.bui-enabled.is-phone :is(button, a).bui-sidebar-search-result {
+  flex-direction: column; align-items: stretch; gap: 3px; min-height: 64px; padding: 10px 12px;
+}
+body.bui-enabled.is-phone .bui-sidebar-search-title {flex: none;}
+body.bui-enabled.is-phone .bui-sidebar-search-path {max-width: none; text-align: start;}
+body.bui-enabled.is-phone .bui-sidebar-search-result.is-body-match .bui-sidebar-search-path {-webkit-line-clamp: 1;}
+body.bui-enabled.is-phone .bui-sidebar-search-modes {order: 0; gap: 4px; padding: 6px 12px; border: 0;}
+body.bui-enabled.is-phone .bui-sidebar-search-modes button {flex: 1 0 auto; min-height: 44px; padding-inline: 10px; border-radius: 22px;}
 @media (prefers-reduced-transparency: reduce) {
   body.bui-enabled.is-mobile .bui-pages-toolbar button.bui-pages-search-button {backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--background-primary-alt);}
 }
@@ -1628,10 +1840,6 @@ body.bui-enabled.is-phone .modal.bui-sidebar-search-modal > :is(.modal-header, .
 .bui-archive-directory .setting-item-control {display: flex; margin-top: 12px;}
 .bui-archive-directory input {flex: 1; min-width: 0; width: 100%;}
 .bui-archive-status {margin-block: 12px; color: var(--text-muted);}
-.bui-pages-new-form {display: flex; flex-direction: column; gap: 12px;}
-.bui-pages-new-form input {width: 100%;}
-.bui-pages-new-form button {align-self: flex-end;}
-.bui-pages-form-error {color: var(--text-error); font-size: var(--font-ui-small);}
 @media (hover: none) {
   .bui-page-row, .bui-page-sidebar .bui-page-favorite-open, .bui-page-sidebar .bui-pages-home {min-height: 44px;}
   .bui-page-actions {display: inline-flex;}
@@ -2138,13 +2346,13 @@ body.bui-enabled .nf-reminder-database-header h2 {
   margin: 0 0 10px; font-size: 1.125em; line-height: 1.4; font-weight: 500;
 }
 body.bui-enabled .nf-reminder-section > summary {
-  position: relative; display: flex; align-items: baseline; gap: 10px; min-height: 32px; margin: 0; padding: 4px 8px;
+  position: relative; display: flex; align-items: baseline; gap: 10px; min-height: 32px; margin: 0; padding: 4px 8px 4px 26px;
   border-radius: 6px; color: var(--text-normal); list-style: none; cursor: pointer;
 }
 body.bui-enabled .nf-reminder-section > summary::-webkit-details-marker {display: none;}
 body.bui-enabled .nf-reminder-section > summary::marker {content: '';}
 body.bui-enabled .nf-reminder-section > summary::before {
-  content: ''; position: absolute; inset-inline-start: -6px; top: 50%; width: 6px; height: 6px;
+  content: ''; position: absolute; inset-inline-start: 9px; top: 50%; width: 6px; height: 6px;
   border: solid var(--text-muted); border-width: 0 1.5px 1.5px 0; transform: translateY(-50%) rotate(-45deg);
 }
 body.bui-enabled .nf-reminder-section[open] > summary {margin-bottom: 4px;}
@@ -2210,6 +2418,40 @@ body.bui-enabled:is(.is-mobile, .bui-touch) button.nf-reminder-row {padding-bloc
 body.bui-enabled:is(.is-mobile, .bui-touch) .nf-reminder-section > summary {flex-wrap: wrap; gap: 4px 10px;}
 body.bui-enabled:is(.is-mobile, .bui-touch) .nf-reminder-base .bases-header {min-height: 44px;}
 
+/* Compact overview spacing; retain native page rhythm and touch area size. */
+body.bui-enabled.is-mobile .view-content.nf-reminders {
+  padding: 16px 18px 28px;
+}
+body.bui-enabled.is-mobile .nf-reminders-header {
+  gap: 8px 12px;
+  margin-bottom: 6px;
+}
+body.bui-enabled.is-mobile .nf-reminders-description {
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+body.bui-enabled.is-mobile .nf-reminders-list {gap: 12px;}
+body.bui-enabled.is-mobile .nf-reminder-section > summary {
+  min-height: 44px;
+  padding-block: 4px;
+}
+body.bui-enabled.is-mobile .nf-reminder-section[open] > summary {
+  margin-bottom: 0;
+}
+body.bui-enabled.is-mobile button.nf-reminder-row {
+  min-height: 44px;
+  padding-block: 6px;
+}
+body.bui-enabled.is-mobile .nf-reminder-databases {
+  gap: 16px;
+  margin-top: 16px;
+}
+body.bui-enabled.is-mobile .nf-reminder-databases:empty {margin: 0;}
+body.bui-enabled.is-mobile .nf-reminder-database-header {
+  min-height: 44px;
+  margin-bottom: 2px;
+}
+
 /* Enhanced workspace offers the main region plus one optional right group.
    Desktop page/tab menus use the public DOM-menu API so these native split
    affordances can be hidden without changing core commands or shortcuts. */
@@ -2247,38 +2489,179 @@ body.bui-enabled .workspace-leaf-content[data-type="markdown"] .markdown-preview
   margin-block: var(--size-4-4, 16px);
 }
 
-/* Desktop workspace panels: soft outer boundaries, not rounded database cells.
-   Keep Obsidian's existing tab clipping and divider hit targets; do not add an
-   overflow rule to the split containers or the native vault menu. */
+/* Joined desktop surfaces: only the outside edge is rounded. The inset
+   behind it and the tool rail share a neutral shell, while the page sidebar
+   stays a lighter surface. Divider hit targets and native menus stay intact. */
+body.bui-enabled:not(.is-mobile).theme-light {
+  --bui-shell-background: #eeeeee;
+  --bui-sidebar-background: #fafafa;
+}
+body.bui-enabled:not(.is-mobile).theme-dark {
+  --bui-shell-background: #282828;
+  --bui-sidebar-background: #202020;
+}
 body.bui-enabled:not(.is-mobile) {
   --bui-workspace-radius: 12px;
   --bui-workspace-gutter: 4px;
+  --titlebar-background: var(--bui-shell-background);
+  --titlebar-background-focused: var(--bui-shell-background);
+  --ribbon-background: var(--bui-shell-background);
+  --ribbon-background-collapsed: var(--bui-shell-background);
+}
+body.bui-enabled:not(.is-mobile) :is(.horizontal-main-container, .workspace) {
+  background: var(--bui-shell-background);
 }
 body.bui-enabled:not(.is-mobile) .workspace > .workspace-split.mod-root {
-  padding: var(--bui-workspace-gutter);
-  gap: var(--bui-workspace-gutter);
-  background: var(--background-secondary);
+  padding: var(--bui-workspace-gutter) var(--bui-workspace-gutter) var(--bui-workspace-gutter) 0;
+  gap: 0;
+  background: var(--bui-shell-background);
 }
 body.bui-enabled:not(.is-mobile) .workspace > .workspace-split.mod-root > .workspace-tabs {
   border: 1px solid var(--bui-border);
-  border-radius: var(--bui-workspace-radius);
+  border-radius: 0;
   background: var(--background-primary);
+}
+body.bui-enabled:not(.is-mobile) .workspace > .workspace-split.mod-root > .workspace-tabs + .workspace-tabs {border-inline-start: 0;}
+body.bui-enabled:not(.is-mobile) .workspace > .workspace-split.mod-root > .workspace-tabs:last-child {
+  border-start-end-radius: var(--bui-workspace-radius);
+  border-end-end-radius: var(--bui-workspace-radius);
 }
 body.bui-enabled:not(.is-mobile) .workspace > .workspace-split.mod-left-split:has(.workspace-leaf-content[data-type="nebula-pages"]) {
-  padding: var(--bui-workspace-gutter);
-  background: var(--background-primary);
+  --background-secondary: var(--bui-sidebar-background);
+  --background-secondary-alt: var(--bui-sidebar-background);
+  --tab-container-background: var(--bui-sidebar-background);
+  padding: var(--bui-workspace-gutter) 0 var(--bui-workspace-gutter) var(--bui-workspace-gutter);
+  background: var(--bui-shell-background);
 }
 body.bui-enabled:not(.is-mobile) .workspace-split.mod-left-split:has(.workspace-leaf-content[data-type="nebula-pages"]) > .workspace-tabs {
-  border-start-start-radius: var(--bui-workspace-radius);
-  border-start-end-radius: var(--bui-workspace-radius);
-  box-shadow: inset 1px 1px 0 var(--bui-border), inset -1px 0 0 var(--bui-border);
+  border: 1px solid transparent; border-inline-end: 0;
+  border-radius: var(--bui-workspace-radius) 0 0 var(--bui-workspace-radius);
+  background: var(--bui-shell-background);
 }
-body.bui-enabled:not(.is-mobile) .workspace-split.mod-left-split:has(.workspace-leaf-content[data-type="nebula-pages"]) > .workspace-sidedock-vault-profile {
-  border-end-start-radius: var(--bui-workspace-radius);
-  border-end-end-radius: var(--bui-workspace-radius);
-  box-shadow: inset 1px 0 0 var(--bui-border), inset -1px -1px 0 var(--bui-border);
+/* Round the actual page-list surface below the native tab strip, not just
+   its parent above the strip. Inner region joins remain straight. */
+body.bui-enabled:not(.is-mobile) .workspace-split.mod-left-split:has(.workspace-leaf-content[data-type="nebula-pages"]) > .workspace-tabs > .workspace-tab-container {
+  border-radius: var(--bui-workspace-radius) 0 0 var(--bui-workspace-radius);
+  overflow: hidden;
+  box-shadow: inset 1px 0 0 var(--bui-border), inset 0 1px 0 var(--bui-border), inset 0 -1px 0 var(--bui-border);
+  background: var(--bui-sidebar-background);
 }
-body.bui-enabled:not(.is-mobile) .workspace > .workspace-ribbon.mod-primary {
+body.bui-enabled:not(.is-mobile) .workspace:has(> .workspace-split.mod-left-split:is(.is-sidedock-collapsed, .is-collapsed)) > .workspace-split.mod-root {
+  padding-inline-start: var(--bui-workspace-gutter);
+}
+body.bui-enabled:not(.is-mobile) .workspace:has(> .workspace-split.mod-left-split:is(.is-sidedock-collapsed, .is-collapsed)) > .workspace-split.mod-root > .workspace-tabs:nth-child(1 of .workspace-tabs) {
   border-start-start-radius: var(--bui-workspace-radius);
   border-end-start-radius: var(--bui-workspace-radius);
+}
+
+/* Main region has one selected-page title; optional right tabs remain native.
+   Existing leaves are retained so native appearance/unload restores all tabs. */
+body.bui-enabled:not(.is-mobile) .workspace-tabs.nf-main-region > .workspace-tab-header-container .workspace-tab-header:not(.is-active),
+body.bui-enabled:not(.is-mobile) .workspace-tabs.nf-main-region > .workspace-tab-header-container :is(.workspace-tab-header-new-tab, .workspace-tab-header-tab-list, .workspace-tab-header-spacer),
+body.bui-enabled:not(.is-mobile) .workspace-tabs.nf-main-region > .workspace-tab-header-container .workspace-tab-header-inner-close-button {
+  display: none;
+}
+body.bui-enabled:not(.is-mobile) .workspace-tabs.nf-main-region > .workspace-tab-header-container .workspace-tab-header-container-inner {
+  flex: 1;
+  min-width: 0;
+}
+body.bui-enabled:not(.is-mobile) .workspace-tabs.nf-main-region > .workspace-tab-header-container .workspace-tab-header.is-active {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+body.bui-enabled:not(.is-mobile) .workspace-tabs.nf-main-region > .workspace-tab-header-container .workspace-tab-header.is-active::before,
+body.bui-enabled:not(.is-mobile) .workspace-tabs.nf-main-region > .workspace-tab-header-container .workspace-tab-header.is-active::after {
+  display: none;
+}
+body.bui-enabled:not(.is-mobile) .workspace-tabs.nf-main-region > .workspace-tab-header-container .workspace-tab-header-inner-title {
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-medium);
+  text-align: left;
+}
+/* revealLeaf briefly adds is-flashing with the native yellow marker color.
+   Keep normal selected-tab styling; document/search target flashes are intact. */
+body.bui-enabled .workspace-tab-header.is-flashing {
+  background-color: var(--tab-background-active) !important;
+  color: var(--tab-text-color-active);
+  mix-blend-mode: normal;
+}
+body.bui-enabled:not(.is-mobile) .workspace-tabs.nf-main-region .workspace-tab-header.is-flashing {
+  background-color: transparent !important;
+}
+
+/* Rename the reminder landing page in place, without changing source notes. */
+body.bui-enabled .nf-reminders-header h1[role="button"] {cursor: text; min-width: 0; max-width: 100%;}
+body.bui-enabled .nf-reminders-header .nf-reminders-title-input {
+  width: 100%; min-width: 8em; max-width: 100%; height: auto; padding: 0; margin: 0;
+  border: 0; border-radius: 0; box-shadow: none; background: transparent;
+  font: inherit; line-height: inherit; color: inherit;
+}
+/* One subtle seam between page regions; the icon rail has no border. */
+body.bui-enabled:not(.is-mobile) .workspace-ribbon:is(.mod-primary, .mod-left) {
+  border-inline-end: 0;
+}
+body.bui-enabled:not(.is-mobile) .workspace > .workspace-split.mod-root > .workspace-tabs {
+  border-inline-start-color: color-mix(in srgb, var(--text-normal) 8%, transparent);
+}
+body.bui-enabled:not(.is-mobile) .workspace-split.mod-left-split > .workspace-leaf-resize-handle {
+  background: transparent; border: 0;
+}
+body.bui-enabled:not(.is-mobile) .workspace-ribbon:is(.mod-primary, .mod-left):before {
+  border-inline-end: 0;
+}
+
+/* Sidebar refinements: integrate into styles.css after the sidebar rules. */
+body.bui-enabled:not(.is-mobile) .bui-page-sidebar {
+  --nav-item-padding: 5px 8px 5px 20px;
+}
+body.bui-enabled:not(.is-mobile) .bui-pages-desktop-header > .bui-header-vault-switcher {
+  font-size: calc(var(--nav-item-size) + 2px);
+}
+body.bui-enabled .bui-pages-accessible-label {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+body.bui-enabled .bui-pages-shortcuts {flex: 0 0 auto; margin-bottom: 10px;}
+body.bui-enabled .bui-pages-shortcuts button.bui-pages-create {
+  display: flex; align-items: center; justify-content: flex-start; gap: 9px;
+  width: 100%; max-width: none; min-height: 32px; height: auto;
+  margin: 0 0 2px; padding: 5px 12px; border: 0; border-radius: var(--nav-item-radius);
+  background: transparent; box-shadow: none; color: var(--nav-item-color);
+  font-family: inherit; font-size: var(--nav-item-size); font-weight: 400; line-height: var(--line-height-tight);
+}
+body.bui-enabled .bui-pages-shortcuts button.bui-pages-create:hover {
+  background: var(--nav-item-background-hover); color: var(--text-normal);
+}
+body.bui-enabled .bui-pages-shortcuts button.bui-pages-create:focus-visible {
+  outline: 2px solid var(--interactive-accent); outline-offset: -2px;
+}
+body.bui-enabled .bui-pages-shortcuts button.bui-pages-reminders {margin-bottom: 0;}
+body.bui-enabled.is-mobile .bui-pages-shortcuts button.bui-pages-create {min-height: 44px; padding-block: 8px;}
+body.bui-enabled.is-mobile .bui-pages-scroll {padding-bottom: calc(88px + var(--safe-area-inset-bottom, 0px));}
+body.bui-enabled .bui-page-action-tooltip {
+  position: fixed; z-index: 10000; pointer-events: none;
+  width: max-content; min-width: 190px; max-width: min(340px, calc(100vw - 24px));
+  padding: 12px 14px; border-radius: 12px;
+  border: 1px solid var(--background-modifier-border); background: var(--background-primary);
+  box-shadow: 0 5px 20px #00000018;
+  color: var(--text-normal); font-family: var(--font-interface); font-size: var(--bui-ui-size, var(--font-ui-small));
+  line-height: 1.45; overflow-wrap: anywhere;
+}
+body.bui-enabled .bui-page-action-tooltip-title {font-size: inherit; font-weight: 500; white-space: normal;}
+body.bui-enabled .bui-page-action-tooltip-description {
+  margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--background-modifier-border);
+  font-size: inherit; color: var(--text-muted); white-space: normal;
+}
+
+body.bui-enabled:not(.is-mobile) .workspace-ribbon.mod-primary {
+  margin-top: calc(var(--header-height) + var(--bui-workspace-gutter) + 1px);
+  height: calc(100% - var(--header-height) - var(--bui-workspace-gutter) - 1px);
+}
+body.bui-enabled:not(.is-mobile) .workspace-ribbon.mod-primary:before {
+  height: calc(var(--header-height) + var(--bui-workspace-gutter) + 1px);
+  border-bottom: 1px solid var(--bui-border);
 }

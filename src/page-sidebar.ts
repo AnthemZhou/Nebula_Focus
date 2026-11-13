@@ -1,12 +1,13 @@
-import {App, Component, ItemView, Menu, Modal, Notice, Platform, Plugin, TFile, TFolder, WorkspaceLeaf, setIcon, type ViewState} from 'obsidian';
+import {Component, FileView, ItemView, MarkdownView, Menu, Notice, Platform, Plugin, TFile, TFolder, View, WorkspaceLeaf, setIcon, type ViewState} from 'obsidian';
 import {NebulaFocusSettings} from './settings';
 import type {FontPreferences} from './font-appearance';
 import type {PageArchiveActions} from './archive-controller';
 import type {RightWorkspaceController} from './right-workspace';
 import type {RibbonController} from './ribbon-controller';
+import type {RemindersController} from './reminders';
 import {SidebarSearchModal} from './sidebar-search';
 import {PageNode, PageTreeSettings, buildPageTree, filterPages, flattenPages, readPageTreeSettings,
-  remapPageSettings, reorderPages, validPageName} from './page-tree';
+  remapPageSettings, reorderPages} from './page-tree';
 
 export const PAGE_SIDEBAR_TYPE = 'nebula-pages';
 let nextViewId = 0;
@@ -19,7 +20,9 @@ export class PageSidebar extends Component {
   rightWorkspace?: RightWorkspaceController;
   ribbon?: RibbonController;
   openReminders?: () => Promise<void>;
-  reminders?: {preferences: {openOnStartup: boolean}; setOpenOnStartup(value: boolean): Promise<boolean>};
+  reminderName?: () => string;
+  renameReminders?: () => void;
+  reminders?: RemindersController;
   readonly views = new Set<PageSidebarView>();
   private writes: Promise<unknown> = Promise.resolve();
   private timer = 0;
@@ -31,6 +34,8 @@ export class PageSidebar extends Component {
   private suspended = new Map<WorkspaceLeaf, SuspendedPage>();
   private nativeStates = new Map<WorkspaceLeaf, ViewState>();
   private ribbonIcon?: HTMLElement;
+  private activePageQueued = false;
+  private creatingPage?: Promise<void>;
 
   constructor(readonly plugin: Plugin, initial: unknown, private save: (settings: PageTreeSettings) => Promise<void>, initialEnabled = true, private font?: FontPreferences) {
     super();
@@ -57,7 +62,26 @@ export class PageSidebar extends Component {
         this.startupTimer = 0;
         if (this.stopped) return;
         if (!this.enabled) void this.setEnabled(false);
-        else if (this.settings.openOnStartup) void this.open();
+        else if (Platform.isMobileApp) {
+          // Select the custom drawer without leaving it over the restored
+          // page. The startup preference controls desktop visibility only.
+          void this.navigate(async () => {
+            const leaf = this.app.workspace.getLeavesOfType(PAGE_SIDEBAR_TYPE)[0] ?? this.app.workspace.getLeftLeaf(false);
+            try {
+              if (!leaf) return;
+              await this.showPages(leaf);
+              if (!this.isEnabled) return;
+              // setViewState(active: false) loads the view, but does not select
+              // a mobile drawer's tab. setActiveLeaf would steal main focus
+              // and still does not select that tab. revealLeaf does select it.
+              // Close synchronously, before waiting for any deferred loading,
+              // and again after completion; never focus the sidebar editor.
+              const selected = this.app.workspace.revealLeaf(leaf);
+              this.closeMobileDrawer();
+              await selected;
+            } finally {this.closeMobileDrawer();}
+          });
+        } else if (this.settings.openOnStartup) void this.open();
       }, 0);
     });
     this.registerEvent(this.app.vault.on('create', () => this.schedule()));
@@ -66,9 +90,8 @@ export class PageSidebar extends Component {
       void this.update(state => remapPageSettings(state, oldPath, file.path));
       this.schedule();
     }));
-    this.registerEvent(this.app.workspace.on('file-open', file => {
-      for (const view of this.views) view.revealActive(file?.path);
-    }));
+    this.registerEvent(this.app.workspace.on('file-open', () => this.scheduleActivePage()));
+    this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.scheduleActivePage()));
   }
 
   open(): Promise<void> {
@@ -175,6 +198,14 @@ export class PageSidebar extends Component {
   }
 
   refresh() {for (const view of this.views) view.render();}
+  private scheduleActivePage() {
+    if (this.activePageQueued || this.stopped) return;
+    this.activePageQueued = true;
+    void Promise.resolve().then(() => {
+      this.activePageQueued = false;
+      if (!this.stopped) for (const view of this.views) view.syncActivePage();
+    });
+  }
   private schedule() {
     if (!this.timer) this.timer = window.setTimeout(() => {this.timer = 0; if (!this.stopped) this.refresh();}, 60);
   }
@@ -184,26 +215,61 @@ export class PageSidebar extends Component {
   }
   onunload() {this.stopped = true; window.clearTimeout(this.timer); window.clearTimeout(this.startupTimer); this.views.clear(); this.suspended.clear(); this.nativeStates.clear();}
 
-  createPage(parent?: PageNode) {
+  createPage(parent?: PageNode): Promise<void> {
+    if (!this.isEnabled) return Promise.resolve();
+    if (this.creatingPage) return this.creatingPage;
+    this.creatingPage = this.createBlankPage(parent)
+      .catch(error => {this.failure('无法新建页面', error);})
+      .finally(() => {this.creatingPage = undefined;});
+    return this.creatingPage;
+  }
+
+  private async createBlankPage(parent?: PageNode) {
     // A sibling folder note can gain children without moving its existing file.
     const folderPath = parent?.folderPath ?? (parent?.kind === 'page' ? parent.filePath?.replace(/\.md$/i, '') : undefined) ?? '';
-    new NewPageModal(this.app, parent?.title, async name => {
-      const existing = folderPath ? this.app.vault.getAbstractFileByPath(folderPath) : this.app.vault.getRoot();
-      if (existing && !(existing instanceof TFolder)) throw new Error('这个位置已存在同名文件');
-      const path = folderPath ? `${folderPath}/${name}.md` : `${name}.md`;
-      if (this.app.vault.getAbstractFileByPath(path)) throw new Error('已存在同名页面，请换一个名称');
-      if (!existing) await this.app.vault.createFolder(folderPath);
-      const file = await this.app.vault.create(path, '');
-      if (folderPath) await this.update(state => ({...state, expanded: [...state.expanded, folderPath]}));
-      this.refresh();
-      // File creation has succeeded even if navigation fails; never offer to create it twice.
-      try {
-        if (this.rightWorkspace) await this.rightWorkspace.openFileInMain(file);
-        else await this.app.workspace.getLeaf(false).openFile(file);
-        if (this.app.workspace.getActiveFile()?.path === file.path) this.closeMobileDrawer();
-      } catch (error) {this.failure('页面已创建，但未能打开', error);}
-    }).open();
+    const existing = folderPath ? this.app.vault.getAbstractFileByPath(folderPath) : this.app.vault.getRoot();
+    if (existing && !(existing instanceof TFolder)) throw new Error('这个位置已存在同名文件');
+    if (!existing) await this.app.vault.createFolder(folderPath);
+    if (!this.isEnabled) return;
+    let path: string, suffix = 0;
+    do {
+      const name = suffix ? `未命名 ${suffix}` : '未命名';
+      path = folderPath ? `${folderPath}/${name}.md` : `${name}.md`;
+      suffix++;
+    } while (this.app.vault.getAbstractFileByPath(path));
+    // The native inline title is the filename. No duplicated heading or UI
+    // metadata is written into the Markdown body.
+    const file = await this.app.vault.create(path, '');
+    if (!this.isEnabled) return;
+    if (folderPath) await this.update(state => ({...state, expanded: [...new Set([...state.expanded, folderPath])]}));
+    this.refresh();
+    // Creation is complete even if opening fails; retain the file for recovery.
+    try {
+      let opened: WorkspaceLeaf | undefined;
+      if (this.rightWorkspace) opened = await this.rightWorkspace.openFileInMain(file);
+      else {opened = this.app.workspace.getLeaf(false); await opened.openFile(file);}
+      if (!opened) throw new Error('未能切换到新页面');
+      if (!this.isEnabled) return;
+      this.closeMobileDrawer();
+      // Focus is optional; the native view may already be changing again.
+      try {this.focusNewPageTitle(opened);}
+      catch (error) {console.error('[Nebula Focus] 新页面已打开，未能聚焦标题', error);}
+    } catch (error) {this.failure('页面已创建，但未能打开', error);}
   }
+
+  private focusNewPageTitle(leaf: WorkspaceLeaf) {
+    if (Platform.isMobileApp || !(leaf.view instanceof MarkdownView)) return;
+    const view = leaf.view;
+    const title = view.contentEl.querySelector<HTMLElement>('.inline-title[contenteditable="true"]');
+    if (title && title.getClientRects().length) {
+      title.focus({preventScroll: true});
+      const selection = title.ownerDocument.getSelection(), range = title.ownerDocument.createRange();
+      range.selectNodeContents(title); selection?.removeAllRanges(); selection?.addRange(range);
+    } else if (view.getMode() === 'source') {
+      view.editor.setCursor(0, 0); view.editor.focus();
+    }
+  }
+
 }
 
 export class PageSidebarView extends ItemView {
@@ -224,6 +290,14 @@ export class PageSidebarView extends ItemView {
   private nextTitleId = 0;
   private mobileSearchQuery = '';
   private searchModal?: SidebarSearchModal;
+  private remindersLabel?: HTMLElement;
+  private actionTooltip?: {element?: HTMLElement; button: HTMLElement; timer: number; win: Window};
+  private lastOpenedEntry?: {id: string; path: string; favorite: boolean};
+  private activeEntry?: {id: string; favorite: boolean};
+  private mobileSettings?: {element: HTMLElement; marker: Comment};
+  private mobileSettingsObserver?: MutationObserver;
+  private highlightedPath?: string;
+  private contentLeaf?: WorkspaceLeaf;
 
   constructor(leaf: WorkspaceLeaf, readonly sidebar: PageSidebar) {super(leaf);}
   getViewType() {return PAGE_SIDEBAR_TYPE;}
@@ -233,6 +307,7 @@ export class PageSidebarView extends ItemView {
 
   async onOpen() {
     if (!this.sidebar.isEnabled) {this.closed = true; void this.sidebar.setEnabled(false); return;}
+    this.restoreMobileSettings();
     this.closed = false;
     this.contentEl.replaceChildren();
     this.contentEl.classList.add('bui-page-sidebar');
@@ -254,31 +329,75 @@ export class PageSidebarView extends ItemView {
     toolbar.addEventListener('contextmenu', event => {event.preventDefault(); this.options(event);});
     this.contentEl.addEventListener('contextmenu', event => {
       const target = event.target as HTMLElement;
-      if (target.closest('.bui-page-row, .bui-page-favorite, .bui-pages-toolbar')) return;
+      if (target.closest('.bui-page-row, .bui-page-favorite, .bui-pages-toolbar, .bui-pages-reminders')) return;
       event.preventDefault(); this.options(event);
     });
+    const shortcuts = this.contentEl.createDiv({cls: 'bui-pages-shortcuts'});
+    if (!Platform.isMobileApp) this.createButton(shortcuts);
     if (this.sidebar.openReminders) {
-      const reminders = this.contentEl.createEl('button', {cls: 'bui-pages-reminders', attr: {'aria-label': '提醒事项'}});
-      setIcon(reminders.createSpan(), 'list-todo'); reminders.createSpan({text: '提醒事项'});
+      const reminders = shortcuts.createEl('button', {cls: 'bui-pages-reminders'});
+      setIcon(reminders.createSpan(), 'list-todo');
+      this.remindersLabel = reminders.createSpan({text: this.sidebar.reminderName?.() || '提醒事项'});
       reminders.addEventListener('click', () => {void this.sidebar.openReminders?.().then(() => this.sidebar.closeMobileDrawer())
         .catch(error => this.sidebar.failure('提醒事项未能打开', error));});
+      reminders.addEventListener('contextmenu', event => {
+        event.preventDefault(); event.stopPropagation();
+        if (!this.sidebar.renameReminders) return;
+        const menu = new Menu().setUseNativeMenu(false);
+        menu.addItem(item => item.setTitle('重命名').setIcon('pencil').onClick(() => this.sidebar.renameReminders?.()));
+        menu.showAtPosition({x: event.clientX, y: event.clientY});
+      });
     }
     this.scrollEl = this.contentEl.createDiv({cls: 'bui-pages-scroll'});
     this.favoritesEl = this.scrollEl.createDiv({cls: 'bui-pages-favorites'});
-    this.treeEl = this.scrollEl.createDiv({cls: 'bui-pages-tree', attr: {role: 'tree', 'aria-label': '页面'}});
-    const footer = this.contentEl.createDiv({cls: 'bui-pages-footer'});
-    const create = footer.createEl('button', {cls: 'bui-pages-create'});
-    setIcon(create.createSpan(), 'square-pen'); create.createSpan({text: '新建页面'});
-    create.addEventListener('click', () => this.sidebar.createPage());
+    this.treeEl = this.scrollEl.createDiv({cls: 'bui-pages-tree', attr: {role: 'tree'}});
+    this.scrollEl.addEventListener('scroll', () => this.hideActionTooltip(), {passive: true});
+    if (Platform.isMobileApp) {
+      const footer = this.contentEl.createDiv({cls: 'bui-pages-mobile-footer'});
+      const settings = footer.createDiv({cls: 'bui-pages-mobile-settings-slot'});
+      this.createButton(footer);
+      this.prepareMobileSettings(settings);
+    }
     this.liveEl = this.contentEl.createDiv({cls: 'bui-pages-live', attr: {'aria-live': 'polite'}});
     this.sidebar.views.add(this);
-    this.revealActive(this.app.workspace.getActiveFile()?.path);
+    this.revealActive(this.currentPagePath());
   }
 
   async onClose() {
-    this.cancelDrag(); this.stopTitleMotions();
+    this.cancelDrag(); this.stopTitleMotions(); this.hideActionTooltip();
+    this.restoreMobileSettings();
     this.searchModal?.close(); this.searchModal = undefined;
     this.closed = true; this.sidebar.views.delete(this); this.contentEl.replaceChildren();
+  }
+
+  private createButton(host: HTMLElement) {
+    const create = host.createEl('button', {cls: 'bui-pages-create'});
+    setIcon(create.createSpan(), 'square-pen'); create.createSpan({text: '新建页面'});
+    create.addEventListener('click', event => {if (event.detail < 2) void this.sidebar.createPage();});
+  }
+
+  private prepareMobileSettings(slot: HTMLElement) {
+    const doc = slot.ownerDocument;
+    const move = () => {
+      if (this.closed || this.mobileSettings) return;
+      const element = doc.querySelector<HTMLElement>('.workspace-drawer.mod-left .workspace-drawer-header .workspace-drawer-header-icon.mod-settings');
+      if (!element?.parentNode) return;
+      const marker = doc.createComment('nebula-focus-mobile-settings');
+      element.parentNode.insertBefore(marker, element);
+      slot.append(element); this.mobileSettings = {element, marker};
+      this.mobileSettingsObserver?.disconnect(); this.mobileSettingsObserver = undefined;
+    };
+    move();
+    if (!this.mobileSettings) {
+      this.mobileSettingsObserver = new window.MutationObserver(move);
+      this.mobileSettingsObserver.observe(doc.body, {childList: true, subtree: true});
+    }
+  }
+
+  private restoreMobileSettings() {
+    this.mobileSettingsObserver?.disconnect(); this.mobileSettingsObserver = undefined;
+    const moved = this.mobileSettings; this.mobileSettings = undefined;
+    if (moved?.marker.parentNode) moved.marker.replaceWith(moved.element);
   }
 
   captureNavigation(): PageNavigationState {
@@ -294,10 +413,37 @@ export class PageSidebarView extends ItemView {
     this.render(); this.scrollEl.scrollTop = state.scroll;
   }
 
+  private currentContentLeaf(): WorkspaceLeaf | undefined {
+    const workspace = this.app.workspace;
+    const container = Platform.isMobileApp ? workspace.rootSplit : this.leaf.getContainer();
+    const belongsToContent = (leaf: WorkspaceLeaf) => leaf.getContainer() === container
+      && leaf.getRoot() !== workspace.leftSplit && leaf.getRoot() !== workspace.rightSplit && leaf.getRoot() !== leaf;
+    // getMostRecentLeaf() chooses visible leaves, not necessarily the active
+    // one: during a mobile drawer transition it can return an old tab. Prefer
+    // the public active view and retain its leaf when focus moves to a sidebar.
+    const active = workspace.getActiveViewOfType(View)?.leaf;
+    if (active && belongsToContent(active)) this.contentLeaf = active;
+    else if (!this.contentLeaf || !belongsToContent(this.contentLeaf))
+      this.contentLeaf = workspace.getMostRecentLeaf(container) ?? undefined;
+    return this.contentLeaf;
+  }
+
+  private currentPagePath(): string | undefined {
+    const current = this.currentContentLeaf();
+    // A non-file view such as Reminders must clear the old file selection.
+    return current?.view instanceof FileView ? current.view.file?.path : undefined;
+  }
+
+  syncActivePage() {
+    const path = this.currentPagePath();
+    if (path !== this.highlightedPath) this.revealActive(path);
+  }
+
   revealActive(path?: string) {
     if (this.closed || !this.treeEl || !this.sidebar.isEnabled) return;
+    this.highlightedPath = path;
     const nodes = flattenPages(this.sidebar.tree());
-    let node = nodes.find(item => item.filePath === path);
+    let node = path ? nodes.find(item => item.filePath === path) : undefined;
     while (node) {
       const parent: PageNode | undefined = nodes.find(item => item.id === node?.parent);
       if (!parent) break;
@@ -308,7 +454,8 @@ export class PageSidebarView extends ItemView {
 
   render() {
     if (this.closed || !this.treeEl || !this.sidebar.isEnabled) return;
-    this.cancelDrag(); this.stopTitleMotions();
+    this.cancelDrag(); this.stopTitleMotions(); this.hideActionTooltip();
+    if (this.remindersLabel) this.remindersLabel.textContent = this.sidebar.reminderName?.() || '提醒事项';
     const activeElement = this.contentEl.ownerDocument.activeElement as HTMLElement | null;
     const focused = activeElement?.closest<HTMLElement>('.bui-page-row');
     const focusId = focused && this.treeEl.contains(focused) ? focused.dataset.id : undefined;
@@ -316,21 +463,32 @@ export class PageSidebarView extends ItemView {
     this.nodes = this.sidebar.tree();
     const query = this.search.value.trim();
     const visible = filterPages(this.nodes, query);
+    const favorites = query ? [] : this.favoriteNodes();
+    const activePath = this.currentPagePath();
+    const current = activePath && this.lastOpenedEntry?.path === activePath ? this.lastOpenedEntry : undefined;
+    const currentExists = current && (current.favorite ? favorites : flattenPages(visible)).some(node => node.id === current.id);
+    const pinnedActive = activePath ? favorites.find(node => node.filePath === activePath) : undefined;
+    const treeActive = activePath ? flattenPages(visible).find(node => node.filePath === activePath) : undefined;
+    // A pinned shortcut and its original row refer to one page. Only the
+    // successful navigation source is selected, never both copies at once.
+    this.activeEntry = currentExists ? {id: current.id, favorite: current.favorite}
+      : pinnedActive ? {id: pinnedActive.id, favorite: true} : treeActive ? {id: treeActive.id, favorite: false} : undefined;
     this.favoritesEl.replaceChildren();
     if (!query) {
-      const favorites = this.favoriteNodes();
       if (favorites.length) {
         this.favoritesEl.createDiv({cls: 'bui-pages-section', text: '置顶'});
         for (const node of favorites) this.renderFavorite(node);
       }
     }
-    this.treeEl.replaceChildren(); this.rows = [];
+    this.treeEl.replaceChildren(); this.nameWithoutTooltip(this.treeEl, '页面'); this.rows = [];
     const projects = visible.filter(node => !!node.folderPath), pages = visible.filter(node => !node.folderPath);
     for (const [label, nodes] of [['项目', projects], ['页面', pages]] as const) {
       if (!nodes.length) continue;
-      const section = this.treeEl.createDiv({cls: 'bui-pages-group', attr: {role: 'group', 'aria-label': label}});
+      const section = this.treeEl.createDiv({cls: 'bui-pages-group', attr: {role: 'group'}});
       const heading = section.createDiv({cls: 'bui-pages-section', attr: {role: 'presentation'}});
-      heading.createSpan({text: label});
+      const headingLabel = heading.createSpan({text: label});
+      headingLabel.id = `bui-pages-group-${this.viewId}-${label}`;
+      section.setAttribute('aria-labelledby', headingLabel.id);
       heading.createSpan({cls: 'bui-pages-count', text: String(nodes.length)});
       if (label === '项目') this.iconButton(heading, 'list-collapse', '全部收起', () => {
         this.search.value = ''; this.transientExpanded.clear();
@@ -339,8 +497,7 @@ export class PageSidebarView extends ItemView {
       this.renderNodes(nodes, section, 0, !!query);
     }
     if (!visible.length) this.treeEl.createDiv({cls: 'bui-pages-empty', text: query ? '没有找到匹配的页面' : '从一个新页面开始'});
-    const activePath = this.app.workspace.getActiveFile()?.path;
-    const tabbable = this.rows.find(row => row.node.id === focusId) ?? this.rows.find(row => row.node.filePath === activePath) ?? this.rows[0];
+    const tabbable = this.rows.find(row => row.node.id === focusId) ?? (activePath ? this.rows.find(row => row.node.filePath === activePath) : undefined) ?? this.rows[0];
     for (const row of this.rows) row.el.tabIndex = row === tabbable ? 0 : -1;
     if (focusId) tabbable?.el.focus({preventScroll: true});
     this.scrollEl.scrollTop = scroll;
@@ -356,14 +513,15 @@ export class PageSidebarView extends ItemView {
       row.dataset.id = node.id;
       row.style.setProperty('--page-depth', String(depth));
       row.setAttribute('aria-description', node.filePath ?? node.folderPath ?? node.title);
-      const isActive = !!node.filePath && node.filePath === this.app.workspace.getActiveFile()?.path;
+      const isActive = this.activeEntry?.id === node.id && !this.activeEntry.favorite;
       row.classList.toggle('is-active', isActive); row.setAttribute('aria-selected', String(isActive));
       const hasChildren = node.children.length > 0;
       const expanded = searching || this.expanded(node);
       if (hasChildren) row.setAttribute('aria-expanded', String(expanded));
       if (hasChildren) {
-        const disclosure = row.createEl('button', {cls: 'bui-page-disclosure', attr: {tabindex: '-1', 'aria-label': expanded ? '收起 ' + node.title : '展开 ' + node.title}});
+        const disclosure = row.createEl('button', {cls: 'bui-page-disclosure', attr: {tabindex: '-1'}});
         setIcon(disclosure, 'chevron-right'); disclosure.classList.toggle('is-expanded', expanded);
+        this.nameWithoutTooltip(disclosure, expanded ? '收起 ' + node.title : '展开 ' + node.title);
         disclosure.addEventListener('click', event => {event.stopPropagation(); if (!searching) this.toggle(node);});
         if (searching) disclosure.disabled = true;
       }
@@ -373,8 +531,8 @@ export class PageSidebarView extends ItemView {
       const actions = row.createSpan({cls: 'bui-page-actions'});
       this.pinButton(actions, node, -1);
       if (node.kind === 'page' || node.kind === 'folder') this.iconButton(actions, 'plus', '在 ' + node.title + ' 下新建页面', event => {
-        event.stopPropagation(); this.sidebar.createPage(node);
-      }, -1);
+        event.stopPropagation(); if (event.detail < 2) void this.sidebar.createPage(node);
+      }, -1, {title: node.title, description: '在这个页面下新建子页面'});
       row.addEventListener('click', event => {
         if (this.suppressClick) {event.preventDefault(); return;}
         void this.openNode(node);
@@ -398,12 +556,19 @@ export class PageSidebarView extends ItemView {
   private renderFavorite(node: PageNode) {
     const row = this.favoritesEl.createDiv({cls: 'bui-page-favorite', attr: {'data-id': node.id}});
     const open = row.createEl('button', {cls: 'bui-page-favorite-open'});
-    const active = !!node.filePath && node.filePath === this.app.workspace.getActiveFile()?.path;
+    const active = this.activeEntry?.id === node.id && this.activeEntry.favorite;
     row.classList.toggle('is-active', active); open.setAttribute('aria-current', active ? 'page' : 'false');
     this.renderNodeIcon(open, node);
     this.renderTitle(open, node.title);
     open.setAttribute('aria-description', node.filePath ?? node.id);
-    open.addEventListener('click', () => {if (!this.suppressClick) void this.openNode(node);});
+    // Pointer capture belongs to the draggable row, so its click may target
+    // the row rather than the inner button. Handle both without opening when
+    // a separate pin action is pressed; keyboard button clicks bubble here.
+    row.addEventListener('click', event => {
+      const button = (event.target as HTMLElement).closest('button');
+      if ((button && button !== open) || this.suppressClick) return;
+      void this.openNode(node, false, undefined, true);
+    });
     open.addEventListener('contextmenu', event => {event.preventDefault(); this.nodeMenu(node, event, true);});
     open.addEventListener('keydown', event => {
       if (event.altKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
@@ -493,16 +658,61 @@ export class PageSidebarView extends ItemView {
     const pinned = this.sidebar.settings.favorites.some(id => id === node.id || id === node.filePath);
     const button = this.iconButton(host, pinned ? 'pin-off' : 'pin', pinned ? '取消置顶' : '置顶', event => {
       event.stopPropagation(); this.favorite(node);
-    }, tabIndex);
+    }, tabIndex, {title: node.title, description: pinned ? '从置顶区域移除' : '固定到侧栏顶部的置顶区域'});
     button.classList.add('bui-page-pin');
     button.classList.toggle('is-pinned', pinned);
     button.setAttribute('aria-pressed', String(pinned));
     return button;
   }
 
-  private iconButton(host: HTMLElement, icon: string, title: string, action: (event: MouseEvent) => void, tabIndex = 0) {
-    const button = host.createEl('button', {cls: 'bui-pages-icon-button', attr: {'aria-label': title, title}});
-    button.tabIndex = tabIndex; setIcon(button, icon); button.addEventListener('click', action); return button;
+  private iconButton(host: HTMLElement, icon: string, title: string, action: (event: MouseEvent) => void, tabIndex = 0,
+    context?: {title: string; description: string}) {
+    const button = host.createEl('button', {cls: 'bui-pages-icon-button'});
+    button.tabIndex = tabIndex; setIcon(button, icon); this.nameWithoutTooltip(button, title);
+    button.addEventListener('click', event => {this.hideActionTooltip(); action(event);});
+    const show = () => this.showActionTooltip(button, context?.title ?? title, context?.description);
+    button.addEventListener('pointerenter', event => {if (event.pointerType !== 'touch') show();});
+    button.addEventListener('pointerleave', () => this.hideActionTooltip());
+    button.addEventListener('focus', show);
+    button.addEventListener('blur', () => this.hideActionTooltip());
+    button.addEventListener('keydown', event => {if (event.key === 'Escape') this.hideActionTooltip();});
+    return button;
+  }
+
+  /** Obsidian treats aria-label like a hover tooltip. An associated label
+   * preserves accessible names without its global bubble or native title. */
+  private nameWithoutTooltip(element: HTMLElement, title: string) {
+    const label = element.createSpan({cls: 'bui-pages-accessible-label', text: title});
+    label.id = `bui-pages-label-${this.viewId}-${++this.nextTitleId}`;
+    element.setAttribute('aria-labelledby', label.id);
+  }
+
+  private showActionTooltip(button: HTMLElement, title: string, description?: string) {
+    this.hideActionTooltip();
+    const doc = button.ownerDocument, win = doc.defaultView;
+    if (!win || Platform.isMobileApp || this.closed || !this.sidebar.isEnabled) return;
+    const state = {button, win, timer: 0, element: undefined as HTMLElement | undefined};
+    this.actionTooltip = state;
+    state.timer = win.setTimeout(() => {
+      state.timer = 0;
+      if (this.actionTooltip !== state || !button.isConnected || this.closed || !this.sidebar.isEnabled) return;
+      const anchor = button.closest<HTMLElement>('.bui-page-row, .bui-page-favorite') ?? button;
+      const card = doc.body.createDiv({cls: 'bui-page-action-tooltip', attr: {role: 'tooltip'}});
+      card.id = `bui-pages-tooltip-${this.viewId}`;
+      card.createDiv({cls: 'bui-page-action-tooltip-title', text: title});
+      if (description) card.createDiv({cls: 'bui-page-action-tooltip-description', text: description});
+      const rect = anchor.getBoundingClientRect(), box = card.getBoundingClientRect();
+      const left = rect.right + 8 + box.width <= win.innerWidth - 8 ? rect.right + 8 : Math.max(8, rect.left - box.width - 8);
+      card.style.left = `${left}px`;
+      card.style.top = `${Math.max(8, Math.min(rect.top, win.innerHeight - box.height - 8))}px`;
+      button.setAttribute('aria-describedby', card.id); state.element = card;
+    }, 250);
+  }
+
+  private hideActionTooltip() {
+    const state = this.actionTooltip; this.actionTooltip = undefined;
+    if (!state) return;
+    state.win.clearTimeout(state.timer); state.element?.remove(); state.button.removeAttribute('aria-describedby');
   }
 
   private toggle(node: PageNode) {
@@ -511,7 +721,7 @@ export class PageSidebarView extends ItemView {
     void this.sidebar.update(state => ({...state, expanded: wasExpanded ? state.expanded.filter(id => id !== node.id) : [...state.expanded, node.id]}));
   }
 
-  private async openNode(node: PageNode, newTab = false, subpath?: string): Promise<boolean> {
+  private async openNode(node: PageNode, newTab = false, subpath?: string, favorite = false): Promise<boolean> {
     if (!this.sidebar.isEnabled || this.closed) return false;
     if (!node.filePath) {this.toggle(node); return false;}
     const file = this.app.vault.getAbstractFileByPath(node.filePath);
@@ -519,11 +729,15 @@ export class PageSidebarView extends ItemView {
     try {
       const controller = this.sidebar.rightWorkspace;
       if (controller && ['md', 'base'].includes(file.extension.toLowerCase())) {
-        const opened = await controller.openFileInMain(file, this.app.workspace.getMostRecentLeaf(this.leaf.getContainer()) ?? undefined, newTab);
+        const opened = await controller.openFileInMain(file, this.currentContentLeaf(), newTab);
         if (!opened) return false;
+        this.contentLeaf = opened;
         if (subpath) opened.setEphemeralState({subpath});
       } else await this.app.workspace.getLeaf(newTab ? 'tab' : false).openFile(file, subpath ? {eState: {subpath}} : undefined);
-      if (this.app.workspace.getActiveFile()?.path === file.path) this.sidebar.closeMobileDrawer();
+      this.lastOpenedEntry = {id: node.id, path: file.path, favorite};
+      // Navigation succeeded. Closing the drawer must not depend on the
+      // host's visibility-based recent-leaf query catching up with the open.
+      this.sidebar.closeMobileDrawer(); this.render();
       return true;
     }
     catch (error) {this.sidebar.failure('无法打开页面', error); return false;}
@@ -534,7 +748,7 @@ export class PageSidebarView extends ItemView {
     if (!this.sidebar.isEnabled || this.closed || !(file instanceof TFile)) return;
     try {
       if (this.sidebar.rightWorkspace && ['md', 'base'].includes(file.extension.toLowerCase()))
-        await this.sidebar.rightWorkspace.openFile(file, this.app.workspace.getMostRecentLeaf(this.leaf.getContainer()) ?? undefined);
+        await this.sidebar.rightWorkspace.openFile(file, this.currentContentLeaf());
       else await this.openNode(node, true);
     } catch (error) {this.sidebar.failure('无法打开页面', error);}
   }
@@ -703,30 +917,4 @@ export class PageSidebarView extends ItemView {
     }
     menu.showAtPosition({x: event.clientX, y: event.clientY});
   }
-}
-
-class NewPageModal extends Modal {
-  constructor(app: App, private parentTitle: string | undefined, private create: (name: string) => Promise<void>) {super(app);}
-  onOpen() {
-    this.setTitle(this.parentTitle ? '新建子页面' : '新建页面');
-    this.contentEl.createEl('p', {text: this.parentTitle ? '添加到「' + this.parentTitle + '」' : '添加到当前库', cls: 'bui-pages-caption'});
-    const form = this.contentEl.createEl('form', {cls: 'bui-pages-new-form'});
-    const input = form.createEl('input', {type: 'text', placeholder: '页面名称', attr: {'aria-label': '页面名称'}});
-    const error = form.createDiv({cls: 'bui-pages-form-error', attr: {role: 'alert'}});
-    const button = form.createEl('button', {text: '创建页面', cls: 'mod-cta', attr: {type: 'submit'}});
-    let submitting = false;
-    const submit = async () => {
-      if (submitting) return;
-      const name = validPageName(input.value);
-      if (!name) {error.textContent = '请输入有效名称，不要包含 /、\\ 等路径符号'; input.focus(); return;}
-      submitting = true; button.disabled = true; error.textContent = '';
-      try {await this.create(name); this.close();}
-      catch (failure) {error.textContent = failure instanceof Error ? failure.message : String(failure); submitting = false; button.disabled = false;}
-    };
-    form.addEventListener('submit', event => {
-      event.preventDefault(); void submit();
-    });
-    input.focus();
-  }
-  onClose() {this.contentEl.replaceChildren();}
 }
