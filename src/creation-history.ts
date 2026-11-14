@@ -587,8 +587,16 @@ export class BaseCreationHistory {
         // The child editor component shares this same editor object, so collect
         // owner evidence first instead of flagging that duplicate as a draft.
         if (component.dirty === false && component.saveAgain !== true &&
-            typeof component.lastSavedData === 'string' && value === component.lastSavedData &&
-            typeof component.data === 'string' && sameCreatedContent(record.content, component.data)) cleanSnapshots.add(editor);
+            typeof component.lastSavedData === 'string' &&
+            typeof component.data === 'string' && sameCreatedContent(record.content, component.data)) {
+          // In reading mode a property update advances both authoritative
+          // snapshots, but the dormant source editor can retain older text.
+          // Require both saved snapshots to match before ignoring that cache;
+          // a live source editor or a separate dirty editor still blocks trash.
+          const savedPreview = method(component.getMode) && component.getMode.call(component) === 'preview' &&
+            sameCreatedContent(record.content, component.lastSavedData);
+          if (value === component.lastSavedData || savedPreview) cleanSnapshots.add(editor);
+        }
       }
       if (Array.isArray(component._children)) for (const child of component._children as unknown[]) visit(child, depth + 1);
       for (const key of ['view', 'embed', 'markdownView']) if (component[key] && component[key] !== component) visit(component[key], depth + 1);

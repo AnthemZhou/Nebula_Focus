@@ -1,16 +1,18 @@
 /* Scoped, reversible presentation; drag feedback respects reduced motion. */
 body.bui-enabled {
-  /* Codex-inspired proportions, not a bundled theme or a font preference write.
-     Derive every role from the user's text size; native mode removes this scope. */
-  --bui-reading-size: var(--font-text-size, 16px);
-  --bui-ui-size: calc(var(--bui-reading-size) * .875);
-  --bui-caption-size: calc(var(--bui-reading-size) * .8125);
-  --bui-title-size: calc(var(--bui-reading-size) * 1.75);
+  /* Codex desktop content defaults to 14px. Keep UI and captions on their
+     own scale so making content compact does not shrink navigation as well.
+     All roles still scale with the user's native text-size preference. */
+  --bui-reading-size: calc(var(--font-text-size, 16px) * .875);
+  --bui-ui-size: calc(var(--font-text-size, 16px) * .875);
+  --bui-caption-size: calc(var(--font-text-size, 16px) * .8125);
+  --bui-title-size: calc(var(--font-text-size, 16px) * 1.75);
   --font-ui-small: var(--bui-ui-size);
   --font-ui-medium: var(--bui-ui-size);
   --font-ui-smaller: var(--bui-caption-size);
-  --bases-table-font-size: var(--bui-ui-size);
-  --bases-group-heading-value-size: var(--bui-ui-size);
+  --table-text-size: var(--bui-reading-size);
+  --bases-table-font-size: var(--bui-reading-size);
+  --bases-group-heading-value-size: var(--bui-reading-size);
   --bases-group-heading-value-weight: 500;
   --nav-item-size: var(--bui-ui-size);
   --nav-item-weight: 400;
@@ -117,13 +119,18 @@ body.bui-enabled.show-ribbon:not(.is-mobile) {
   --ribbon-padding: 6px 4px 8px;
 }
 body.bui-enabled:not(.is-mobile) .workspace-ribbon:is(.mod-primary, .mod-left) .side-dock-actions {gap: 3px;}
+body.bui-enabled:not(.is-mobile) .workspace-ribbon:is(.mod-primary, .mod-left) > :is(.side-dock-actions, .side-dock-settings) {
+  align-items: center; width: 100%;
+}
 body.bui-enabled:not(.is-mobile) .workspace-ribbon:is(.mod-primary, .mod-left) .side-dock-ribbon-action {
   --icon-size: 18px;
   display: flex; align-items: center; justify-content: center;
+  flex: 0 0 auto;
   width: 32px; height: 32px; padding: 7px; border-radius: 7px;
 }
 body.bui-enabled:not(.is-mobile) .workspace-ribbon:is(.mod-primary, .mod-left) .side-dock-ribbon-action svg {
-  width: 18px; height: 18px;
+  display: block; flex: 0 0 18px; width: 18px; height: 18px;
+  min-width: 18px; max-width: 18px; min-height: 18px; max-height: 18px;
 }
 /* Native help/settings controls are moved intact into the rail footer. */
 body.bui-enabled:not(.is-mobile) .workspace-ribbon:is(.mod-primary, .mod-left) .bui-ribbon-vault-actions {
@@ -133,9 +140,13 @@ body.bui-enabled:not(.is-mobile) .workspace-ribbon:is(.mod-primary, .mod-left) .
 body.bui-enabled:not(.is-mobile) .bui-ribbon-vault-actions > .clickable-icon {
   --icon-size: 18px;
   display: flex; align-items: center; justify-content: center;
+  flex: 0 0 auto;
   width: 32px; height: 32px; padding: 7px; border-radius: 7px;
 }
-body.bui-enabled:not(.is-mobile) .bui-ribbon-vault-actions svg {width: 18px; height: 18px;}
+body.bui-enabled:not(.is-mobile) .bui-ribbon-vault-actions svg {
+  display: block; flex: 0 0 18px; width: 18px; height: 18px;
+  min-width: 18px; max-width: 18px; min-height: 18px; max-height: 18px;
+}
 body.bui-enabled .workspace-ribbon:is(.mod-primary, .mod-left) .side-dock-actions > .bui-ribbon-hidden {display: none !important;}
 /* Link color and page icons remain the navigation cue, in every content view. */
 body.bui-enabled .workspace-leaf-content :is(a[href], .internal-link, .external-link,
@@ -190,6 +201,8 @@ body.bui-enabled .metadata-container.is-collapsed .bui-aux-toggle { display: non
   padding: 3px 6px;
 }
 body.bui-enabled .bases-header {
+  --font-ui-small: var(--bases-table-font-size);
+  --font-ui-medium: var(--bases-table-font-size);
   --bases-header-padding-start: 4px;
   --bases-header-padding-end: 4px;
   --bases-header-border-width: 0;
@@ -199,7 +212,8 @@ body.bui-enabled .bases-header {
 }
 body.bui-enabled .bases-toolbar { column-gap: 5px; min-height: 32px; }
 body.bui-enabled .bases-toolbar .text-icon-button {
-  --icon-size: 15px;
+  font-size: var(--bases-table-font-size);
+  --icon-size: 16px;
   padding: 5px 6px;
 }
 body.bui-enabled .bases-toolbar .bases-toolbar-views-menu .text-icon-button {
@@ -396,6 +410,7 @@ body.bui-enabled .bases-view[data-view-type="table"] {
 }
 /* The outer data frame owns the top line, not the toolbar/header row. */
 body.bui-enabled .bases-thead > .bases-tr { box-shadow: none; }
+body.bui-enabled .bases-thead { --font-ui-small: var(--bases-table-font-size); font-size: var(--bases-table-font-size); }
 body.bui-enabled .workspace-leaf-content[data-type="bases"] .bases-view[data-view-type="table"] {
   flex-grow: 0;
   min-height: 0;
@@ -491,7 +506,7 @@ body.bui-enabled .callout[data-callout="info"]:has(.bases-embed, .block-language
   border: 0;
   border-top: 1px solid var(--bui-border);
   border-radius: 0;
-  padding: 12px 0 0;
+  padding: 6px 0;
   box-shadow: none;
   mix-blend-mode: normal;
 }
@@ -499,6 +514,7 @@ body.bui-enabled .callout[data-callout="info"]:has(.bases-embed, .block-language
   color: var(--text-normal);
   background: transparent;
   padding: 0;
+  align-items: center;
   gap: 8px;
   font-weight: var(--font-medium);
 }
@@ -598,7 +614,7 @@ body.bui-enabled .bui-ideas-base .metadata-input-longtext.bui-native-tag:not(:fo
   width: fit-content;
   min-width: 0;
   max-width: calc(100% - 16px);
-  margin: 6px 8px;
+  margin: 5px 8px 7px;
   padding: 1px 6px;
   line-height: var(--line-height-tight, 1.3);
 }
@@ -608,7 +624,7 @@ body.bui-enabled .bui-ideas-base .multi-select-container {
   align-items: center;
   align-content: flex-start;
   row-gap: 4px;
-  padding-block: 6px;
+  padding-block: 5px 7px;
   line-height: var(--line-height-tight, 1.3);
 }
 /* Label fill follows its text. Hidden native controls must not leave a trailing
@@ -843,7 +859,7 @@ body.bui-enabled .bui-semantic-property .metadata-input-longtext.bui-semantic-ta
   width: fit-content;
   min-width: 0;
   max-width: calc(100% - 16px);
-  margin: 6px 8px;
+  margin: 5px 8px 7px;
   padding: 1px 6px;
   line-height: var(--line-height-tight, 1.3);
 }
@@ -938,7 +954,8 @@ body.bui-enabled .bases-td.bui-relation-property:focus-within .multi-select-pill
 body.bui-enabled .bui-idea-title-cell { position: relative; }
 body.bui-enabled .bui-idea-title-cell .bui-idea-title::before { display: none; }
 body.bui-enabled .bui-idea-title-cell .bui-idea-title {
-  cursor: text;
+  cursor: default;
+  pointer-events: none;
   padding-inline-start: calc(1em + 6px);
   padding-inline-end: 0;
   min-height: 1lh;
@@ -948,6 +965,11 @@ body.bui-enabled .bui-idea-title-cell .bui-idea-title {
   overflow: visible;
   outline: 0;
   box-shadow: none;
+}
+body.bui-enabled .bui-idea-title-cell .bui-idea-title-text {
+  display: inline;
+  pointer-events: auto;
+  cursor: pointer;
 }
 body.bui-enabled .bui-idea-title-cell .bui-idea-page-button {
   position: absolute;
@@ -989,15 +1011,20 @@ body.bui-enabled .bui-row-actions-cell > button.bui-row-menu-button {
   box-shadow: none; color: var(--text-muted); background: var(--background-primary);
   opacity: 0; pointer-events: none; --icon-size: 16px; z-index: 3;
 }
-body.bui-enabled .bui-row-menu-button::before {
-  content: ''; position: absolute; z-index: -1; inset-block: 0;
-  inset-inline-start: -18px; inset-inline-end: 0; border-radius: inherit;
+/* A separate inert layer spans the complete cell, so multiline titles fade
+   consistently without reserving horizontal space or changing row heights. */
+body.bui-enabled .bui-row-actions-cell > .bui-row-action-shade {
+  position: absolute; inset-block: 1px; inset-inline-end: 1px; width: 48px;
   background: linear-gradient(to right, transparent, var(--background-primary) 18px);
-  pointer-events: none;
+  opacity: 0; pointer-events: none; z-index: 2;
 }
-body.bui-enabled .bui-row-menu-button:dir(rtl)::before {
+body.bui-enabled .bui-row-action-shade:dir(rtl) {
   background: linear-gradient(to left, transparent, var(--background-primary) 18px);
 }
+body.bui-enabled .bui-row-actions-cell:hover > .bui-row-action-shade,
+body.bui-enabled .bui-row-actions-cell:has(> .bui-row-menu-button:focus-visible) > .bui-row-action-shade,
+body.bui-enabled:is(.is-mobile, .bui-touch) .bui-row-actions-cell > .bui-row-action-shade { opacity: 1; }
+body.bui-enabled:is(.is-mobile, .bui-touch) .bui-row-actions-cell > .bui-row-action-shade { width: 62px; }
 body.bui-enabled .bui-row-actions-cell:hover > .bui-row-menu-button,
 body.bui-enabled .bui-row-actions-cell > .bui-row-menu-button:focus-visible {
   opacity: 1; pointer-events: auto;
@@ -1138,7 +1165,10 @@ body.bui-enabled.is-phone .workspace > .workspace-split.mod-root.is-sliding-side
 body.bui-enabled.is-phone .workspace > .workspace-split.mod-root:has(> .bui-legacy-drawer-backdrop) {
   border-radius: 28px; overflow: hidden; isolation: isolate;
   mask-image: none; -webkit-mask-image: none;
-  box-shadow: 0 0 0 1px var(--background-modifier-border);
+  /* Clip the translated content and its native fading layer to one contour.
+     An outside stroke makes a second bright edge at the screen's top/bottom. */
+  clip-path: inset(0 round 28px);
+  box-shadow: none;
 }
 /* Older hosts attach this same native node beside the translated page. The
    compatibility controller moves it inside, matching the current host layout. */
@@ -1345,7 +1375,7 @@ body.bui-enabled:is(.is-mobile, .bui-touch) .bui-ideas-base .bases-td:is([data-p
 body.bui-enabled:is(.is-mobile, .bui-touch) .bui-idea-title-cell .bui-idea-title {
   box-sizing: border-box;
   min-height: calc(var(--bui-touch-target) - 12px);
-  padding-block: max(0px, calc((var(--bui-touch-target) - 12px - 1lh) / 2));
+  padding-block: 0;
   /* The native title cell already supplies 8px. The text starts exactly
      after the 44px icon target, with no second unused 8px gutter. */
   padding-inline-start: calc(var(--bui-touch-target) - 8px);
@@ -1496,10 +1526,10 @@ body.bui-enabled:is(.is-mobile, .bui-touch) :is(.bui-tag-editor, .bui-tag-manage
 .bui-pages-favorites:not(:empty) {padding-bottom: 6px; margin-bottom: 8px;}
 .bui-pages-group + .bui-pages-group {margin-top: 14px;}
 body.bui-enabled .bui-page-sidebar {--nav-item-padding: 6px 8px 6px 24px;}
-/* Page names and actions share the compact UI scale. Section labels keep
-   their separate caption scale; no body or mobile type size is changed. */
+/* Desktop page names share the 14px content scale. Section captions and
+   mobile touch typography stay separate. */
 body.bui-enabled:not(.is-mobile) .bui-page-sidebar {
-  --nav-item-size: calc(var(--bui-reading-size) * .875);
+  --nav-item-size: var(--bui-ui-size);
   --nav-item-weight-active: 400;
   --nav-item-padding: 4px 8px 4px 20px;
   --nav-item-margin-bottom: 1px;
@@ -1669,6 +1699,8 @@ body.bui-enabled.is-mobile .bui-pages-toolbar button.bui-pages-search-button {
 }
 body.bui-enabled.is-mobile .bui-pages-search-button svg {width: 22px; height: 22px;}
 body.bui-enabled.is-mobile .view-content.bui-page-sidebar {position: relative; padding: 8px 12px 0;}
+/* The phone drawer already starts at the native header's safe-area offset. */
+body.bui-enabled.is-phone .view-content.bui-page-sidebar {padding-top: 0;}
 body.bui-enabled.is-mobile .bui-pages-scroll {padding-bottom: 84px; scrollbar-width: thin;}
 body.bui-enabled.is-mobile :is(.bui-pages-footer, .bui-pages-mobile-footer) {
   position: absolute; inset-inline: 12px; bottom: 0; z-index: 3;
@@ -1682,12 +1714,15 @@ body.bui-enabled.is-mobile :is(.bui-pages-footer, .bui-pages-mobile-footer) butt
   box-shadow: 0 3px 16px #00000020;
 }
 body.bui-enabled.is-mobile .bui-pages-mobile-footer {
-  display: flex; justify-content: flex-end; align-items: center; gap: 10px;
-  /* The native drawer-inner already reserves the bottom safe area. */
-  bottom: 0;
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  /* Explicit width avoids shrink-to-content placement in the phone drawer. */
+  width: calc(100% - 24px); min-width: 0; max-width: calc(100% - 24px); box-sizing: border-box;
+  /* The native drawer-inner already reserves the bottom safe area. Keep the
+     button bottoms on that boundary instead of adding another 12px gap. */
+  bottom: 0; padding-bottom: 0;
 }
 body.bui-enabled.is-mobile .bui-pages-mobile-settings-slot {
-  width: 44px; height: 44px; flex: 0 0 44px; pointer-events: none;
+  width: 44px; height: 44px; flex: 0 0 44px; margin-inline-end: auto; pointer-events: none;
 }
 body.bui-enabled.is-mobile .bui-pages-mobile-settings-slot > .workspace-drawer-header-icon.mod-settings {
   position: static; width: 44px; height: 44px; padding: 10px; margin: 0;
@@ -1702,13 +1737,16 @@ body.bui-enabled.is-mobile .bui-page-sidebar button.bui-page-disclosure {left: 4
    modes now stay in a temporary picker without replacing this drawer. */
 body.bui-enabled.is-mobile .workspace-drawer.mod-left:has(.bui-pages-mobile-header) .workspace-drawer-tab-options {display: none;}
 body.bui-enabled.is-mobile .workspace-drawer.mod-left:has(.bui-pages-mobile-header) .workspace-leaf-content[data-type="nebula-pages"]::after {display: none;}
+body.bui-enabled.is-phone .workspace-drawer.mod-left:has(.bui-pages-mobile-header) .workspace-drawer-inner {
+  padding-top: var(--view-header-top-offset, max(12px, var(--safe-area-inset-top, 0px)));
+}
 /* Reposition the real vault selector and settings control, preserving their
    handlers and keeping a static vault-name fallback for changed host markup. */
 body.bui-enabled.is-phone .workspace-drawer.mod-left:has(.bui-pages-mobile-header) .workspace-drawer-header {
   position: absolute; inset: 0; z-index: 2; padding: 0; margin: 0; pointer-events: none;
 }
 body.bui-enabled.is-phone .workspace-drawer.mod-left:has(.bui-pages-mobile-header) .workspace-drawer-header-left {
-  position: absolute; top: calc(max(8px, var(--safe-area-inset-top, 0px)) + 8px); left: 16px;
+  position: absolute; top: var(--view-header-top-offset, max(12px, var(--safe-area-inset-top, 0px))); left: 16px;
   width: calc(100% - 88px); height: 44px; justify-content: center; pointer-events: auto;
 }
 body.bui-enabled.is-phone .workspace-drawer.mod-left:has(.bui-pages-mobile-header) .workspace-drawer-header-name-text {font-size: calc(var(--bui-mobile-font-size) * 1.125);}
@@ -2286,6 +2324,12 @@ body.is-mobile .nf-home-drag-handle {display: none;}
   .nf-home-summary-groups {gap: 12px 20px;}
   .nf-home-summary-value {font-size: 1.2em;}
 }
+/* Codex desktop's default content stack, using only fonts supplied by the OS.
+   Notes, Bases, tags and their popovers share one family in this mode. */
+body.bui-enabled.bui-font-codex {
+  --font-interface: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-text: var(--font-interface);
+}
 /* Opt-in embedded font. Removing either class restores the theme and user
    font choices; the font selection does not change the type scale or code font. */
 body.bui-enabled.bui-font-wenkai {
@@ -2664,4 +2708,16 @@ body.bui-enabled:not(.is-mobile) .workspace-ribbon.mod-primary {
 body.bui-enabled:not(.is-mobile) .workspace-ribbon.mod-primary:before {
   height: calc(var(--header-height) + var(--bui-workspace-gutter) + 1px);
   border-bottom: 1px solid var(--bui-border);
+}
+
+/* Accessibility names remain available; enhanced appearance has no hover hints. */
+body.bui-enabled .tooltip { display: none !important; }
+
+/* Live Preview's source-code action occupies its own end slot; it must not
+   cover the native New button or intercept its hit target. */
+body.bui-enabled .bases-embed:has(> .embed-actions) > .bases-header {
+  padding-inline-end: 36px;
+}
+body.bui-enabled:is(.is-mobile, .bui-touch) .bases-embed:has(> .embed-actions) > .bases-header {
+  padding-inline-end: 44px;
 }

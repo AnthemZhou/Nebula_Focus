@@ -602,6 +602,11 @@ export class IdeaRowHeights {
       rootChildren.push(v.footerSummary.el); styles(v.footerSummary.el, {width: `${width}px`});
       v.footerSummary.virtualize(widths, horizontalStart, horizontalEnd);
     }
+    // Keep the action row mounted through virtual updates. Removing it until
+    // afterRender briefly shortens an embedded table; at the document's end,
+    // synchronous layout can clamp the parent scroll position by its height.
+    const createRow = v.scrollEl.querySelector<HTMLElement>(':scope > .bui-ideas-new-row');
+    if (createRow) rootChildren.push(createRow);
     children(v.scrollEl, rootChildren);
     styles(v.containerEl, {width: `${width}px`, height: `${height}px`});
     if (focused?.isConnected && state.host.ownerDocument.activeElement !== focused) focused.focus({preventScroll: true});

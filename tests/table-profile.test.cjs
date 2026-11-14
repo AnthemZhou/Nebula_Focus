@@ -22,6 +22,21 @@ test('legacy idea inbox is supported but arbitrary native views are untouched',(
   assert.equal(tableProfile({name:'普通表格'}),null);assert.equal(tableProfile({name:'想法收集箱',nebulaTable:false}),null);
 });
 
+test('view description overrides nested metadata without mutating it, including deliberate empty descriptions',()=>{
+  const raw=profile();
+  for(const override of ['自己的说明','',null,42]) {
+    const config={nebulaTable:raw,nebulaScopeNote:override};
+    const expected=typeof override==='string'?override:raw.scopeNote;
+    for(const input of [config,{config},{get:key=>config[key]}]) assert.equal(tableProfile(input).scopeNote,expected);
+  }
+  assert.equal(raw.scopeNote,'仅筛选后的示例记录');
+  for(const input of [{name:'想法收集箱',nebulaScopeNote:'收集想法'},
+    {name:'想法收集箱',get:key=>key==='nebulaScopeNote'?'收集想法':undefined}])
+    assert.equal(tableProfile(input).scopeNote,'收集想法');
+  assert.equal(Object.hasOwn(tableProfile({name:'想法收集箱'}),'scopeNote'),false);
+  assert.equal(tableProfile({name:'普通表格',nebulaScopeNote:'不得自动启用'}),null);
+});
+
 test('invalid profiles and initializing native getters defer safely without partial opt-in',()=>{
   for (const value of [null,42,[],{config:{get(){throw Error('initializing');}}},
     ...[{titleColumn:''},{titleProperty:1},{tags:{领域:'relation'}},{wrap:'true'},{attachments:['']},{scopeNote:3}]

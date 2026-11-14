@@ -1,3 +1,5 @@
+import {HoverHints} from './hover-hints';
+import {NativeTitleSync} from './native-title-sync';
 import {Plugin, TFile, Notice, MarkdownView, Component, Menu, Modal, Platform, FileSystemAdapter, setIcon} from 'obsidian';
 import {compactLink, firstImage, isDueProperty, isEmpty, overdue, propertyName} from './model';
 import {IdeaTables} from './idea-table';
@@ -72,6 +74,8 @@ export default class NebulaFocus extends Plugin {
   });
   private mobileActions?: MobileHistoryActions;
   private mobileDrawer?: MobileDrawerSurface;
+  private hoverHints?: HoverHints;
+  private nativeTitleSync?: NativeTitleSync;
   private propertySuggestions?: PropertySuggestions;
   private tableRender = new TableRenderSync((view, root) => this.paintTable(view, root), () => this.active && !this.disposed,
     view => this.prepareTable(view));
@@ -107,6 +111,8 @@ export default class NebulaFocus extends Plugin {
     if (this.disposed) return;
     this.active = this.uiSettings.appearanceMode !== 'native';
     this.mobileDrawer = this.addChild(new MobileDrawerSurface(this, this.active));
+    this.hoverHints = this.addChild(new HoverHints(this, this.active));
+    this.nativeTitleSync = this.addChild(new NativeTitleSync(this, this.active));
     this.autoBases = new AutoBaseSetup(this.app, this.manifest.id, () => this.active && !this.disposed);
     const migration = await migrateFinanceBases(this.app.vault, this.manifest.id);
     if (migration.failed.length) new Notice('部分财务视图未转换，相关文件未被覆盖；请稍后重新载入插件重试。');
@@ -121,6 +127,7 @@ export default class NebulaFocus extends Plugin {
       }});
     this.registerEvent(this.app.workspace.on('file-menu', (menu, file) => {
       if (!(file instanceof TFile) || file.extension !== 'md') return;
+      if (this.active) this.rowActions.addToFileMenu(menu, file);
       menu.addItem(item => item.setTitle('打开数据视图').setIcon('table').onClick(() => this.openNoteDatabase(file)));
     }));
     this.addCommand({id: 'inspect-record-relations', name: '查看记录属性与关联',
@@ -173,10 +180,11 @@ export default class NebulaFocus extends Plugin {
         if (!this.creationHistory) throw new Error('数据库历史尚未就绪');
         await this.creationHistory.rename(view, file, basename);
       },
-      open: (_view, file, event) => {
+      open: (view, file, event, titleProperty) => {
         const target = this.app.vault.getFileByPath(file.path);
         const source = event.currentTarget;
         if (!target || !nativeHTMLElement(source)) return;
+        this.nativeTitleSync?.remember(view, target, titleProperty);
         return this.rightWorkspace?.openFileFromElement(target, source, event);
       },
     });
@@ -381,7 +389,8 @@ export default class NebulaFocus extends Plugin {
       doc.body?.classList.toggle('bui-enabled', this.active && !this.disposed);
       doc.body?.classList.toggle('bui-touch', this.active && !this.disposed &&
         (!!nativeAppField(this.app, 'isMobile') || !!doc.defaultView?.matchMedia?.('(any-pointer: coarse)').matches));
-      this.fontAppearance.sync(doc, this.active && !this.disposed && readFontChoice(this.uiSettings.fontFamily) === 'lxgw-wenkai');
+      const font = this.active && !this.disposed ? readFontChoice(this.uiSettings.fontFamily) : 'default';
+      this.fontAppearance.sync(doc, font === 'codex-system' ? font : font === 'lxgw-wenkai');
     }
   }
 
@@ -419,6 +428,8 @@ export default class NebulaFocus extends Plugin {
     this.ribbon?.setEnabled(enabled);
     this.reminders?.setEnabled(enabled);
     this.mobileDrawer?.setEnabled(enabled);
+    this.hoverHints?.setEnabled(enabled);
+    this.nativeTitleSync?.setEnabled(enabled);
     this.schedule();
     this.app.workspace.trigger('css-change');
     const write = this.settingsWrite.then(async () => {
@@ -895,6 +906,8 @@ export default class NebulaFocus extends Plugin {
     this.mobileActions?.clear();
     this.active = false;
     this.mobileDrawer?.setEnabled(false);
+    this.hoverHints?.setEnabled(false);
+    this.nativeTitleSync?.setEnabled(false);
     this.syncAppearanceDocuments();
     this.observer?.disconnect();
     window.clearTimeout(this.timer);

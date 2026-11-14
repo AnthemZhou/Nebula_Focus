@@ -291,7 +291,6 @@ export class PageSidebarView extends ItemView {
   private mobileSearchQuery = '';
   private searchModal?: SidebarSearchModal;
   private remindersLabel?: HTMLElement;
-  private actionTooltip?: {element?: HTMLElement; button: HTMLElement; timer: number; win: Window};
   private lastOpenedEntry?: {id: string; path: string; favorite: boolean};
   private activeEntry?: {id: string; favorite: boolean};
   private mobileSettings?: {element: HTMLElement; marker: Comment};
@@ -351,7 +350,6 @@ export class PageSidebarView extends ItemView {
     this.scrollEl = this.contentEl.createDiv({cls: 'bui-pages-scroll'});
     this.favoritesEl = this.scrollEl.createDiv({cls: 'bui-pages-favorites'});
     this.treeEl = this.scrollEl.createDiv({cls: 'bui-pages-tree', attr: {role: 'tree'}});
-    this.scrollEl.addEventListener('scroll', () => this.hideActionTooltip(), {passive: true});
     if (Platform.isMobileApp) {
       const footer = this.contentEl.createDiv({cls: 'bui-pages-mobile-footer'});
       const settings = footer.createDiv({cls: 'bui-pages-mobile-settings-slot'});
@@ -364,7 +362,7 @@ export class PageSidebarView extends ItemView {
   }
 
   async onClose() {
-    this.cancelDrag(); this.stopTitleMotions(); this.hideActionTooltip();
+    this.cancelDrag(); this.stopTitleMotions();
     this.restoreMobileSettings();
     this.searchModal?.close(); this.searchModal = undefined;
     this.closed = true; this.sidebar.views.delete(this); this.contentEl.replaceChildren();
@@ -454,7 +452,7 @@ export class PageSidebarView extends ItemView {
 
   render() {
     if (this.closed || !this.treeEl || !this.sidebar.isEnabled) return;
-    this.cancelDrag(); this.stopTitleMotions(); this.hideActionTooltip();
+    this.cancelDrag(); this.stopTitleMotions();
     if (this.remindersLabel) this.remindersLabel.textContent = this.sidebar.reminderName?.() || '提醒事项';
     const activeElement = this.contentEl.ownerDocument.activeElement as HTMLElement | null;
     const focused = activeElement?.closest<HTMLElement>('.bui-page-row');
@@ -532,7 +530,7 @@ export class PageSidebarView extends ItemView {
       this.pinButton(actions, node, -1);
       if (node.kind === 'page' || node.kind === 'folder') this.iconButton(actions, 'plus', '在 ' + node.title + ' 下新建页面', event => {
         event.stopPropagation(); if (event.detail < 2) void this.sidebar.createPage(node);
-      }, -1, {title: node.title, description: '在这个页面下新建子页面'});
+      }, -1);
       row.addEventListener('click', event => {
         if (this.suppressClick) {event.preventDefault(); return;}
         void this.openNode(node);
@@ -658,24 +656,17 @@ export class PageSidebarView extends ItemView {
     const pinned = this.sidebar.settings.favorites.some(id => id === node.id || id === node.filePath);
     const button = this.iconButton(host, pinned ? 'pin-off' : 'pin', pinned ? '取消置顶' : '置顶', event => {
       event.stopPropagation(); this.favorite(node);
-    }, tabIndex, {title: node.title, description: pinned ? '从置顶区域移除' : '固定到侧栏顶部的置顶区域'});
+    }, tabIndex);
     button.classList.add('bui-page-pin');
     button.classList.toggle('is-pinned', pinned);
     button.setAttribute('aria-pressed', String(pinned));
     return button;
   }
 
-  private iconButton(host: HTMLElement, icon: string, title: string, action: (event: MouseEvent) => void, tabIndex = 0,
-    context?: {title: string; description: string}) {
+  private iconButton(host: HTMLElement, icon: string, title: string, action: (event: MouseEvent) => void, tabIndex = 0) {
     const button = host.createEl('button', {cls: 'bui-pages-icon-button'});
     button.tabIndex = tabIndex; setIcon(button, icon); this.nameWithoutTooltip(button, title);
-    button.addEventListener('click', event => {this.hideActionTooltip(); action(event);});
-    const show = () => this.showActionTooltip(button, context?.title ?? title, context?.description);
-    button.addEventListener('pointerenter', event => {if (event.pointerType !== 'touch') show();});
-    button.addEventListener('pointerleave', () => this.hideActionTooltip());
-    button.addEventListener('focus', show);
-    button.addEventListener('blur', () => this.hideActionTooltip());
-    button.addEventListener('keydown', event => {if (event.key === 'Escape') this.hideActionTooltip();});
+    button.addEventListener('click', action);
     return button;
   }
 
@@ -685,34 +676,6 @@ export class PageSidebarView extends ItemView {
     const label = element.createSpan({cls: 'bui-pages-accessible-label', text: title});
     label.id = `bui-pages-label-${this.viewId}-${++this.nextTitleId}`;
     element.setAttribute('aria-labelledby', label.id);
-  }
-
-  private showActionTooltip(button: HTMLElement, title: string, description?: string) {
-    this.hideActionTooltip();
-    const doc = button.ownerDocument, win = doc.defaultView;
-    if (!win || Platform.isMobileApp || this.closed || !this.sidebar.isEnabled) return;
-    const state = {button, win, timer: 0, element: undefined as HTMLElement | undefined};
-    this.actionTooltip = state;
-    state.timer = win.setTimeout(() => {
-      state.timer = 0;
-      if (this.actionTooltip !== state || !button.isConnected || this.closed || !this.sidebar.isEnabled) return;
-      const anchor = button.closest<HTMLElement>('.bui-page-row, .bui-page-favorite') ?? button;
-      const card = doc.body.createDiv({cls: 'bui-page-action-tooltip', attr: {role: 'tooltip'}});
-      card.id = `bui-pages-tooltip-${this.viewId}`;
-      card.createDiv({cls: 'bui-page-action-tooltip-title', text: title});
-      if (description) card.createDiv({cls: 'bui-page-action-tooltip-description', text: description});
-      const rect = anchor.getBoundingClientRect(), box = card.getBoundingClientRect();
-      const left = rect.right + 8 + box.width <= win.innerWidth - 8 ? rect.right + 8 : Math.max(8, rect.left - box.width - 8);
-      card.style.left = `${left}px`;
-      card.style.top = `${Math.max(8, Math.min(rect.top, win.innerHeight - box.height - 8))}px`;
-      button.setAttribute('aria-describedby', card.id); state.element = card;
-    }, 250);
-  }
-
-  private hideActionTooltip() {
-    const state = this.actionTooltip; this.actionTooltip = undefined;
-    if (!state) return;
-    state.win.clearTimeout(state.timer); state.element?.remove(); state.button.removeAttribute('aria-describedby');
   }
 
   private toggle(node: PageNode) {

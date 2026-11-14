@@ -1,9 +1,10 @@
-export type FontChoice = 'default' | 'lxgw-wenkai';
+export type FontChoice = 'default' | 'codex-system' | 'lxgw-wenkai';
 export const BUNDLED_FONT_FAMILY = 'Nebula Focus WenKai';
 export const BUNDLED_FONT_CLASS = 'bui-font-wenkai';
+export const CODEX_FONT_CLASS = 'bui-font-codex';
 
 export function readFontChoice(value: unknown): FontChoice {
-  return value === 'lxgw-wenkai' ? value : 'default';
+  return value === 'lxgw-wenkai' || value === 'codex-system' ? value : 'default';
 }
 
 export interface FontPreferences {
@@ -18,12 +19,19 @@ type FontState = {wanted: boolean; face?: FontFace; ready: boolean; failed?: boo
  * A late WebKit load must never re-enable it after a native-mode switch/unload. */
 export class FontAppearance {
   private states = new Map<Document, FontState>();
+  private documents = new Set<Document>();
   private stopped = false;
 
   constructor(private source: string, private changed: () => void, private failed: (error: unknown) => void) {}
 
-  sync(doc: Document, wanted: boolean): void {
+  sync(doc: Document, selection: boolean | 'codex-system'): void {
     if (this.stopped) return;
+    this.documents.add(doc);
+    const codex = selection === 'codex-system', wanted = selection === true;
+    if (doc.body && doc.body.classList.contains(CODEX_FONT_CLASS) !== codex) {
+      doc.body.classList.toggle(CODEX_FONT_CLASS, codex);
+      this.changed();
+    }
     const previous = this.states.get(doc);
     if (previous) {
       previous.wanted = wanted;
@@ -62,14 +70,15 @@ export class FontAppearance {
   }
 
   forget(doc: Document): void {
+    this.documents.delete(doc);
     const state = this.states.get(doc);
     this.states.delete(doc);
-    doc.body?.classList.remove(BUNDLED_FONT_CLASS);
+    doc.body?.classList.remove(BUNDLED_FONT_CLASS, CODEX_FONT_CLASS);
     if (state?.face) doc.fonts?.delete(state.face);
   }
 
   destroy(): void {
     this.stopped = true;
-    for (const doc of this.states.keys()) this.forget(doc);
+    for (const doc of this.documents) this.forget(doc);
   }
 }

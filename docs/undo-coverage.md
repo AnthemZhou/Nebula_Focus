@@ -8,7 +8,7 @@
 
 ### 支持范围
 
-数据库中新建条目、通过原生属性事务提交的标题、标签值和普通看板状态修改，以及表格行菜单「⋯ → 将页面移到回收站」，共用按操作顺序排列的历史。该删除入口既适用于本次新建的条目，也适用于已有页面。例如「新建→改标签→删除」，连续撤销会恢复页面、恢复原标签、撤销新建；连续重做会重新创建页面、恢复标签、再次删除。
+数据库中新建条目、通过原生属性事务提交的标签值和普通看板状态等修改，以及表格行菜单或记录右键菜单中的「将页面移到回收站」，共用按操作顺序排列的历史。该删除入口既适用于本次新建的条目，也适用于已有页面。例如「新建→改标签→删除」，连续撤销会恢复页面、恢复原标签、撤销新建；连续重做会重新创建页面、恢复标签、再次删除。
 
 撤销新建和行菜单删除都会把文件移入库内 `.trash`。重做新建或撤销删除会恢复同一路径、原始内容及时间戳，并让相关创建、删除、属性与重命名历史指向恢复后的文件。成功操作不弹提示；无法安全执行时保留文件和操作记录并说明原因。
 
@@ -47,7 +47,7 @@
 | --- | --- | --- |
 | 阅读模式关闭新建弹窗后按撤销 | 实机与自动化 | 焦点回到所属笔记时仍可撤销数据库新建 |
 | 编辑模式中的嵌入数据库，新建后按 Escape 再撤销 | 实机与自动化 | 数据库控件能撤销；正文编辑器保留文本撤销 |
-| 表格标题保存后，焦点落到页面根节点 | 实机与自动化 | 在同一活动分栏恢复数据库撤销目标 |
+| 原生属性保存后，焦点落到页面根节点 | 实机与自动化 | 在同一活动分栏恢复数据库撤销目标；页面顶部改名不属于数据库历史 |
 | 滚出视口，数据库 DOM 暂时断开，再撤销 | 实机与自动化 | 同一源笔记仍打开时保留历史；滚回显示恢复后的数据 |
 | 滚动导致同一外部 `.base` 嵌入被重建 | 自动化 | 同一笔记、分栏、数据库和视图重新挂载时恢复历史 |
 | 连续新建、快速撤销和重做 | 自动化 | 按顺序处理，不跳过记录 |
@@ -73,7 +73,7 @@
 
 ### 不属于本次数据库撤销
 
-候选标签的增加、隐藏和排序，列名、列宽、筛选、排序等视图配置，通过 Obsidian 原生文件入口等其他方式进行的文件删除，以及按文件夹分组时的跨文件夹移动，均不属于本次数据库撤销历史。表格行菜单的删除已纳入支持范围。正文编辑继续使用 Obsidian 自己的文本撤销。
+页面顶部原生标题改名及其映射属性同步，候选标签的增加、隐藏和排序，列名、列宽、筛选、排序等视图配置，通过 Obsidian 原生文件入口等其他方式进行的文件删除，以及按文件夹分组时的跨文件夹移动，均不属于本次数据库撤销历史。表格行菜单的删除已纳入支持范围。正文编辑继续使用 Obsidian 自己的文本撤销。
 
 自动化测试模拟了具体交互与生命周期，不等同于所有主题、平台和未来 Obsidian 版本的界面验证。完整构建与测试记录见 [TESTING.md](TESTING.md)。
 
@@ -85,7 +85,7 @@ On November 13, 2026, a dedicated temporary entry passed row-menu deletion → C
 
 ### Supported operations
 
-Database creation, title, tag-value or ordinary board-state edits submitted through native property transactions, and the table row menu's “⋯ → Move page to trash” share chronological history. This deletion entry point supports both newly created and existing pages. For create → tag edit → delete, successive undos restore the page, restore its previous tags, then undo creation. Successive redos recreate the page, restore the tag edit, then delete it again.
+Database creation, tag-value or ordinary board-state edits submitted through native property transactions, and Move page to trash from the table row or record context menu share chronological history. This deletion entry point supports both newly created and existing pages. For create → tag edit → delete, successive undos restore the page, restore its previous tags, then undo creation. Successive redos recreate the page, restore the tag edit, then delete it again.
 
 Undo creation and row-menu deletion move the file to the vault's `.trash`. Redo creation or undo deletion restores the original path, content and timestamps, and reconnects related creation, deletion, property and rename history to the restored file. Successful actions are silent. If an action cannot proceed safely, the file and history entry are retained with an explanation.
 
@@ -132,6 +132,6 @@ Automated protections prevent undo creation or redo deletion when body content o
 
 Redo creation and undo deletion never overwrite an occupied path; the history entry remains available for a retry after resolving the conflict. Conflicting property edits are retained, failed property restoration can be retried, and read-only or unloaded views cannot continue mutations. Files created before the plugin was active are not retroactively treated as new entries, but explicitly deleting them through the row menu creates an undoable deletion record.
 
-Candidate additions, hiding and ordering; column configuration; file deletion through Obsidian's native file controls or other entry points; and cross-folder moves in folder-grouped boards are outside this database history. Table row-menu deletion is supported. Body editing continues to use Obsidian's own text undo.
+Native page-title renaming and its mapped-property synchronization; candidate additions, hiding and ordering; column configuration; file deletion through Obsidian's native file controls or other entry points; and cross-folder moves in folder-grouped boards are outside this database history. Table row-menu deletion is supported. Body editing continues to use Obsidian's own text undo.
 
 Automated coverage is not equivalent to live validation on every theme, platform or future Obsidian version. See [TESTING.md](TESTING.md) for build and test results.

@@ -4,6 +4,10 @@
 
 ## 中文
 
+### 1.4.1 检查
+
+1.4.1 全量 **792/792** 测试与严格构建通过，Lint 为 **0 错误、37 项警告**。移除表格原位标题编辑器后，减少 1 处 DOM 创建建议与 2 处弃用 API 提示；未关闭规则。剩余警告保留各自的兼容性、快捷键和可恢复回收站取舍。手机最后两处侧栏位置调整尚待重启后的真机确认，详见 [TESTING.md](TESTING.md)。
+
 ### 1.4.0 检查与表格删除
 
 1.4.0 全量 Lint 为 **0 错误、40 项警告**，严格构建与 **775/775** 自动测试通过。相比 1.3.0 增加一项 `obsidianmd/prefer-file-manager-trash-file`：表格行菜单刻意使用 `vault.trash(file, false)`，保证删除进入库内回收站，并与会话撤销／重做一致，避免宿主“永久删除”偏好破坏可恢复约定。其余 39 项警告未增加；未关闭规则。以下版本的数量是对应历史检查结果。
@@ -60,6 +64,10 @@ npm test
 插件由 Obsidian 的社区插件更新功能安装新版，不自行下载、替换执行代码。手机同步库仍可原处更新，继续复用同一个测试库。
 
 ## English
+
+### 1.4.1 checks
+
+The full **792/792** suite and strict build pass, with **zero lint errors and 37 warnings**. Removing the inline grid-title editor removes one DOM-creation recommendation and two deprecated-API findings; no rule was disabled. Remaining compatibility, shortcut and recoverable-trash tradeoffs stay visible. The final phone header/footer positioning check is pending an app restart; see [TESTING.md](TESTING.md).
 
 ### 1.4.0 checks and table-row removal
 

@@ -29,7 +29,14 @@ export function tableProfile(viewOrConfig: unknown): TableProfile | null {
     if (!record(viewOrConfig)) return null;
     const config = record(viewOrConfig.config) ? viewOrConfig.config : viewOrConfig;
     const rowMode: unknown = hasGetter(config) ? config.get('nebulaRowMode') : config.nebulaRowMode;
+    const scopeOverride: unknown = hasGetter(config) ? config.get('nebulaScopeNote') : config.nebulaScopeNote;
     const wrapping = (fallback: boolean) => rowMode === 'wrap' ? true : rowMode === 'clip' ? false : fallback;
+    // A saved empty string intentionally hides the inherited description.
+    // Keep legacy nested metadata intact while native layout controls save a
+    // simple view option alongside column widths and row mode.
+    const scopeNote = (fallback?: string): Pick<TableProfile, 'scopeNote'> =>
+      typeof scopeOverride === 'string' ? {scopeNote: scopeOverride} :
+        fallback === undefined ? {} : {scopeNote: fallback};
     const profile: unknown = hasGetter(config)
       ? config.get('nebulaTable') : config.nebulaTable;
     if (profile === undefined || profile === null) {
@@ -37,7 +44,7 @@ export function tableProfile(viewOrConfig: unknown): TableProfile | null {
       return {
         titleColumn: 'formula.想法', titleProperty: '这里写想法',
         tags: Object.assign(tagMap(), {领域: 'multi', 类型: 'single', 重要性: 'single'}),
-        wrap: wrapping(true), attachments: ['文件和媒体'],
+        wrap: wrapping(true), attachments: ['文件和媒体'], ...scopeNote(),
       };
     }
     if (!record(profile) || !nonempty(profile.titleColumn) || !nonempty(profile.titleProperty) ||
@@ -52,7 +59,7 @@ export function tableProfile(viewOrConfig: unknown): TableProfile | null {
     return {
       titleColumn: profile.titleColumn, titleProperty: profile.titleProperty,
       tags, wrap: wrapping(profile.wrap), attachments: [...profile.attachments],
-      ...(profile.scopeNote === undefined ? {} : {scopeNote: profile.scopeNote}),
+      ...scopeNote(profile.scopeNote),
     };
   } catch {return null;}
 }

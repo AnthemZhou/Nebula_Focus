@@ -1303,6 +1303,35 @@ test('row deletion protects unsaved drafts, last-moment disk changes and failed 
   await f.view.undoTransaction();assert.equal(f.content.get(f.files.get(file.path)),'Concurrent edit');
 });
 
+test('row deletion ignores a dormant reading-mode source cache after a saved property update and restores the latest bytes',async t=>{
+  const f=fixture(t),bytes='---\n标题: 已改名\n---\nKeep the body\n',file=f.put('Ideas/Renamed.md',bytes);
+  const editor={getValue:()=> '---\n标题: 原名称\n---\nKeep the body\n'};
+  const child={file,editor},owner={file,editor,dirty:false,data:bytes,lastSavedData:bytes,getMode:()=> 'preview',_children:[child]};
+  // The same dormant editor is discovered through its child before its owner.
+  f.leaves.push({_children:[child,owner]});
+  await f.history.remove(f.view,file);
+  assert.equal(f.files.has(file.path),false);assert.equal(f.calls.trash.length,1);
+  await f.view.undoTransaction();
+  assert.equal(f.content.get(f.files.get(file.path)),bytes);
+  assert.equal(f.calls.frontmatter,0,'deletion does not flush or rewrite the stale source cache');
+});
+
+test('reading-mode cache recognition still rejects dirty, unsaved or independent source drafts',async t=>{
+  for(const reason of ['source-mode','dirty','saving-again','unsaved-data','unsaved-snapshot','independent-draft']) {
+    const f=fixture(t),bytes='Saved body',file=f.put('Ideas/Existing.md',bytes);
+    const owner={file,editor:{getValue:()=> 'Different source text'},dirty:false,data:bytes,lastSavedData:bytes,getMode:()=> 'preview'};
+    if(reason==='source-mode')owner.getMode=()=> 'source';
+    if(reason==='dirty')owner.dirty=true;
+    if(reason==='saving-again')owner.saveAgain=true;
+    if(reason==='unsaved-data')owner.data='Not saved yet';
+    if(reason==='unsaved-snapshot')owner.lastSavedData='Previous disk content';
+    if(reason==='independent-draft')f.leaves.push({file,editor:{getValue:()=> 'Independent draft'},dirty:true});
+    f.leaves.push(owner);
+    await assert.rejects(f.history.remove(f.view,file),/正在编辑/,reason);
+    assert.equal(f.calls.trash.length,0,reason);assert.equal(f.files.get(file.path),file);
+  }
+});
+
 test('duplicate row-delete clicks serialize into one deletion and a queued undo restores it once',async t=>{
   const f=fixture(t),file=f.put('Ideas/Existing.md','Body');let release,started;
   const active=new Promise(resolve=>{started=resolve;});f.setTrashHook(()=>new Promise(resolve=>{release=resolve;started();}));

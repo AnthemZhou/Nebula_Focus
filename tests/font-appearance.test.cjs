@@ -5,7 +5,7 @@ const {JSDOM} = require('jsdom');
 const code = buildSync({entryPoints: ['src/font-appearance.ts'], bundle: true, platform: 'node', format: 'cjs', write: false}).outputFiles[0].text;
 const mod = {exports: {}};
 new Function('module', 'exports', code)(mod, mod.exports);
-const {FontAppearance, BUNDLED_FONT_CLASS, BUNDLED_FONT_FAMILY, readFontChoice} = mod.exports;
+const {FontAppearance, BUNDLED_FONT_CLASS, BUNDLED_FONT_FAMILY, CODEX_FONT_CLASS, readFontChoice} = mod.exports;
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
 function renderer() {
@@ -36,12 +36,34 @@ function controller() {
 test('unknown saved font choices fall back to Obsidian; the default never loads a font', () => {
   for (const value of [undefined, null, '', 'custom', 1, {}, 'default']) assert.equal(readFontChoice(value), 'default');
   assert.equal(readFontChoice('lxgw-wenkai'), 'lxgw-wenkai');
+  assert.equal(readFontChoice('codex-system'), 'codex-system');
   const r = renderer(), {font, events} = controller();
   try {
     font.sync(r.doc, false); font.sync(r.doc, false);
     assert.equal(r.pending.length, 0); assert.equal(r.enabled(), false);
     assert.equal(events.changes, 0); assert.deepEqual(events.failures, []);
   } finally {font.destroy(); r.close();}
+});
+
+test('Codex system font needs no font load and survives a pending WenKai load without reactivation', async () => {
+  const r = renderer(), other = renderer(), {font, events} = controller();
+  try {
+    font.sync(r.doc, 'codex-system');
+    assert.equal(r.pending.length, 0);
+    assert.equal(r.doc.body.classList.contains(CODEX_FONT_CLASS), true);
+    font.sync(r.doc, true);
+    assert.equal(r.doc.body.classList.contains(CODEX_FONT_CLASS), false);
+    font.sync(r.doc, 'codex-system');
+    r.pending[0].resolve(); await settle();
+    assert.equal(r.enabled(), false);
+    assert.equal(r.doc.body.classList.contains(CODEX_FONT_CLASS), true);
+    font.sync(r.doc, false);
+    assert.equal(r.doc.body.classList.contains(CODEX_FONT_CLASS), false);
+    font.sync(other.doc, 'codex-system');
+    font.destroy();
+    assert.equal(other.doc.body.classList.contains(CODEX_FONT_CLASS), false);
+    assert.deepEqual(events.failures, []);
+  } finally {font.destroy(); r.close(); other.close();}
 });
 
 test('selected font applies only after decoding and cached selection toggles without reloading', async () => {

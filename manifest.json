@@ -1,7 +1,7 @@
 {
   "id": "nebula-focus",
   "name": "Nebula Focus",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "minAppVersion": "1.14.5",
   "description": "Codex-like workspace for Markdown and Bases, with a focused page sidebar, compact tables and inline editing.",
   "author": "Shengyu Zhou",

@@ -325,6 +325,30 @@ function controlledFrames(f) {
   };
 }
 
+test('virtual scroll retains the create row after summaries without transient height loss or focus detachment',()=>{
+  const f=fixture();
+  try {
+    const footer=f.host.appendChild(f.doc.createElement('div'));footer.className='bui-ideas-new-row';
+    const button=footer.appendChild(f.doc.createElement('button'));button.textContent='新建条目';button.focus();
+    const summary=f.doc.createElement('div');summary.className='bases-summary';
+    f.view.footerSummary.el=summary;f.view.footerSummary.shouldDisplay=()=>true;
+    const changes=new f.dom.window.MutationObserver(()=>{});changes.observe(f.host,{childList:true});
+    const nativeChildren=f.host.setChildrenInPlace;
+    let documentBottom=1140;
+    // A browser clamps an ancestor already scrolled to its end if a forced
+    // layout sees the table temporarily shortened by the 33 px action row.
+    f.host.setChildrenInPlace=function(nodes){nativeChildren.call(this,nodes);if(!footer.isConnected)documentBottom-=33;};
+    f.adapter.afterRender=()=>{if(!footer.isConnected)f.host.append(footer);};
+    f.adapter.refresh(f.view);
+    for(let i=0;i<20;i++)f.view.updateVirtualDisplay();
+    assert.equal(documentBottom,1140);
+    assert.equal(f.doc.activeElement,button);
+    assert.deepEqual([...f.host.children],[f.view.theadEl,f.container,summary,footer]);
+    assert.equal(changes.takeRecords().some(record=>[...record.removedNodes].includes(footer)),false);
+    changes.disconnect();
+  } finally {f.close();}
+});
+
 test('measurement probes and native selection or focus chrome do not invalidate every row',async()=>{
   const f=fixture(),frames=controlledFrames(f);
   try {

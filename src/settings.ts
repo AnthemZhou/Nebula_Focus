@@ -23,8 +23,8 @@ export class NebulaFocusSettings extends PluginSettingTab {
     ]}] : [];
     const appearance: SettingDefinitionItem[] = this.font ? [{type: 'group', heading: '字体', items: [
       {name: '显示字体', desc: '正文、表格和界面使用的字体；原生外观保留 Obsidian 设置。',
-        control: {type: 'dropdown', key: 'fontFamily', options: {default: '跟随 Obsidian', 'lxgw-wenkai': '霞鹜文楷 / LXGW WenKai'}}},
-      {name: '字体预览', desc: '霞鹜文楷已内置，可离线使用。',
+        control: {type: 'dropdown', key: 'fontFamily', options: {'codex-system': 'Codex 系统字体', default: '跟随 Obsidian', 'lxgw-wenkai': '霞鹜文楷 / LXGW WenKai'}}},
+      {name: '字体预览', desc: 'Codex 系统字体使用系统无衬线字体；霞鹜文楷已内置，两者均可离线使用。',
         render: setting => {
           this.font?.mount(setting.controlEl.ownerDocument);
           setting.controlEl.createDiv({cls: 'bui-font-preview', text: '想法收集箱 · 山川与星河 Aa 0123'});

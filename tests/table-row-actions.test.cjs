@@ -8,6 +8,7 @@ function fixture(t) {
   t.after(()=>dom.window.close());
   const doc=dom.window.document, cell=doc.querySelector('.bases-td'), menus=[], removed=[], notices=[];
   dom.window.HTMLElement.prototype.createEl=function(tag){const el=doc.createElement(tag);this.append(el);return el;};
+  dom.window.HTMLElement.prototype.createSpan=function(){return this.createEl('span');};
   let editable=true;
   const file={path:'A.md',extension:'md'}, view={type:'table',config:{name:'Any table'},rows:[{entry:{file},cells:[{el:cell,prop:'file.name',renderer:{el:cell.firstElementChild}}]}]};
   class Menu {constructor(){this.items=[];menus.push(this);}addItem(fn){const item={setTitle(v){this.title=v;return this;},setIcon(){return this;},setWarning(){return this;},onClick(fn){this.click=fn;return this;}};fn(item);this.items.push(item);}showAtPosition(){}}
@@ -47,4 +48,73 @@ test('touch scrolling across an action never opens the menu or selects the recor
   pointer('pointerdown',0);pointer('pointermove',35);pointer('pointerup',35);f.click(button);
   assert.equal(selected,0);assert.equal(f.menus.length,0);
   pointer('pointerdown',0);pointer('pointerup',0);f.click(button);assert.equal(f.menus.length,1);
+});
+
+
+test('native page context menus add recoverable deletion only for their originating row', async t=>{
+  const f=fixture(t);f.actions.refresh(f.view);
+  const menu={items:[],addItem(fn){const item={setTitle(v){this.title=v;return this;},setIcon(){return this;},setWarning(){return this;},onClick(fn){this.click=fn;return this;}};fn(item);this.items.push(item);}};
+  assert.equal(f.actions.addToFileMenu(menu,f.file),false);
+  f.cell.addEventListener('contextmenu',()=>{
+    assert.equal(f.actions.addToFileMenu(menu,{path:'Other.md',extension:'md'}),false);
+    assert.equal(f.actions.addToFileMenu(menu,f.file),true);
+  });
+  f.cell.dispatchEvent(new f.dom.window.MouseEvent('contextmenu',{bubbles:true}));
+  assert.equal(menu.items.length,1);assert.equal(f.removed.length,0);
+  await Promise.resolve();
+  assert.equal(f.actions.addToFileMenu(menu,f.file),false);
+  menu.items[0].click();await Promise.resolve();assert.deepEqual(f.removed,[f.file]);
+});
+
+test('an ancestor capture file-menu receives row deletion before cell handlers run and expires after dispatch',async t=>{
+  const f=fixture(t);
+  const menu={items:[],addItem(fn){const item={setTitle(v){this.title=v;return this;},setIcon(){return this;},setWarning(){return this;},onClick(fn){this.click=fn;return this;}};fn(item);this.items.push(item);}};
+  let additions=0;
+  // Register the host first. Its capture callback runs before the cell's own
+  // capture listener, as native Bases does when it emits workspace:file-menu.
+  f.doc.addEventListener('contextmenu',()=>{
+    menu.items.push({title:'原生打开'});
+    if(f.actions.addToFileMenu(menu,f.file))additions++;
+  },true);
+  f.actions.refresh(f.view);
+  f.cell.firstElementChild.dispatchEvent(new f.dom.window.MouseEvent('contextmenu',{bubbles:true}));
+  assert.equal(additions,1);
+  assert.deepEqual(menu.items.map(item=>item.title),['原生打开','将页面移到回收站']);
+  f.doc.body.dispatchEvent(new f.dom.window.MouseEvent('contextmenu',{bubbles:true}));
+  assert.equal(additions,1,'another surface cannot borrow the pending row association');
+  f.cell.firstElementChild.dispatchEvent(new f.dom.window.MouseEvent('contextmenu',{bubbles:true}));
+  assert.equal(additions,2);
+  await Promise.resolve();
+  assert.equal(f.actions.addToFileMenu(menu,f.file),false);
+  menu.items[1].click();await Promise.resolve();assert.deepEqual(f.removed,[f.file]);
+  f.actions.clear();
+  f.cell.firstElementChild.dispatchEvent(new f.dom.window.MouseEvent('contextmenu',{bubbles:true}));
+  assert.equal(additions,2);
+});
+
+test('trusted-input microtask checkpoints preserve only the actively dispatching context event',async t=>{
+  const f=fixture(t),nativeAdd=f.dom.window.addEventListener.bind(f.dom.window);
+  let capture;
+  f.dom.window.addEventListener=(type,listener,options)=>{
+    if(type==='contextmenu'&&options===true)capture=listener;
+    nativeAdd(type,listener,options);
+  };
+  f.actions.refresh(f.view);
+  const event=new f.dom.window.MouseEvent('contextmenu',{bubbles:true});
+  let phase=1;
+  Object.defineProperty(event,'eventPhase',{get:()=>phase});
+  Object.defineProperty(event,'composedPath',{value:()=>[f.cell.firstElementChild,f.cell,f.doc.body,f.doc,f.dom.window]});
+  // Chromium may checkpoint after the Window capture listener while this same
+  // trusted event is still on its way to the table's native file-menu handler.
+  capture(event);
+  await Promise.resolve();
+  const menu={items:[],addItem(fn){const item={setTitle(v){this.title=v;return this;},setIcon(){return this;},setWarning(){return this;},onClick(fn){this.click=fn;return this;}};fn(item);this.items.push(item);}};
+  phase=3;
+  assert.equal(f.actions.addToFileMenu(menu,f.file),true);
+  assert.equal(menu.items.length,1);
+  // End of dispatch must close the association immediately, before timers or
+  // another microtask, so unrelated file menus cannot inherit row deletion.
+  phase=0;
+  assert.equal(f.actions.addToFileMenu(menu,f.file),false);
+  assert.equal(menu.items.length,1);
 });

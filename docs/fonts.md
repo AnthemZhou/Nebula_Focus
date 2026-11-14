@@ -1,5 +1,13 @@
 # 内置字体 / Bundled fonts
 
+## 当前字体选择 / Current font choices
+
+「显示字体」现支持 **Codex 系统字体**、**跟随 Obsidian**、**霞鹜文楷**。Codex 系统字体使用 Codex 桌面默认正文的系统字体栈 `-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`，使正文、表格、标签与面板使用相同字体；中文由操作系统匹配对应字形。无需提取、安装或分发 Codex 的字体文件。字号、行距和代码等宽字体保持现有设置。
+
+选择仍保存在插件设置中，原生外观恢复 Obsidian 字体。既有字体偏好不会自动覆盖，可在「设置 → Nebula Focus → 字体」切换。
+
+**Display font** now offers **Codex system font**, **Follow Obsidian**, and **LXGW WenKai**. The Codex option uses the desktop app's default content stack, `-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`, consistently across notes, tables, tags and panels; the operating system supplies Chinese glyphs. It needs no extracted, installed or redistributed Codex font files. Existing size, leading and monospace code settings remain unchanged. The choice stays in plugin settings, native appearance restores Obsidian fonts, and existing preferences are not overwritten automatically.
+
 ## 1.3.0 行为
 
 1.3.0 包含可选的离线霞鹜文楷。下方验证表保留 2026-11-12 开发阶段的测试范围与构建状态，不代表对后续所有布局重新验收。

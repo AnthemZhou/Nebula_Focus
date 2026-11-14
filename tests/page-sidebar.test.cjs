@@ -721,26 +721,22 @@ test('failed mobile startup reveal still closes the drawer without changing the 
   } finally {f.close();}
 });
 
-test('sidebar actions show one full-title card beside the row, without native or host title bubbles', async () => {
+test('sidebar hover and focus keep accessible action names without creating any annotation', async () => {
   const f = fixture(); try {
-    await f.view.onOpen(); let run;
-    f.win.setTimeout = fn => {run = fn; return 1;}; f.win.clearTimeout = () => {};
+    await f.view.onOpen(); const timers = [];
+    f.win.setTimeout = fn => {timers.push(fn); return timers.length;}; f.win.clearTimeout = () => {};
     const row = f.row('Home'), action = row.querySelector('button[data-icon="plus"]');
-    row.getBoundingClientRect = () => ({left: 20, right: 220, top: 70, bottom: 100, width: 200, height: 30});
     assert.equal(action.hasAttribute('title'), false); assert.equal(action.hasAttribute('aria-label'), false);
     assert.equal(f.doc.getElementById(action.getAttribute('aria-labelledby')).textContent, '在 Home 下新建页面');
     assert.equal(f.doc.querySelector('.bui-pages-tree [aria-label]'), null, 'group labels must not leak a 项目 tooltip on hover');
-    action.dispatchEvent(new f.win.Event('pointerenter')); run();
-    const tooltip = f.doc.querySelector('.bui-page-action-tooltip');
-    assert.equal(tooltip.querySelector('.bui-page-action-tooltip-title').textContent, 'Home');
-    assert.match(tooltip.textContent, /新建子页面/); assert.equal(tooltip.style.left, '228px'); assert.equal(tooltip.style.top, '70px');
-    assert.equal(action.getAttribute('aria-describedby'), tooltip.id);
-    row.querySelector('.bui-page-pin').dispatchEvent(new f.win.Event('pointerenter')); run();
-    assert.equal(f.doc.querySelectorAll('.bui-page-action-tooltip').length, 1); assert.equal(tooltip.isConnected, false);
-    f.doc.querySelector('.bui-pages-scroll').dispatchEvent(new f.win.Event('scroll'));
-    assert.equal(f.doc.querySelector('.bui-page-action-tooltip'), null);
-    action.dispatchEvent(new f.win.Event('pointerenter')); f.view.render(); run();
-    assert.equal(f.doc.querySelector('.bui-page-action-tooltip'), null, 'detached row cannot revive its tooltip');
+    action.dispatchEvent(new f.win.Event('pointerenter')); action.focus();
+    const pin = row.querySelector('.bui-page-pin');
+    pin.dispatchEvent(new f.win.Event('pointerenter')); pin.focus();
+    assert.equal(timers.length, 0, 'hover annotations must not schedule delayed cards');
+    assert.equal(f.doc.querySelector('[role="tooltip"], .bui-page-action-tooltip'), null);
+    assert.equal(action.hasAttribute('aria-describedby'), false);
+    f.click(pin); await f.settle();
+    assert.ok(f.sidebar.settings.favorites.includes('Home'), 'removing hints must preserve the pin action');
   } finally {f.close();}
 });
 

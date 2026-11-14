@@ -1,5 +1,13 @@
 # Nebula Focus validation
 
+## 1.4.1 release checkpoint / 发布检查 — 2026-11-14
+
+Full suite: **792/792 passed across 56 test files** (8.28s, no failures, skipped or cancelled cases). Strict TypeScript/build passes. Lint reports **0 errors and 37 warnings**, down from 40 after removing the grid-title editor; no rule was disabled. Coverage includes readable native headings/tabs/breadcrumbs without automatic renames, deliberate mapped-title edits with IME and concurrent-write guards, text-only link targets, context-menu trash and undo, stale preview editor caches, persistent virtual creation rows, and hover-hint restoration.
+
+Mac checks confirm readable imported titles and **14px** page/favorite labels (**16px** vault label with the native 16px preference). The last presentation-only check preserved all **248 existing Markdown files** in its baseline. The current release does not change vault content during packaging. Runtime files were deployed in place to the existing Mac and iPhone test vaults. Final phone header alignment and footer lowering **remain pending after an application restart**: toggling the plugin still showed the old cached layout. No final mobile geometry pass is claimed, and earlier direct-touch search evidence remains scoped to its original checkpoint.
+
+中文：全量 **792/792** 测试通过，覆盖 **56** 个文件，耗时 8.28 秒，无失败、跳过或取消；严格构建通过，Lint **0 错误、37 项警告**。移除表格原位标题编辑器后比前版减少 3 项警告，未关闭规则。回归覆盖可读标题与不自动改名、输入法和并发写入保护、文字点击范围、右键回收与撤销、阅读模式旧编辑器缓存、虚拟表格底部行稳定及悬停提示恢复。Mac 已确认可读导入标题，页面与置顶项为 14px，仓库名为 16px；此前展示检查的 248 篇既有 Markdown 均保持不变。发布打包不改写笔记。运行文件已原处同步；手机最后的顶部对齐、底部下移仍因旧样式缓存待重启后确认，不记为真机通过。
+
 ## 1.4.0 release checkpoint / 发布检查 — 2026-11-14
 
 The final release source passes **775/775 tests across all 54 test files** (10.91s; no failures, skipped or cancelled checks). `npm run build` passes strict TypeScript and bundles the runtime. `npm run lint` reports **0 errors and 40 warnings**; the additional warning since 1.3.0 is the deliberately recoverable table-row trash API. No lint rule was disabled. Release packaging uses only the staged public Git snapshot and explicit runtime assets, excluding local screenshots, private vaults, backups and plugin settings.
