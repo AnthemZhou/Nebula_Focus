@@ -1,4 +1,9 @@
+import {RecordService} from './record-api';
+import {RecordingAssistant} from './assistant';
+import type {AssistantConfig} from './assistant-engine';
 import {HoverHints} from './hover-hints';
+import {OverflowFades} from './overflow-fades';
+import {DesktopHeader} from './desktop-header';
 import {NativeTitleSync} from './native-title-sync';
 import {Plugin, TFile, Notice, MarkdownView, Component, Menu, Modal, Platform, FileSystemAdapter, setIcon} from 'obsidian';
 import {compactLink, firstImage, isDueProperty, isEmpty, overdue, propertyName} from './model';
@@ -55,6 +60,8 @@ export default class NebulaFocus extends Plugin {
   private edgeEmbeds = new Set<HTMLElement>();
   private edgeRoots = new Set<HTMLElement>();
   private edgeObserver?: ResizeObserver;
+  private overflowFades = new OverflowFades();
+  private desktopHeader = new DesktopHeader();
   private factoryRestores: (() => void)[] = [];
   private tableImages = new Map<HTMLElement, Map<string, string | null>>();
   private imagePreview?: Modal;
@@ -79,6 +86,8 @@ export default class NebulaFocus extends Plugin {
   private propertySuggestions?: PropertySuggestions;
   private tableRender = new TableRenderSync((view, root) => this.paintTable(view, root), () => this.active && !this.disposed,
     view => this.prepareTable(view));
+  private recordService?: RecordService;
+  private recordingAssistant?: RecordingAssistant;
   private uiSettings: Record<string, unknown> = {};
   private settingsAvailable = true;
   private settingsWrite: Promise<void> = Promise.resolve();
@@ -147,6 +156,8 @@ export default class NebulaFocus extends Plugin {
     // Attach optional controllers before loading the sidebar/settings tab.
     this.pageSidebar = new PageSidebar(this, this.uiSettings.pageSidebar, settings => this.savePageSidebar(settings), this.active,
       {get: () => readFontChoice(this.uiSettings.fontFamily), set: value => this.saveFontChoice(value), mount: doc => this.trackFontDocument(doc)});
+    this.recordingAssistant = this.addChild(new RecordingAssistant(this, this.records(), () => this.uiSettings.assistant, config => this.saveAssistantConfig(config)));
+    this.pageSidebar.assistant = this.recordingAssistant;
     this.pageSidebar.rightWorkspace = this.rightWorkspace;
     this.pageSidebar.openReminders = () => this.reminders!.open();
     this.pageSidebar.reminders = this.reminders;
@@ -203,6 +214,7 @@ export default class NebulaFocus extends Plugin {
     }));
     this.registerEvent(this.app.workspace.on('window-close', (_workspace, win) => {
       this.fontAppearance.forget(win.document);
+      this.desktopHeader.forget(win.document); this.overflowFades.forget(win.document);
       win.document.body?.classList.remove('bui-enabled', 'bui-touch'); this.presentationDocs.delete(win.document);
     }));
     this.edgeObserver = new ResizeObserver(() => this.schedule());
@@ -476,6 +488,23 @@ export default class NebulaFocus extends Plugin {
     return write;
   }
 
+  private records(): RecordService {
+    return this.recordService ??= new RecordService(this.app, () => this.uiSettings, () => !this.disposed);
+  }
+
+  /** Stable, structured entry point for external AI via the desktop CLI. */
+  recordRequest(input: unknown) {return this.records().handle(input);}
+
+  private saveAssistantConfig(config: AssistantConfig): Promise<void> {
+    const write = this.settingsWrite.then(async () => {
+      if (!this.settingsAvailable) throw Error('插件配置未能读取，未覆盖已有设置');
+      const next = {...this.uiSettings, assistant: config};
+      await this.saveData(next); this.uiSettings = next;
+    });
+    this.settingsWrite = write.catch(() => {});
+    return write;
+  }
+
   private savePageSidebar(settings: PageTreeSettings): Promise<void> {
     const write = this.settingsWrite.then(async () => {
       if (!this.settingsAvailable) throw new Error('Plugin settings unavailable');
@@ -523,13 +552,16 @@ export default class NebulaFocus extends Plugin {
     this.settingsWrite = write.catch(() => {}); return write;
   }
 
-  private saveTagOptions(key: string, options: {order: string[]; added: string[]; hidden: string[]}): Promise<void> {
+  private saveTagOptions(key: string, options: {order: string[]; added: string[]; hidden: string[]; colors?: Record<string, string>}): Promise<void> {
     const order = [...options.order], added = [...options.added], hidden = [...options.hidden];
     const write = this.settingsWrite.then(async () => {
       if (!this.settingsAvailable) throw new Error('Plugin settings unavailable');
+      const previous = this.settingsRecord('tagOptions')[key];
       const next = {...this.uiSettings, tagOptionOrder: {...this.settingsRecord('tagOptionOrder'), [key]: order},
-        tagOptions: {...this.settingsRecord('tagOptions'), [key]: {added, hidden}}};
+        tagOptions: {...this.settingsRecord('tagOptions'), [key]: {...(record(previous) ? previous : {}), added, hidden,
+          ...(options.colors === undefined ? {} : {colors: {...options.colors}})}}};
       await this.saveData(next); this.uiSettings = next;
+      this.schedule();
     });
     this.settingsWrite = write.catch(() => {}); return write;
   }
@@ -538,7 +570,9 @@ export default class NebulaFocus extends Plugin {
     if (this.disposed) return;
     this.syncAppearanceDocuments();
     if (!this.active) return;
-    for (const doc of this.appearanceDocuments()) this.propertySuggestions?.refresh(doc);
+    for (const doc of this.appearanceDocuments()) {
+      this.propertySuggestions?.refresh(doc); this.desktopHeader.refresh(doc);
+    }
     // Native drag frames only need column positions; defer decoration and
     // content measurements until the resize adapter finishes the gesture.
     if (this.ideaRows.isResizing()) return;
@@ -572,6 +606,7 @@ export default class NebulaFocus extends Plugin {
     this.ideaTags.prune();
     for (const doc of this.appearanceDocuments()) {
       this.decorateTables(doc); this.decorateIdeaAttachments(doc); this.decorateTableImages(doc);
+      this.overflowFades.refresh(doc);
     }
     for (const el of this.edgeRoots) if (!el.isConnected) {this.edgeObserver?.unobserve(el); this.edgeRoots.delete(el);}
     for (const el of this.edgeEmbeds) if (!el.isConnected) this.edgeEmbeds.delete(el);
@@ -630,10 +665,12 @@ export default class NebulaFocus extends Plugin {
     if (profile) {
       root.dataset.buiEnhancedTable = 'true';
       root.dataset.buiTagProperties = JSON.stringify(Object.keys(profile.tags).map(key => `note.${key}`));
+      root.dataset.buiTagColors = JSON.stringify(this.ideaTags.colors(view));
       root.dataset.buiWrap = String(profile.wrap);
     } else {
       delete root.dataset.buiEnhancedTable;
       delete root.dataset.buiTagProperties;
+      delete root.dataset.buiTagColors;
       delete root.dataset.buiWrap;
     }
     for (const cell of root.querySelectorAll<HTMLElement>('.bases-td')) {
@@ -831,6 +868,7 @@ export default class NebulaFocus extends Plugin {
   }
 
   private extendBasesToEdge(root: HTMLElement) {
+    if (!root.ownerDocument.body.classList.contains('is-mobile')) return;
     for (const embed of root.querySelectorAll<HTMLElement>('.bases-embed, .block-language-base')) {
       const scroller = embed.closest<HTMLElement>('.markdown-preview-view, .cm-scroller');
       if (!scroller || !embed.getBoundingClientRect().width) continue;
@@ -851,6 +889,8 @@ export default class NebulaFocus extends Plugin {
   }
 
   private clearPresentation() {
+    this.desktopHeader.clear();
+    this.overflowFades.clear();
     this.mobileActions?.clear();
     this.imagePreview?.close();
     this.propertySuggestions?.clear();
@@ -868,6 +908,7 @@ export default class NebulaFocus extends Plugin {
       for (const root of doc.querySelectorAll<HTMLElement>('[data-bui-enhanced-table]')) {
         delete root.dataset.buiEnhancedTable;
         delete root.dataset.buiTagProperties;
+        delete root.dataset.buiTagColors;
         delete root.dataset.buiWrap;
       }
       for (const root of doc.querySelectorAll<HTMLElement>('[data-bui-allow-create]')) delete root.dataset.buiAllowCreate;

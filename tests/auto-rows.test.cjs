@@ -605,7 +605,7 @@ test('mobile plaintext title editing measures the live focused typography withou
   }finally{f.close();}
 });
 
-test('explicit finance tag widths fit full labels and restore the original accessor after opt-out',()=>{
+test('finance columns retain complete header minima after tag opt-out and restore on teardown',()=>{
   const dom=new JSDOM('<!doctype html><body><div class="bases-view bui-ideas-base"><div class="bases-thead"><div class="bases-td"><div class="header-inner"><span class="bases-table-header-name">税务分类</span></div></div></div><div class="bases-table-container"><div class="bases-td"><div class="bases-table-cell" data-property-type="text"><div class="metadata-input-longtext">长期资产购置</div></div></div></div></div></body>');
   const win=dom.window,doc=win.document;loadGeometryStyles(doc);
   win.HTMLElement.prototype.getBoundingClientRect=function(){
@@ -627,7 +627,12 @@ test('explicit finance tag widths fit full labels and restore the original acces
   const widths=new module.exports.IdeaColumnWidths();
   try{
     assert.equal(widths.refresh(view),true);assert.ok(info.getWidth()>96);assert.equal(info.customWidth,30);
-    profile.tags={};assert.equal(widths.refresh(view),true);assert.equal(info.getWidth,original);assert.equal(info.customWidth,30);
+    profile.tags={};assert.equal(widths.refresh(view),true);assert.ok(info.getWidth()>=64);assert.ok(info.getWidth()<96);assert.equal(info.customWidth,30);
+    header.querySelector('.bases-table-header-name').textContent='公司账面现金余额';
+    assert.equal(widths.refresh(view),true);assert.ok(info.getWidth()>='公司账面现金余额'.length*16,'long ordinary property names fit fully');
+    view.config={name:'普通表格'};
+    widths.refresh(view);assert.ok(info.getWidth()>='公司账面现金余额'.length*16,'unconfigured tables also retain their header minimum');
+    widths.clear();assert.equal(info.getWidth,original);assert.equal(info.customWidth,30);
   }finally{widths.clear();dom.window.close();}
 });
 
@@ -763,4 +768,31 @@ test('relationship minima measure the displayed alias plus link icon, without tu
     assert.equal(container.querySelector('.bui-relation-pill'),null,'only the inert clone receives presentation classes');
     widths.clear();assert.equal(relation.getWidth,original);
   }finally{widths.clear();dom.window.close();}
+});
+
+
+test('automatic last column keeps its width and cell positions when its pane widens or narrows',()=>{
+  const f=fixture();try{
+    const last=f.view.columnInfo['note.领域'];
+    delete last.customWidth;last.contentWidth=120;last.getWidth=()=>120;
+    f.box(f.host,900,300);
+    f.adapter.refresh(f.view);f.view.updateVirtualDisplay();
+    assert.equal(f.container.style.width,'320px');
+    const before=f.view.getCellRect({groupIdx:0,row:0,column:1});
+    f.box(f.host,250,300);f.view.updateVirtualDisplay();
+    assert.equal(f.container.style.width,'320px');
+    assert.deepEqual(f.view.getCellRect({groupIdx:0,row:0,column:1}),before);
+    f.box(f.host,1300,300);f.view.updateVirtualDisplay();
+    assert.equal(f.container.style.width,'320px');
+    assert.equal(last.contentWidth,120);
+  }finally{f.close();}
+});
+
+test('phone tables retain the existing last-column fill behavior',()=>{
+  const f=fixture();try{
+    f.doc.body.classList.add('is-mobile');
+    const last=f.view.columnInfo['note.领域'];delete last.customWidth;last.contentWidth=120;last.getWidth=()=>120;
+    f.box(f.host,400,300);f.adapter.refresh(f.view);f.view.updateVirtualDisplay();
+    assert.equal(f.container.style.width,'399px');
+  }finally{f.close();}
 });

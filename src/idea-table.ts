@@ -1,4 +1,5 @@
 import {setIcon} from 'obsidian';
+import {cleanTagColors} from './idea-tag-order';
 import {containsRelationLink, RELATION_LINK_SELECTOR, semanticProperty} from './semantic-property';
 export {semanticProperty} from './semantic-property';
 const KNOWN_TONES = new Map(Object.entries({Blender: 'green', AI: 'orange', C4D: 'blue', 编程: 'purple',
@@ -164,7 +165,13 @@ export class IdeaTables {
 
   private decorate(el: HTMLElement, value: string, property: string, current: Set<HTMLElement>) {
     this.addClasses(el, 'tag', ['bui-native-tag', 'bui-semantic-tag'], current);
-    el.setAttribute('data-bui-tone', ideaTone(value, property));
+    let override: string | undefined;
+    try {
+      const colors: unknown = JSON.parse(el.closest<HTMLElement>('[data-bui-tag-colors]')?.dataset.buiTagColors ?? '{}');
+      if (colors && typeof colors === 'object' && property in colors)
+        override = cleanTagColors((colors as Record<string, unknown>)[property])[value];
+    } catch { /* Unknown preferences keep the deterministic default palette. */ }
+    el.setAttribute('data-bui-tone', override ?? ideaTone(value, property));
   }
 
   private addClasses(el: HTMLElement, kind: Decoration['kind'], classes: string[], current: Set<HTMLElement>) {

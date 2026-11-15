@@ -1,6 +1,6 @@
 import {Notice, setIcon} from 'obsidian';
 import {ideaTone} from './idea-table';
-import {applyTagOrder, cleanTagOrder, ideaTagOrderKey, mergeTagOrder, IdeaTagOrderStore, IdeaTagOptions} from './idea-tag-order';
+import {applyTagOrder, cleanTagOrder, cleanTagColors, TAG_COLORS, ideaTagOrderKey, mergeTagOrder, IdeaTagOrderStore, IdeaTagOptions} from './idea-tag-order';
 import {IdeaTagManager, TagCatalog} from './idea-tag-manager';
 import {guardTouchScrollClicks, positionAnchoredPopover, preferPopoverInputFocus, watchPopoverViewport} from './mobile-popover';
 import {readIdeaTagValues as valuesOf, supportsIdeaTagCell} from './idea-tag-support';
@@ -38,6 +38,7 @@ type Editor = Target & {
   clearInputOnSync?: string; closeOnSync: boolean; lastAttemptFailed: boolean;
   orderKey: string | null; order: string[]; drag?: Drag; ignoreClick: boolean;
   composing: boolean; imeEnded: boolean; busy: boolean; autoInputFocus: boolean; removeListeners: (() => void)[];
+  optionPanel?: HTMLElement; optionAnchor?: HTMLElement;
 };
 let nextId = 0;
 
@@ -63,7 +64,7 @@ export class IdeaTagEditors {
   private bindings = new Map<unknown, Binding>();
   private editor?: Editor;
   private orders = new Map<string, string[]>();
-  private catalogs = new Map<string, {added: string[]; hidden: string[]}>();
+  private catalogs = new Map<string, {added: string[]; hidden: string[]; colors: Record<string, string>}>();
   private manager = new IdeaTagManager();
 
   constructor(private readonly orderStore?: IdeaTagOrderStore) {}
@@ -78,16 +79,28 @@ export class IdeaTagEditors {
     return [...values];
   }
 
-  private readOptions(key: string | null): {added: string[]; hidden: string[]} {
-    if (!key) return {added: [], hidden: []};
+  private readOptions(key: string | null): {added: string[]; hidden: string[]; colors: Record<string, string>} {
+    if (!key) return {added: [], hidden: [], colors: {}};
     let cached = this.catalogs.get(key);
     if (!cached) {
-      let data: {added?: unknown; hidden?: unknown} | undefined;
+      let data: {added?: unknown; hidden?: unknown; colors?: unknown} | undefined;
       try {data = this.orderStore?.readOptions?.(key);} catch { /* Keep query values if preferences cannot be read. */ }
-      cached = {added: cleanTagOrder(data?.added), hidden: cleanTagOrder(data?.hidden)};
+      cached = {added: cleanTagOrder(data?.added), hidden: cleanTagOrder(data?.hidden), colors: cleanTagColors(data?.colors)};
       this.catalogs.set(key, cached);
     }
-    return {added: [...cached.added], hidden: [...cached.hidden]};
+    return {added: [...cached.added], hidden: [...cached.hidden], colors: {...cached.colors}};
+  }
+
+  colors(view: unknown): Record<string, Record<string, string>> {
+    return Object.fromEntries(Object.keys(tableProfile(view)?.tags ?? {}).map(property =>
+      [property, this.readOptions(ideaTagOrderKey(view, property)).colors]));
+  }
+
+  private async saveOptions(key: string, options: IdeaTagOptions) {
+    const next = {...options, colors: options.colors ?? this.readOptions(key).colors};
+    await this.orderStore!.writeOptions!(key, next);
+    this.orders.set(key, next.order);
+    this.catalogs.set(key, {added: next.added, hidden: next.hidden, colors: next.colors});
   }
 
   private catalog(view: IdeaView, property: Property, selected: string[] = []): TagCatalog {
@@ -111,8 +124,7 @@ export class IdeaTagEditors {
     return this.manager.open({view, property, anchor, keyboard, read: () => this.catalog(view, property),
       save: async (options: IdeaTagOptions) => {
         const next = {order: cleanTagOrder(options.order), added: cleanTagOrder(options.added), hidden: cleanTagOrder(options.hidden)};
-        await this.orderStore!.writeOptions!(key, next);
-        this.orders.set(key, next.order); this.catalogs.set(key, {added: next.added, hidden: next.hidden});
+        await this.saveOptions(key, next);
       }});
   }
 
@@ -311,7 +323,8 @@ export class IdeaTagEditors {
 
   private chip(edit: Editor, value: string): HTMLElement {
     const chip = edit.popup.ownerDocument.createElement('span');
-    chip.className = 'bui-tag-editor-chip bui-native-tag'; chip.dataset.buiTone = ideaTone(value, edit.property); chip.textContent = value;
+    chip.className = 'bui-tag-editor-chip bui-native-tag';
+    chip.dataset.buiTone = this.readOptions(edit.orderKey).colors[value] ?? ideaTone(value, edit.property); chip.textContent = value;
     return chip;
   }
 
@@ -322,6 +335,7 @@ export class IdeaTagEditors {
   }
 
   private renderOptions(edit: Editor) {
+    edit.optionPanel?.remove(); edit.optionPanel = undefined; edit.optionAnchor = undefined;
     // A selected value hidden from the candidate catalog must remain available
     // here so it can still be explicitly unchecked.
     const values = new Set([...this.catalog(edit.binding.view, edit.property, edit.displayedValues).values, ...edit.displayedValues]);
@@ -357,13 +371,25 @@ export class IdeaTagEditors {
         label.className = 'bui-tag-editor-option-label'; label.textContent = '创建'; row.append(label);
       }
       row.append(this.chip(edit, choice.value));
+      if (!choice.create && edit.orderKey && this.orderStore?.writeOptions) {
+        const more = edit.popup.ownerDocument.createElement('button');
+        more.type = 'button'; more.className = 'clickable-icon bui-tag-editor-more'; more.disabled = edit.busy;
+        more.setAttribute('aria-label', `管理标签 ${choice.value}`); setIcon(more, 'ellipsis');
+        more.addEventListener('pointerdown', event => event.stopPropagation());
+        more.addEventListener('mousedown', event => event.stopPropagation());
+        more.addEventListener('click', event => {
+          event.preventDefault(); event.stopPropagation(); this.openOption(edit, choice.value, more);
+        });
+        row.append(more);
+      }
       row.addEventListener('pointermove', () => {
         const current = edit.choices.findIndex(item => item.value === choice.value);
         if (!edit.drag && edit.active !== current) {edit.active = current; this.highlight(edit);}
       });
       row.addEventListener('click', event => {
         if (edit.ignoreClick) {edit.ignoreClick = false; event.preventDefault(); event.stopPropagation(); return;}
-        if (edit.drag || element(event.target)?.closest('.bui-tag-editor-grip')) return;
+        if (edit.drag || element(event.target)?.closest('.bui-tag-editor-grip, .bui-tag-editor-more')) return;
+        edit.optionPanel?.remove(); edit.optionPanel = undefined; edit.optionAnchor = undefined;
         void this.change(edit, choice.value);
       });
       edit.optionsEl.append(row);
@@ -378,6 +404,100 @@ export class IdeaTagEditors {
     const active = rows[edit.active];
     if (active) edit.input.setAttribute('aria-activedescendant', active.id);
     else edit.input.removeAttribute('aria-activedescendant');
+  }
+
+  private openOption(edit: Editor, value: string, anchor: HTMLElement) {
+    if (edit.busy || edit.drag || !this.currentEntry(edit)) return;
+    edit.optionPanel?.remove();
+    const doc = edit.popup.ownerDocument, panel = doc.createElement('div');
+    panel.className = 'bui-tag-option-panel'; panel.tabIndex = -1;
+    panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', `管理标签 ${value}`);
+    const name = doc.createElement('input'); name.type = 'text'; name.value = value;
+    name.setAttribute('aria-label', '标签名称');
+    const save = doc.createElement('button'); save.type = 'button'; save.textContent = '重命名';
+    const remove = doc.createElement('button'); remove.type = 'button'; remove.textContent = '删除标签';
+    remove.className = 'bui-tag-option-delete';
+    const status = doc.createElement('div'); status.setAttribute('role', 'status'); status.hidden = true;
+    const close = () => {panel.remove(); if (edit.optionPanel === panel) {edit.optionPanel = undefined; edit.optionAnchor = undefined;}};
+    const action = async (kind: 'rename' | 'delete' | 'color', next: string) => {
+      if (edit.busy || edit.composing || !this.currentEntry(edit) || !edit.orderKey) return;
+      if (kind === 'rename') {
+        if (!next) {status.textContent = '标签名称不能为空'; status.hidden = false; return;}
+        if (next === value) {close(); return;}
+        if (this.catalog(edit.binding.view, edit.property).values.includes(next)) {
+          status.textContent = '此标签已存在'; status.hidden = false; return;
+        }
+      }
+      edit.saving = true; this.setBusy(edit, true); status.hidden = true;
+      for (const control of panel.querySelectorAll('input, button')) (control as HTMLInputElement).disabled = true;
+      try {
+        const catalog = this.catalog(edit.binding.view, edit.property), colors = {...catalog.colors};
+        if (kind === 'color') colors[value] = next;
+        else {
+          // Read each current value immediately before its native write. The
+          // query result set includes records filtered out of the current view.
+          // Stop on failure; never overwrite unrelated fields or replay writes.
+          const entries = [...new Map(this.entries(edit.binding.view).map(entry => [entry.file.path, entry])).values()];
+          for (const entry of entries) {
+            if (edit.binding.view._loaded === false || edit.binding.view.config.query !== edit.query ||
+                edit.binding.view.isReadOnly || edit.binding.view.readOnly || edit.binding.view.queryController?.isReadOnly)
+              throw new Error('数据库已变更，未完成的标签修改已停止');
+            const current = valuesOf(entry.getRawProperty?.(edit.property), edit.mode);
+            if (!current?.includes(value)) continue;
+            const updated = kind === 'delete' ? current.filter(item => item !== value) :
+              [...new Set(current.map(item => item === value ? next : item))];
+            await edit.binding.view.updateProperty(entry.file, edit.property, rawValue(updated, edit.mode));
+          }
+          if (kind === 'rename' && colors[value]) colors[next] = colors[value];
+          delete colors[value];
+        }
+        await this.saveOptions(edit.orderKey, kind === 'color' ? {...catalog, colors} : {
+          order: cleanTagOrder(catalog.order.map(item => item === value ? (kind === 'rename' ? next : '') : item)),
+          added: cleanTagOrder([...catalog.added.filter(item => item !== value), ...(kind === 'rename' ? [next] : [])]),
+          hidden: cleanTagOrder([...catalog.hidden.filter(item => item !== next), value]), colors,
+        });
+        if (this.editor === edit) {
+          close();
+          if (kind === 'color') {this.renderSelected(edit); this.renderOptions(edit);}
+          else this.close(true);
+        }
+      } catch {
+        const message = kind === 'color' ? '颜色未能保存，请重试' : '标签修改未完成，已停止；请检查当前记录后重试';
+        if (this.editor === edit) {status.textContent = message; status.hidden = false;}
+        else new Notice(message);
+      } finally {
+        edit.saving = false; this.setBusy(edit, false);
+        for (const control of panel.querySelectorAll('input, button')) (control as HTMLInputElement).disabled = false;
+      }
+    };
+    save.addEventListener('click', () => {void action('rename', name.value.trim());});
+    remove.addEventListener('click', () => {void action('delete', '');});
+    panel.append(name, save, remove);
+    const heading = doc.createElement('div'); heading.className = 'bui-tag-option-heading'; heading.textContent = '颜色'; panel.append(heading);
+    const currentTone = this.readOptions(edit.orderKey).colors[value] ?? ideaTone(value, edit.property);
+    for (const [tone, title] of TAG_COLORS) {
+      const button = doc.createElement('button'); button.type = 'button'; button.className = 'bui-tag-option-color';
+      button.setAttribute('aria-label', title); button.setAttribute('aria-pressed', String(currentTone === tone));
+      const swatch = doc.createElement('span'); swatch.className = 'bui-native-tag bui-tag-color-swatch';
+      swatch.dataset.buiTone = tone; button.append(swatch, title);
+      button.addEventListener('click', () => {void action('color', tone);}); panel.append(button);
+    }
+    panel.append(status); edit.popup.append(panel); edit.optionPanel = panel; edit.optionAnchor = anchor;
+    panel.addEventListener('compositionstart', () => {edit.composing = true; edit.imeEnded = false;});
+    panel.addEventListener('compositionend', () => {
+      edit.composing = false; edit.imeEnded = true;
+      doc.defaultView!.setTimeout(() => {edit.imeEnded = false;}, 0);
+    });
+    panel.addEventListener('keydown', event => {
+      event.stopPropagation();
+      if (event.isComposing || edit.composing || event.keyCode === 229 || edit.imeEnded) return;
+      if (event.key === 'Escape') {event.preventDefault(); close(); edit.input.focus({preventScroll: true});}
+      if (event.key === 'Enter' && event.target === name) {event.preventDefault(); void action('rename', name.value.trim());}
+    });
+    // Popup remains a descendant so its focus does not dismiss the picker.
+    positionAnchoredPopover(anchor, panel, 220);
+    if (preferPopoverInputFocus(anchor)) {name.focus({preventScroll: true}); name.select();}
+    else panel.focus({preventScroll: true});
   }
 
   private beginDrag(edit: Editor, value: string, row: HTMLElement, event: PointerEvent) {
@@ -627,7 +747,7 @@ export class IdeaTagEditors {
     // Keep option and selected-chip nodes stable while the write is in flight.
     // Rebuilding the old state here visibly flashed twice on iPhone.
     for (const row of edit.optionsEl.querySelectorAll<HTMLElement>('[role="option"]')) row.setAttribute('aria-disabled', String(busy));
-    for (const grip of edit.optionsEl.querySelectorAll<HTMLButtonElement>('.bui-tag-editor-grip')) grip.disabled = busy;
+    for (const grip of edit.optionsEl.querySelectorAll<HTMLButtonElement>('.bui-tag-editor-grip, .bui-tag-editor-more')) grip.disabled = busy;
   }
 
   /** A native write resolves before Bases necessarily renders its new query
@@ -714,6 +834,7 @@ export class IdeaTagEditors {
     if (this.editor !== edit || !edit.popup.isConnected) return;
     if (!this.currentEntry(edit)) {this.close(); return;}
     if (!positionAnchoredPopover(edit.anchor, edit.popup, 240)) this.close();
+    if (edit.optionPanel && edit.optionAnchor) positionAnchoredPopover(edit.optionAnchor, edit.optionPanel, 220);
   }
 
   private close(restoreFocus = false) {

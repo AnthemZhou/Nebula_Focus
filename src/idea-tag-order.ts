@@ -3,10 +3,18 @@ import {object} from './idea-native';
 export interface IdeaTagOrderStore {
   read(key: string): readonly string[] | undefined;
   write(key: string, values: string[]): void | Promise<void>;
-  readOptions?(key: string): {added?: unknown; hidden?: unknown} | undefined;
+  readOptions?(key: string): {added?: unknown; hidden?: unknown; colors?: unknown} | undefined;
   writeOptions?(key: string, options: IdeaTagOptions): void | Promise<void>;
 }
-export type IdeaTagOptions = {order: string[]; added: string[]; hidden: string[]};
+export type IdeaTagOptions = {order: string[]; added: string[]; hidden: string[]; colors?: Record<string, string>};
+export const TAG_COLORS = [['default', '默认'], ['gray', '灰色'], ['brown', '棕色'], ['orange', '橙色'],
+  ['yellow', '黄色'], ['green', '绿色'], ['blue', '蓝色'], ['purple', '紫色'], ['pink', '粉色'], ['red', '红色']] as const;
+export function cleanTagColors(value: unknown): Record<string, string> {
+  if (!object(value)) return {};
+  const entries = Object.entries(value).filter((entry): entry is [string, string] =>
+    !!entry[0] && typeof entry[1] === 'string' && TAG_COLORS.some(([tone]) => tone === entry[1]));
+  return Object.fromEntries(entries);
+}
 
 export function cleanTagOrder(values: unknown): string[] {
   return Array.isArray(values) ? [...new Set(values.filter((value): value is string =>

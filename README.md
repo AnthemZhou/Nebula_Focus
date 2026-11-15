@@ -6,13 +6,15 @@ A Codex-like workspace for Markdown and Bases, with focused navigation, reminder
 
 [中文](#中文) · [English](#english) · [下载 / Downloads](https://github.com/AnthemZhou/Nebula_Focus/releases) · [反馈 / Issues](https://github.com/AnthemZhou/Nebula_Focus/issues)
 
-**1.4.1** · Obsidian **1.14.5+** · Desktop + iPhone · GPL-3.0-only
+**1.5.0** · Obsidian **1.14.5+** · Desktop + iPhone · GPL-3.0-only
 
 ## 中文
 
 Nebula Focus 让本地 Markdown 成为更容易浏览和编辑的工作区。界面参考 Codex 的导航与排版，手机侧栏借鉴 ChatGPT 的简洁布局；资料仍保存为普通 Markdown、属性和链接，AI 可以直接读取与编辑这些数据。
 
-1.4.1 修正导入记录的标题显示，统一正文、表格与侧栏字号，完善表格右键删除和页面标题导航，并调整手机侧栏位置。项目早期借鉴 Notion 数据库的展示，但不会把任意 Markdown 自动还原成完整的 Notion 数据库。
+手机「AI 记录」聊天与电脑外部 AI/CLI 接口共用字段校验、新建、更新及页面链接；支持 OpenAI、DeepSeek 和自定义兼容接口。配置与用法见 [AI 记录](docs/ai-recording.md)。
+
+1.5.0 增加 AI 记录与 CLI、标签颜色和候选管理，并完善桌面导航、分栏及搜索层级。项目早期借鉴 Notion 数据库的展示，但不会把任意 Markdown 自动还原成完整的 Notion 数据库。
 
 **目录：** [功能](#功能) · [安装](#安装) · [使用](#使用) · [数据保存](#数据保存) · [兼容范围](#兼容范围) · [开发与反馈](#开发与反馈)
 
@@ -24,6 +26,7 @@ Nebula Focus 让本地 Markdown 成为更容易浏览和编辑的工作区。界
 - **提醒事项首页。** 自动读取 Markdown 未完成任务与支持的截止日期，按逾期、今天、明天、后续日期和未设日期排列。可改页面名称、手动引用已有 `.base` 数据库；关闭启动选项后恢复上次工作页面。
 - **直接新建页面。** 点击「新建页面」即创建唯一命名的空白 Markdown，在主区打开；无需命名弹窗，名称通过页面顶部的原生标题修改。子页面采用相同流程，正文不写入重复标题或 UI 标记。
 - **紧凑的原生数据库。** 配置后的表格支持点击标题打开记录、彩色标签、内容行高、紧凑缩略图和关联记录。看板自动使用笔记第一张有效图片作为封面，过期日期保留颜色提示；新建、属性编辑与数据库撤销沿用源 Markdown 数据。
+- **稳定的桌面内容宽度。** 拖动侧栏时保留正文、表格与卡片的排版宽度，超出可见区域的内容在边缘渐隐，可横向滚动查看；滚到边缘后恢复完整边框。表格末列不再随分栏宽度拉伸，手机保留原有触摸布局。
 - **一致的阅读外观。** 正文、表格和侧栏采用协调的字号与颜色，阅读和编辑模式统一文字行距基线。可选 **Codex 系统字体**或内置 **霞鹜文楷 / LXGW WenKai**，无需联网或安装系统字体；代码仍使用等宽字体。随时切回 Obsidian 原生外观。
 - **桌面外部归档。** 从页面右键菜单将暂时不用的页面或项目归档到库外：先复制并校验，再将源文件移入库内回收站。管理器可以浏览与恢复；手机不显示归档入口。
 
@@ -33,7 +36,7 @@ Nebula Focus 让本地 Markdown 成为更容易浏览和编辑的工作区。界
 
 需要 Obsidian 1.14.5 或更新版本；使用数据库视图时启用 **Bases / 数据库** 核心插件。
 
-1. 从 [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases) 下载 `nebula-focus-1.4.1.zip`。
+1. 从 [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases) 下载 `nebula-focus-1.5.0.zip`。
 2. 解压到库的 `.obsidian/plugins/nebula-focus/`，确认有 `main.js`、`manifest.json`、`styles.css`。
 3. 在 Obsidian 第三方插件设置中启用 **Nebula Focus**。
 4. 打开现有笔记或 Base，也可在独立测试库中体验[虚构示例](examples/vault)。
@@ -55,11 +58,13 @@ iPhone 使用 iCloud 库时，可在电脑更新同一库的插件目录，等�
 | 查看相关记录 | 点击正文内部链接、提醒来源或数据表标题／页面图标，在右侧打开；Command / Ctrl 点击改为主区 |
 | 编辑记录标题 | 先打开记录，再修改页面顶部的原生标题；表格标题与空白不进入原位编辑 |
 | 打开或改名提醒事项 | 点击侧栏入口；点击页面标题、右键入口或在设置中改名。「添加数据库」引用已有 Base |
-| 选择与管理标签 | 点击分类值选择，再点带勾选项取消；点击列标题管理候选项、顺序与显示名称 |
+| 选择与管理标签 | 点击分类值选择，再点带勾选项取消；选项右侧「⋯」可改色、重命名或删除标签；列标题管理候选项、顺序与显示名称 |
 | 新建条目 | 点击表格最后一行「新建条目」或看板中的「新建」 |
 | 删除表格页面 | 行菜单「⋯ → 将页面移到回收站」移入库内 `.trash`，支持本次数据库会话的撤销／重做 |
 | 查看图片 | 点击表格缩略图放大；看板封面使用 16:9 区域 |
 | 更换字体 | 设置 → Nebula Focus → 字体 → 显示字体，选择跟随 Obsidian 或霞鹜文楷 |
+
+标签选项菜单中的重命名与删除会更新该数据库查询中的同属性记录，包括当前视图筛选掉的记录；删除只移除该标签值。颜色保存在插件偏好中，按数据库与属性区分。记录修改沿用原生属性历史，多个记录对应多次撤销；颜色和候选项设置不属于记录撤销。
 
 提醒事项默认在冷启动时打开，插件热重载不抢走当前页面。关闭「设置 → Nebula Focus → 提醒事项 → 启动时打开提醒事项」后，由 Obsidian 恢复上次页面。旧版模块化 Home 已退出入口，原 `home` 配置与生成的 Base 文件保留，不迁移或删除其中的记录。
 
@@ -96,7 +101,7 @@ iPhone 使用 iCloud 库时，可在电脑更新同一库的插件目录，等�
 
 从带明确标题映射的表格打开记录后，主动修改页面顶部原生标题，会在文件改名成功后同步该记录已有的非空字符串标题属性。同步前核对原值；缺失或空字段、别名、只读来源、多种标题映射冲突或并发修改均不覆盖。不会添加新字段，也不会扫描正文标题、同步外部批量改名或文件夹移动。
 
-推荐使用外部 `.base` 文件。Markdown 内联 `base` 代码块的配置保存由 Obsidian 原生功能更新该代码块。插件没有网络服务、遥测或 AI 接入；远程封面仅请求笔记所引用图片的原始地址，不上传笔记。
+推荐使用外部 `.base` 文件。Markdown 内联 `base` 代码块的配置保存由 Obsidian 原生功能更新该代码块。插件不启动网络服务，也没有遥测。可选 AI 记录仅在发送消息时请求用户配置的 API，传递对话、截图和按需查询的数据；密钥保存在 Obsidian 密钥存储中。远程封面请求笔记引用图片的原始地址。详见 [AI 记录与 CLI](docs/ai-recording.md)。
 
 字体随 `main.js` 内嵌分发，默认不加载，选择后离线启用。字体保留独立的 SIL OFL 授权，见[字体说明](docs/fonts.md)与[第三方声明](THIRD-PARTY-NOTICES.md)。
 
@@ -125,7 +130,7 @@ npm test
 
 Nebula Focus makes local Markdown easier to browse and edit. Its navigation and typography take cues from Codex, while the mobile sidebar follows ChatGPT's restrained layout. Notes remain ordinary Markdown, properties and links that AI tools can read and edit directly.
 
-Version 1.4.1 fixes imported-record title display, coordinates content/table/sidebar typography, improves table context-menu deletion and title navigation, and adjusts mobile drawer placement. The project initially borrowed from Notion's database presentation; it does not automatically turn arbitrary Markdown into a complete Notion database.
+Version 1.5.0 adds mobile AI recording and a desktop CLI, configurable OpenAI/DeepSeek-compatible providers, tag colors and option management, plus desktop navigation, divider and search hierarchy refinements. See [AI recording and CLI](docs/ai-recording.md). The project initially borrowed from Notion's database presentation; it does not automatically turn arbitrary Markdown into a complete Notion database.
 
 **Contents:** [Features](#features) · [Installation](#installation) · [Usage](#usage) · [Data storage](#data-storage) · [Compatibility](#compatibility) · [Development and feedback](#development-and-feedback)
 
@@ -137,6 +142,7 @@ Version 1.4.1 fixes imported-record title display, coordinates content/table/sid
 - **Reminders.** Read unfinished Markdown tasks and supported page deadlines, grouped into overdue, today, tomorrow, later dates and undated items. Rename the page or reference existing `.base` databases; disable startup opening to resume the previous page.
 - **Direct page creation.** New page creates a uniquely named, empty Markdown file and opens it in the main region. Rename through the native page title, without a naming dialog. Child pages follow the same flow; no duplicate heading or UI markup is inserted into the body.
 - **Compact native databases.** Configured tables support linked record titles, colored tags, content-driven row heights, compact thumbnails and linked records. Boards use the first valid image in a note as a cover, with overdue-date color cues. Creation, property edits and database undo use the source Markdown data.
+- **Stable desktop content width.** Dragging a sidebar preserves the layout width of text, tables and cards. Clipped content fades at the edge and remains accessible by horizontal scrolling; the full border reappears at the end. The final table column no longer stretches with the pane, while mobile keeps its existing touch layout.
 - **Consistent reading.** Notes, tables and the sidebar share coordinated typography and colors, with a common text-leading baseline across reading and editing. Choose the **Codex system font** or bundled **LXGW WenKai**, both available offline without installing fonts; code stays monospace. Native Obsidian appearance remains one shortcut away.
 - **Desktop external archives.** Archive unused pages or projects outside the vault through their context menu. Files are copied and verified before sources move to the vault trash. The manager can browse and restore them; mobile has no archive controls.
 
@@ -146,7 +152,7 @@ Automatic Bases, finance summaries and record layouts retain existing configurat
 
 Requires Obsidian 1.14.5 or later. Enable the **Bases** core plugin for database views.
 
-1. Download `nebula-focus-1.4.1.zip` from [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases).
+1. Download `nebula-focus-1.5.0.zip` from [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases).
 2. Extract into `.obsidian/plugins/nebula-focus/` in your vault, containing `main.js`, `manifest.json` and `styles.css`.
 3. Enable **Nebula Focus** in Obsidian's Community plugins settings.
 4. Open an existing note or Base, or try the [fictional examples](examples/vault) in a separate test vault.
@@ -168,11 +174,13 @@ For an iCloud vault on iPhone, update the same vault's plugin folder from the co
 | Inspect related records | Click an internal content link, reminder source or table title/page icon to open on the right; Command / Ctrl-click targets the main region |
 | Edit a record title | Open the record, then edit its native page-top title; grid titles and trailing space no longer start inline editing |
 | Open or rename Reminders | Use its sidebar entry; rename through the page title, entry context menu or settings. Add database references an existing Base |
-| Choose and manage tags | Click a classification value; click a checked option again to deselect. Column headers manage suggestions, order and display names |
+| Choose and manage tags | Click a classification value; click a checked option again to deselect. Each option’s ellipsis changes its color, renames or deletes it. Column headers manage suggestions, order and display names |
 | Create a record | Use the grid's final New item row or the board's New action |
 | Delete a table page | Row menu ⋯ → Move page to trash moves it to vault `.trash`, with undo/redo in the current database session |
 | View images | Click a thumbnail to enlarge it; board covers use 16:9 areas |
 | Choose a font | Settings → Nebula Focus → 字体 / Fonts → 显示字体 / Display font |
+
+Renaming or deleting a tag through its option menu updates that property across the database query, including records filtered out of the current view. Deletion removes only that tag value. Colors are preferences scoped to a database and property. Record changes use native property history, with one undo per record; colors and candidate settings are outside record undo.
 
 Reminders opens on cold startup by default; hot reload does not take focus. Disable **启动时打开提醒事项** under Settings → Nebula Focus → 提醒事项 to resume the previous workspace. The old modular Home is no longer an entry point; its `home` preferences and generated Base files remain stored without moving or deleting records.
 
@@ -209,7 +217,7 @@ Browsing and appearance changes do not insert UI code into Markdown bodies or ap
 
 After opening a record from a table with an explicit title mapping, deliberately editing its native page-top title synchronizes the existing nonempty string title property only after the file rename succeeds. The original value is checked before writing. Missing or empty fields, aliases, read-only sources, conflicting mappings and concurrent edits are left untouched. No field is added, prose heading scanned, or external bulk rename or folder move synchronized.
 
-External `.base` files are recommended. Obsidian's native save updates an inline Markdown `base` block when changing its configuration. The plugin has no network service, telemetry or AI integration. Remote covers request only the original image URL referenced by the note, without uploading notes.
+External `.base` files are recommended. Obsidian's native save updates an inline Markdown `base` block when changing its configuration. The plugin starts no network server and has no telemetry. Optional AI recording sends messages, selected images and requested database context to the user-configured API only when a message is sent; credentials use Obsidian SecretStorage. Remote covers request the original image URL referenced by the note. See [AI recording and CLI](docs/ai-recording.md).
 
 The optional font and its license ship inside `main.js`. Font data loads offline only when selected. The font retains its separate SIL OFL license; see [fonts](docs/fonts.md) and [third-party notices](THIRD-PARTY-NOTICES.md).
 

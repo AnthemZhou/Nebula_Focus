@@ -212,10 +212,14 @@ export class SidebarSearchModal extends Modal {
   }
   private note(text: string, host = this.pane) {return host.createEl('p', {cls: 'bui-sidebar-search-note', text});}
   private pageButton(host: HTMLElement, node: PageNode, detail = node.filePath, subpath?: string) {
-    return this.choice(host, node.title, detail ?? '', () => {void this.openPage(node, subpath);});
+    // Direct/tag search is a flattened page tree; preserve its ancestry.
+    // File browsing already shows one folder, and bookmarks have their own groups.
+    const depth = this.mode === '直接搜索' || this.mode === '标签' ? node.parent.split('/').filter(Boolean).length : 0;
+    return this.choice(host, node.title, detail ?? '', () => {void this.openPage(node, subpath);}, depth ? 'corner-down-right' : undefined, depth);
   }
-  private choice(host: HTMLElement, title: string, detail: string, choose: () => void, icon?: string) {
+  private choice(host: HTMLElement, title: string, detail: string, choose: () => void, icon?: string, depth = 0) {
     const button = host.createEl('button', {cls: 'bui-sidebar-search-result'});
+    button.style.setProperty('--bui-search-depth', String(Math.min(8, depth)));
     const label = button.createSpan({cls: 'bui-sidebar-search-title'});
     if (icon) setIcon(label.createSpan({cls: 'bui-sidebar-search-kind'}), icon);
     label.append(title);
@@ -297,7 +301,7 @@ export class SidebarSearchModal extends Modal {
       const visible = [...tags].filter(([tag]) => tag.toLocaleLowerCase().includes(query)).sort(([a], [b]) => a.localeCompare(b));
       for (const [tag, pages] of visible) this.choice(this.pane, tag, `${pages.length} 个页面`, () => {
         this.tag = tag; this.input.value = ''; this.update();
-      }, 'tag');
+      }, 'tag', tag.split('/').length - 1);
       if (!visible.length) this.note(query ? '没有找到匹配的标签' : '笔记中还没有 #标签，可在正文或 tags 属性中添加。');
     }
     if (pending) {this.activeResults!.retry = true; this.note(`${pending} 篇笔记的标签索引尚未准备好，请稍后重试`);}
@@ -349,7 +353,7 @@ export class SidebarSearchModal extends Modal {
           if (!record(item)) continue;
           const title = typeof item.title === 'string' ? item.title : '';
           if (item.type === 'group' && Array.isArray(item.items)) {
-            const group = host.createEl('section', {cls: 'bui-sidebar-search-section'});
+            const group = host.createEl('section', {cls: 'bui-sidebar-search-section bui-sidebar-bookmark-group'});
             group.createEl('h3', {text: title || '书签分组'}); render(item.items, group, depth + 1); continue;
           }
           const path = typeof item.path === 'string' ? item.path : '';

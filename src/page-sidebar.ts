@@ -1,3 +1,4 @@
+import type {RecordingAssistant} from './assistant';
 import {Component, FileView, ItemView, MarkdownView, Menu, Notice, Platform, Plugin, TFile, TFolder, View, WorkspaceLeaf, setIcon, type ViewState} from 'obsidian';
 import {NebulaFocusSettings} from './settings';
 import type {FontPreferences} from './font-appearance';
@@ -19,6 +20,7 @@ export class PageSidebar extends Component {
   archives?: PageArchiveActions;
   rightWorkspace?: RightWorkspaceController;
   ribbon?: RibbonController;
+  assistant?: RecordingAssistant;
   openReminders?: () => Promise<void>;
   reminderName?: () => string;
   renameReminders?: () => void;
@@ -333,6 +335,11 @@ export class PageSidebarView extends ItemView {
     });
     const shortcuts = this.contentEl.createDiv({cls: 'bui-pages-shortcuts'});
     if (!Platform.isMobileApp) this.createButton(shortcuts);
+    if (this.sidebar.assistant && Platform.isMobileApp) {
+      const assistant = shortcuts.createEl('button', {cls: 'bui-pages-reminders bui-pages-ai'});
+      setIcon(assistant.createSpan(), 'message-circle'); assistant.createSpan({text: 'AI 记录'});
+      assistant.addEventListener('click', () => {this.sidebar.closeMobileDrawer(); this.sidebar.assistant?.open();});
+    }
     if (this.sidebar.openReminders) {
       const reminders = shortcuts.createEl('button', {cls: 'bui-pages-reminders'});
       setIcon(reminders.createSpan(), 'list-todo');

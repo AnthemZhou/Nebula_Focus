@@ -246,3 +246,12 @@ test('single-record tables hide the final create row without marking existing ce
     delete view.dataset.buiAllowCreate;f.refresh();view.querySelector('.bui-ideas-new-button').click();assert.equal(creates,1);
   }finally{f.close();}
 });
+
+test('tag color overrides are scoped to the Base and disappear on teardown',()=>{
+  const f=fixture(table(text('note.类型','技术'))+table(text('note.类型','技术')));try{
+    const [one,two]=f.doc.querySelectorAll('.bases-view');one.dataset.buiTagColors=JSON.stringify({类型:{技术:'red'}});
+    f.refresh();assert.equal(one.querySelector('.bui-native-tag').dataset.buiTone,'red');assert.equal(two.querySelector('.bui-native-tag').dataset.buiTone,'green');
+    one.dataset.buiTagColors=JSON.stringify({类型:{技术:'invalid'}});f.refresh();assert.equal(one.querySelector('.bui-native-tag').dataset.buiTone,'green');
+    f.tags.clear();assert.equal(f.doc.querySelector('[data-bui-tone]'),null);
+  }finally{f.close();}
+});

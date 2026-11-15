@@ -1,57 +1,39 @@
-# Nebula Focus 1.4.1 — Readable record titles and layout fixes
+# Nebula Focus 1.5.0 — AI recording, CLI and workspace refinements
 
 [中文](#中文) · [English](#english)
 
 ## 中文
 
-1.4.1 修正记录标题显示和表格交互，并统一桌面文字与手机侧栏布局。最低要求 Obsidian **1.14.5**；数据库视图需要启用 **Bases** 核心插件。
+1.5.0 增加手机 AI 记录、电脑外部 AI 的 CLI 接口，以及标签管理、桌面导航和搜索层级。最低要求 Obsidian **1.14.5**；数据库需要启用 **Bases** 核心插件。
 
-### 本次更新
+- **AI 记录聊天。** 手机侧栏新增「AI 记录」，支持文字和截图，通过工具识别外部 `.base` 数据库与字段，新建或更新记录后返回真实页面卡片。截图原件按库内附件设置保存。聊天只暂存于本次插件运行期间。
+- **通用 API 配置。** 提供 OpenAI、DeepSeek 快速填写，地址、模型和密钥名称均可编辑，支持兼容 Chat Completions 的其他服务。图片输入可按模型能力开关；密钥使用 Obsidian SecretStorage，不写入插件 `data.json`。只有主动发送时才请求所选 API，没有遥测。
+- **外部 AI + CLI。** `scripts/obsidian-records.cjs` 提供数据库发现、字段定义、查询、读取、新建和更新，与手机共用记录规则。显式指定仓库、按字段类型校验、使用幂等新建及版本冲突保护；返回 Obsidian 页面链接。
+- **标签管理。** 标签候选右侧新增操作菜单，支持颜色、重命名和删除。数据库字段改动保留原生属性历史；候选配置与颜色不属于记录撤销。
+- **桌面工作区。** 前进／后退移动到窗口左上角，移除重复标题；统一顶栏对齐与图标位置。分栏使用细边界和更大的拖动区域。桌面内容保留布局宽度并在显著溢出时渐隐，小幅看板溢出不再误加阴影；列宽下限容纳属性名。
+- **搜索层级。** 分类使用胶囊背景，子页面增加缩进与层级符号，保留分类结果缓存。
 
-- **显示真实记录标题。** 从表格打开导入记录后，页面顶部、面包屑和标签页显示明确映射的标题，而不是 UUID 文件名；也支持已有 `title` 字段及 UUID 文件的别名。仅打开或聚焦标题不会改名或修改笔记。主动修改页面顶部原生标题时，文件改名成功后同步已知的非空标题属性，保留并发修改与只读保护。
-- **点击标题直接进入页面。** 表格标题和页面图标打开记录，改名统一在打开后的页面顶部进行。只有标题文字显示手形指针，空白区域不再触发标题编辑。保留键盘导航及滚动、拖选保护。
-- **字体和表格排版。** 新增离线可用的 Codex 系统字体选项；桌面正文、表格内容、表头、工具栏和侧栏页面名默认为 14px，随用户文字设置缩放。校正标签顶部位置、工具栏按钮重叠及折叠块标题对齐，行操作渐变覆盖单元格的整段高度。
-- **删除与滚动修复。** 表格记录右键菜单增加「将页面移到回收站」，与行菜单共用数据库会话撤销／重做。修复阅读模式旧编辑器缓存误阻止删除，以及滚到嵌入表格页面底部时的反复抖动。
-- **可编辑视图说明。** 通过表格的原生布局选项修改「视图说明」，可编辑或清空「代表性样例，非完整账本」等说明，配置保存在 `.base`。
-- **侧栏细节。** 桌面工具、设置和帮助图标居中；增强外观关闭悬停提示并保留辅助技术名称。手机设置位于左下角、新建页面位于右下角；顶部仓库名和搜索沿用主页面工具栏偏移，底部去掉额外的 12px 留白，圆角裁切使用同一轮廓。
+### 安装与验证范围
 
-### 升级与数据
+保留 `data.json`，替换 `.obsidian/plugins/nebula-focus/` 下的 `main.js`、`manifest.json`、`styles.css` 后重载。iPhone 等待同步后彻底关闭并重开 Obsidian。AI 配置入口为「设置 → Nebula Focus → AI 记录 → 配置 API」。模型必须支持工具调用，截图需模型支持图片输入。
 
-保留 `data.json`，替换 `.obsidian/plugins/nebula-focus/` 下的 `main.js`、`manifest.json`、`styles.css`，再重载插件。iPhone 等待 iCloud 同步后彻底关闭并重开 Obsidian，以清除旧样式缓存。
+自动测试、严格构建和打包检查见[测试记录](https://github.com/AnthemZhou/Nebula_Focus/blob/1.5.0/docs/TESTING.md)。真实 Mac CLI 已验证临时记录的创建、更新、附件链接、重复请求与版本冲突；原有笔记未修改。手机入口、设置与图片来源菜单已有镜像检查，但未完成真实 API 识图或手机软键盘的完整验收。没有提供实际模型密钥，验证未向外部 AI 发送截图或笔记。
 
-浏览与呈现不改写 Markdown。主动改名使用原生文件改名及受保护的标题属性同步；该改名不属于数据库撤销历史。表格删除固定移入库内 `.trash`，撤销历史只保留在当前数据库会话中。源码和示例包不含私人笔记、插件设置或本机验证截图。
-
-### 验证范围
-
-- 全量 **792/792** 测试通过，覆盖 **56** 个文件；严格 TypeScript 构建通过；Lint 为 **0 错误、37 项警告**，未关闭规则。
-- Mac 已验证导入记录的可读标题及桌面 14px 侧栏；标题映射、只读／并发保护、右键删除、滚动高度和卸载恢复均有自动化覆盖。
-- 手机运行文件已同步到现有测试库。最后的顶部对齐和底部下移仍需重启应用后的真机确认，未计为实机通过；既有搜索触摸证据属于前版，不扩大为本版全量手机验收。
-
-详见[测试记录](https://github.com/AnthemZhou/Nebula_Focus/blob/1.4.1/docs/TESTING.md)、[检查说明](https://github.com/AnthemZhou/Nebula_Focus/blob/1.4.1/docs/review-warnings.md)和[撤销范围](https://github.com/AnthemZhou/Nebula_Focus/blob/1.4.1/docs/undo-coverage.md)。GitHub Release、社区目录审核与客户端同步是不同阶段。
+AI/CLI 写入不进入 Bases 的界面撤销栈；停止处理不会撤销已经完成的写入。当前仅识别受支持过滤条件的外部 `.base`，不支持任意公式或内联数据库。更多限制、配置与调用示例见 [AI 记录与 CLI](https://github.com/AnthemZhou/Nebula_Focus/blob/1.5.0/docs/ai-recording.md)。公开安装包、源码包和示例包不含私人库、密钥、插件设置或本机验证截图。
 
 ## English
 
-Version 1.4.1 fixes record-title display and table interactions, coordinates desktop typography and refines the mobile drawer. It requires Obsidian **1.14.5** and the **Bases** core plugin for database views.
+Version 1.5.0 adds mobile AI recording, a desktop CLI for external AI, tag management and workspace refinements. Requires Obsidian **1.14.5** and **Bases** for database views.
 
-### Changes
+- **AI recording chat:** send text and screenshots, discover external Base schemas, create/update records and receive actual page links. Original images follow vault attachment settings; chat history stays in memory.
+- **Configurable providers:** editable OpenAI/DeepSeek presets and custom Chat Completions endpoints/models. Optional image capability, SecretStorage credentials, explicit-send requests only, no telemetry.
+- **External AI + CLI:** database discovery, schema, query, read, create and update through `scripts/obsidian-records.cjs`, sharing the mobile validation layer. Explicit vault selection, typed fields, idempotent creates and revision checks protect existing records.
+- **Tag options:** change colors, rename and remove options from each tag's menu. Record changes retain native property history; preference changes are outside record undo.
+- **Desktop layout:** move navigation beside window controls, remove the duplicate title, align headers/icons and refine divider hit areas. Preserve desktop content width with fades for significant overflow, suppress insignificant board fades and enforce header-aware column minimums.
+- **Search:** pill-shaped categories, child indentation and hierarchy markers, with existing category caching retained.
 
-- **Readable record titles.** Opened records show their explicitly mapped title in the page heading, breadcrumb and tab instead of a UUID filename. Existing `title` fields and aliases on UUID-named files are also supported. Opening or focusing the title does not rename or modify a note. Deliberate native-title edits synchronize a known nonempty title property after a successful rename, with read-only and concurrent-edit guards.
-- **Titles navigate directly.** Grid titles and page icons open the record; renaming belongs to the opened page's native title. Only title text shows a pointer cursor, and blank cell space no longer starts title editing. Keyboard navigation, scrolling and selection guards remain.
-- **Typography and table layout.** Add an offline Codex system-font option. Desktop body text, table values, headers, tools and sidebar page names share a 14px default that scales with the user's text preference. Align tags and collapsible headings, separate overlapping toolbar actions, and extend the row-menu fade over the cell's full height.
-- **Deletion and scrolling fixes.** Add Move page to trash to the table record context menu, sharing database-session undo/redo with the row menu. Prevent stale reading-mode editor caches from blocking safe deletion, and keep the table creation row mounted to avoid repeated scroll jumps at the page bottom.
-- **Editable view descriptions.** Change or clear explanatory text through View description in the table's native layout options; the value stays in `.base` configuration.
-- **Sidebar details.** Center desktop rail, Settings and Help icons. Suppress hover hints in enhanced appearance while retaining accessible names. Mobile places Settings at bottom left and New page at bottom right, shares the main toolbar's top offset, removes an extra 12px footer gap and clips rounded content to one contour.
+Keep `data.json` when replacing the three runtime files. On iPhone, wait for sync and fully restart Obsidian. Configure a tool-capable model in the plugin's AI recording settings; screenshots additionally require image support.
 
-### Updating and data
+Automated validation and real Mac CLI checks are recorded in [TESTING](https://github.com/AnthemZhou/Nebula_Focus/blob/1.5.0/docs/TESTING.md). Phone checks cover the entry, settings and image-source menu, not full software-keyboard or real-model image recognition acceptance. No real API credentials were supplied and no notes/images were transmitted to an AI service during validation.
 
-Keep `data.json`; replace `main.js`, `manifest.json` and `styles.css` in `.obsidian/plugins/nebula-focus/`, then reload. On iPhone, allow iCloud sync to finish and fully quit/reopen Obsidian to clear cached styles.
-
-Presentation does not rewrite Markdown. Explicit title edits use native renaming and guarded title-property synchronization, outside database undo history. Table deletion always uses vault `.trash`; database undo history is session-local. Public source and example archives exclude private notes, plugin settings and local validation screenshots.
-
-### Validation scope
-
-- **792/792** tests pass across **56** files, with a passing strict TypeScript build and **zero lint errors / 37 warnings**. No rule was disabled.
-- Mac checks confirm readable imported-record titles and the 14px desktop sidebar. Automated coverage includes title mapping, read-only/concurrent guards, context-menu deletion, scroll-height stability and teardown.
-- Runtime files are synced to the existing iPhone test vault. Final header alignment and footer lowering still await a device check after restarting the app; they are not reported as verified. Earlier search touch evidence is not a full acceptance run for this release.
-
-See [testing](https://github.com/AnthemZhou/Nebula_Focus/blob/1.4.1/docs/TESTING.md), [review findings](https://github.com/AnthemZhou/Nebula_Focus/blob/1.4.1/docs/review-warnings.md) and [undo coverage](https://github.com/AnthemZhou/Nebula_Focus/blob/1.4.1/docs/undo-coverage.md). GitHub publication, community-directory review and client synchronization are separate stages.
+AI/CLI writes are outside Bases UI undo. Cancellation retains completed writes. Only supported external Base filters are writable; arbitrary formulas and inline Bases are not supported. See [AI recording and CLI](https://github.com/AnthemZhou/Nebula_Focus/blob/1.5.0/docs/ai-recording.md). Public archives exclude private vaults, credentials, plugin settings and local screenshots.

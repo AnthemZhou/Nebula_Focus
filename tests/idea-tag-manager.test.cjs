@@ -171,7 +171,7 @@ test('scrolling the manager list over a delete button cannot remove its option',
 test('adding a candidate persists without assigning it; reload and cell editor both expose it',async()=>{
   const f=fixture();try{
     f.open();f.add('摄影');await f.tick();assert.deepEqual(f.options(),['Blender','AI','编程','C4D','摄影']);
-    assert.deepEqual(f.saved[0],{key:JSON.stringify(['Bases/Ideas.base','领域']),order:['Blender','AI','编程','C4D','摄影'],added:['摄影'],hidden:[]});
+    assert.deepEqual(f.saved[0],{key:JSON.stringify(['Bases/Ideas.base','领域']),order:['Blender','AI','编程','C4D','摄影'],added:['摄影'],hidden:[],colors:{}});
     assert.deepEqual(f.entry.raw.领域,['Blender']);assert.deepEqual(f.writes,[]);
     f.reload();f.openCell();assert.ok(f.cellOptions().includes('摄影'));
     assert.equal(f.doc.querySelectorAll('.bui-tag-editor-selected .bui-tag-editor-chip').length,1);

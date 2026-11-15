@@ -7,7 +7,8 @@ const {spawn} = require('node:child_process');
 const root = resolve(__dirname, '..');
 const files = readdirSync(resolve(root, 'tests')).filter(name => name.endsWith('.test.cjs')).sort();
 const areas = {
-  appearance: /^(reading|font-appearance|semantic-tags|shortcut-guide|auto-rows|table-render-sync)\./,
+  recording: /^(assistant-|record-api|record-cli)/,
+  appearance: /^(reading|font-appearance|semantic-tags|shortcut-guide|auto-rows|table-render-sync|overflow-fades|desktop-header)\./,
   tables: /^(idea-|auto-rows|semantic-tags|native-table-details|table-profile|table-options|table-render-sync|tag-drag-motion)/,
   history: /^(creation-|property-history|idea-title-editor|idea-tag-editor|mobile-actions)/,
   mobile: /^(mobile-|idea-title-editor|idea-header|idea-tag-|auto-rows|tag-drag-motion|reading|home-view|font-appearance|archive-controller|right-workspace)/,
@@ -15,7 +16,7 @@ const areas = {
   home: /^(home-|auto-base-|generated-base|note-source|config-id)/,
   data: /^(notion-backup|note-source|generated-base|auto-base-|record-|finance-model|finance-native|config-id)/,
   sidebar: /^(page-|external-archive|archive-controller|right-workspace|ribbon-controller)/,
-  workspace: /^(right-workspace|home-controller|page-sidebar|ribbon-controller|reminder)/,
+  workspace: /^(right-workspace|home-controller|page-sidebar|ribbon-controller|desktop-header|reminder)/,
   reminders: /^reminder/,
   archive: /^(external-archive|archive-controller)/,
   packaging: /^package(?:-mobile-test)?\./,

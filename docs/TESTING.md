@@ -1,5 +1,31 @@
 # Nebula Focus validation
 
+## 1.5.0 release checkpoint / 发布检查 — 2026-11-16
+
+Full suite: **839/839 passed across 62 test files** (10.29s; no failed, skipped or cancelled tests). Strict TypeScript/build passes; lint reports **0 errors and 51 warnings**, with no rule disabled. Release packaging uses the reviewed Git index and explicit runtime assets. Real CLI, desktop settings and earlier phone checks retain the scopes described below; no actual model endpoint, receipt recognition or new phone keyboard acceptance is claimed.
+
+中文：本次发布全量 839 项回归与严格构建通过，Lint 0 错误、51 项警告。AI/CLI 与此前工作区调整纳入 1.5.0；以下开发期证据沿用各自验收范围，未将模拟模型测试表述为真实 API 验收。
+
+## Generic AI configuration / 通用 AI 配置 — 2026-11-15 (unreleased)
+
+After the AI recording checkpoint below, **32/32 focused recording tests** pass across 4 files. Strict TypeScript/build passes; scoped assistant lint has zero errors and 4 UI sentence-case suggestions (including the deliberately capitalized provider names). The full suite was not repeated for this configuration follow-up.
+
+New regressions cover opaque reasoning-field round trips on tool and final replies, sequential tool batches without provider-specific parallel flags, fresh context after endpoint/model changes, independent stored keys, rejection of images in text-only configurations, and configuration changes blocked during a request. Mac UI verified OpenAI and DeepSeek quick-fill values, editable model/address fields and the image capability toggle. Checks closed without saving a provider selection or entering credentials. Updated runtime assets were synchronized in place to both existing test vaults; the phone's new presets were not separately retested on hardware. No actual AI endpoint was called.
+
+中文：新增 OpenAI、DeepSeek 及可手填地址/模型的通用配置，32 项相关回归与严格构建通过。Mac 已实测预设切换与填写；未保存测试选择、未输入密钥或调用收费 API。运行文件已原处同步到 Mac 与手机现有测试库，手机新版预设仍待重新载入。
+
+## AI recording / AI 记录 — 2026-11-15 (unreleased)
+
+Full suite: **834/834 passed across 62 test files** (8.81s). Strict TypeScript/build passes; lint reports **0 errors, 49 warnings** (47 existing warnings and 2 UI sentence-case suggestions in the assistant). The 27 focused recording tests cover schema discovery, field and scope validation, file links, attachments, idempotent creates, atomic update conflicts, CLI argument encoding, model tool loops, credentials handling, cancellation and late HTTP responses.
+
+Real Obsidian CLI checks on macOS 1.15.1 discovered 41 database views, read the finance reimbursement and ideas schemas, and created/read/updated a disposable record with an attachment link. A repeated create returned the existing record; a stale revision was rejected. The fixture was preserved outside the active vault in ignored local evidence. All 269 pre-existing Markdown/Base files remain byte-identical, with no active test files left behind.
+
+Mac UI checks passed opening AI chat/configuration and selecting/removing an image preview. Physical iPhone Mirroring passed the mobile sidebar entry, chat opening, configuration panel and the native image-source menu (photo library/camera/files). A safe-area correction keeps the title and close button below the status bar. Mirror click events required a short press duration, including native host controls; this is not claimed as direct-touch or Chinese software-keyboard acceptance. Runtime assets were deployed in place to the existing Mac and iPhone test vaults; settings were preserved.
+
+No real model endpoint or API key was supplied. Tool/vision message orchestration was tested with simulated responses; actual OCR quality, service billing/authentication and direct phone keyboard behavior still require user configuration/acceptance. No screenshot or note was sent to an external AI service during validation. Evidence is local in ignored `dist/ai-recording-2026-11-15/`.
+
+中文：内外两端共用的记录接口、手机聊天、截图附件、字段验证与页面链接已实现。834 项全量回归、严格构建及真实 CLI 新建/更新验证通过。Mac 的聊天与图片预览、iPhone 的入口/设置/图片来源菜单已实测。原有 269 个笔记和数据库文件均未改变。尚无真实模型密钥，因此未声称完成真实截图识别或手机软键盘验收。
+
 ## 1.4.1 release checkpoint / 发布检查 — 2026-11-14
 
 Full suite: **792/792 passed across 56 test files** (8.28s, no failures, skipped or cancelled cases). Strict TypeScript/build passes. Lint reports **0 errors and 37 warnings**, down from 40 after removing the grid-title editor; no rule was disabled. Coverage includes readable native headings/tabs/breadcrumbs without automatic renames, deliberate mapped-title edits with IME and concurrent-write guards, text-only link targets, context-menu trash and undo, stale preview editor caches, persistent virtual creation rows, and hover-hint restoration.

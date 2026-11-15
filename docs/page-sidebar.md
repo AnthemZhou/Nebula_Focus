@@ -29,6 +29,8 @@ This guide describes **1.4.0**. Reminders, pins and unified search carry over fr
 
 ### 统一查找面板
 
+分类选中项使用圆形胶囊背景；直接搜索按页面层级缩进，子页面前显示转折箭头，嵌套标签和书签分组也保留层级。
+
 桌面面板最大为 820 × 560px，会随窗口收窄；输入与结果默认 14px，使用当前主题颜色。结果区域单独滚动，底部分类保持可见。手机使用至少 17px 字号，尊重用户设置的更大字号，并避让软键盘与安全区域。
 
 - 「直接搜索」匹配本地 Markdown 标题与正文，显示对应页面及路径。
@@ -84,6 +86,8 @@ Sidebar navigation and links inside content have different roles: actual interna
 Use ↑ / ↓ for focus, → to expand, ← to collapse or focus the parent, Enter to open, and Shift + F10 for the row menu. Mobile retains normal touch scrolling; long-press a row for its context menu, with a visible pin action on the row. Successful navigation to an existing or newly created page closes the left drawer. Expanding a folder or a failed navigation leaves it open; desktop sidebars stay open. Consult the [iPhone test record](mobile-testing.md) for physical-device validation of these drawer and touch-layout changes.
 
 ### Unified search panel
+
+Category selection uses a rounded capsule. Direct-search results retain page ancestry through indentation; nested tags and bookmark groups also show their hierarchy.
 
 The desktop panel is up to 820 × 560px and shrinks with the window. Input and results default to 14px and follow the current theme. Results scroll independently while the bottom modes stay visible. Mobile uses at least 17px, respects larger user text settings, and fits around the software keyboard and safe areas.
 

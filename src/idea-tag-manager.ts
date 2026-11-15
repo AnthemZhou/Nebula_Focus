@@ -157,7 +157,7 @@ export class IdeaTagManager {
         void this.reorder(panel, order, value);
       });
       const chip = doc.createElement('span'); chip.className = 'bui-native-tag bui-tag-manager-chip';
-      chip.dataset.buiTone = ideaTone(value, panel.property); chip.textContent = value;
+      chip.dataset.buiTone = panel.read().colors?.[value] ?? ideaTone(value, panel.property); chip.textContent = value;
       const remove = doc.createElement('button'); remove.type = 'button'; remove.className = 'clickable-icon bui-tag-manager-remove';
       remove.setAttribute('aria-label', `删除标签 ${value}`); setIcon(remove, 'x');
       remove.addEventListener('click', () => {void this.remove(panel, value);});

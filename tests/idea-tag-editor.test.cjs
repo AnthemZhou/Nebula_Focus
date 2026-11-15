@@ -6,6 +6,12 @@ const {JSDOM} = require('jsdom');
 const code = buildSync({entryPoints:['src/idea-tag-editor.ts'],bundle:true,write:false,
   platform:'node',format:'cjs',external:['obsidian']}).outputFiles[0].text;
 
+function optionStore() {
+  const data=new Map(), saved=[];
+  return {data,saved,read:key=>data.get(key)?.order,write:()=>{},readOptions:key=>data.get(key),
+    async writeOptions(key,options){data.set(key,structuredClone(options));saved.push(structuredClone(options));}};
+}
+
 function fixture({delayed=false, failed=false, orderStore, basePath='Bases/想法收集箱.base', sourcePath='Dashboard.md',
   name='想法收集箱', profile, records}={}) {
   const dom = new JSDOM('<!doctype html><body><button id="outside">Outside</button><div class="bases-view"><div class="bases-table-container" tabindex="0"></div></div></body>', {pretendToBeVisual:true});
@@ -771,5 +777,56 @@ test('finance tag schema is opt-in and rejects stale, disabled or incompatible n
     f.mouse(f.option('收入'));await f.tick();assert.deepEqual(f.writes,[]);assert.equal(f.doc.querySelector('.bui-tag-editor'),null);
     f.view.config.nebulaTable.tags.方向='single';assert.ok(f.open('方向'));
     f.view.isReadOnly=true;f.mouse(f.option('收入'));await f.tick();assert.deepEqual(f.writes,[]);
+  }finally{f.close();}
+});
+
+test('option ellipsis opens management without selecting; color persists without changing records',async()=>{
+  const store=optionStore(),f=fixture({orderStore:store});try{
+    f.open();const before=f.options();
+    const more=f.option('技术').querySelector('.bui-tag-editor-more');assert.ok(more);
+    f.pointer(more,'pointerdown');f.mouse(more);
+    const panel=f.doc.querySelector('.bui-tag-option-panel');assert.ok(panel);assert.deepEqual(f.writes,[]);
+    assert.equal(panel.querySelectorAll('.bui-tag-option-color').length,10);
+    f.mouse(panel.querySelector('[aria-label="红色"]'));await f.tick();
+    assert.deepEqual(f.writes,[]);assert.deepEqual(f.options(),before);
+    assert.equal(f.option('技术').querySelector('.bui-tag-editor-chip').dataset.buiTone,'red');
+    f.key('Escape');f.open();assert.equal(f.option('技术').querySelector('.bui-tag-editor-chip').dataset.buiTone,'red');
+    assert.equal(store.saved.at(-1).colors.技术,'red');
+    f.editor.clear();const reloaded=new f.editor.constructor(store);reloaded.attach(f.view);
+    try {f.open();assert.equal(f.option('技术').querySelector('.bui-tag-editor-chip').dataset.buiTone,'red');}
+    finally {reloaded.clear();}
+  }finally{f.close();}
+});
+
+test('tag rename updates every matching query record including filtered records and preserves other values',async()=>{
+  const store=optionStore(),f=fixture({orderStore:store});try{
+    const entries=[f.entry,f.other,f.filteredOut];
+    f.view.updateProperty=async(file,property,value)=>{f.writes.push({path:file.path,property,value:structuredClone(value)});entries.find(e=>e.file.path===file.path).raw[property]=structuredClone(value);};
+    f.open('领域');f.mouse(f.option('Blender').querySelector('.bui-tag-editor-more'));
+    const panel=f.doc.querySelector('.bui-tag-option-panel'),input=panel.querySelector('input');
+    input.value='Blender 新版';input.dispatchEvent(new f.win.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await f.tick();
+    assert.equal(f.writes.length,2);assert.deepEqual(f.entry.raw.领域,['Blender 新版']);assert.deepEqual(f.filteredOut.raw.领域,['Blender 新版']);
+    assert.deepEqual(f.other.raw.领域,['AI','编程','C4D']);assert.equal(f.entry.raw.类型,'技术');
+    assert.ok(store.saved.at(-1).hidden.includes('Blender'));assert.ok(store.saved.at(-1).added.includes('Blender 新版'));
+  }finally{f.close();}
+});
+
+test('tag delete removes only matching values; duplicate names, IME and failed writes never save a misleading catalog',async()=>{
+  const store=optionStore(),f=fixture({orderStore:store});try{
+    f.open('领域');f.mouse(f.option('Blender').querySelector('.bui-tag-editor-more'));
+    const panel=f.doc.querySelector('.bui-tag-option-panel'),input=panel.querySelector('input');
+    input.value='AI';input.dispatchEvent(new f.win.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await f.tick();
+    assert.match(panel.textContent,/此标签已存在/);assert.deepEqual(f.writes,[]);
+    input.value='新标签';input.dispatchEvent(new f.win.CompositionEvent('compositionstart',{bubbles:true}));
+    input.dispatchEvent(new f.win.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));assert.deepEqual(f.writes,[]);
+    input.dispatchEvent(new f.win.CompositionEvent('compositionend',{bubbles:true}));await f.tick();
+    f.view.updateProperty=async()=>{throw Error('read only');};
+    f.mouse(panel.querySelector('.bui-tag-option-delete'));await f.tick();assert.equal(store.saved.length,0);
+    assert.match(panel.textContent,/未完成/);assert.equal(panel.querySelector('input').disabled,false);
+    const entries=[f.entry,f.other,f.filteredOut];f.entry.raw.领域=['Blender','AI'];
+    f.view.updateProperty=async(file,property,value)=>{entries.find(e=>e.file.path===file.path).raw[property]=structuredClone(value);};
+    f.mouse(panel.querySelector('.bui-tag-option-delete'));await f.tick();
+    assert.deepEqual(f.entry.raw.领域,['AI']);assert.deepEqual(f.filteredOut.raw.领域,[]);assert.deepEqual(f.other.raw.领域,['AI','编程','C4D']);
+    assert.ok(store.saved.at(-1).hidden.includes('Blender'));
   }finally{f.close();}
 });

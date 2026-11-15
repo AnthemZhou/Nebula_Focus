@@ -502,8 +502,14 @@ export class IdeaRowHeights {
     for (const cell of v.header.cells) if (!state.resizing && cell.el.offsetWidth && v.columnInfo[cell.prop]) v.columnInfo[cell.prop].headerWidth = cell.innerEl.scrollWidth;
     const widths = properties.map(property => v.columnInfo[property].getWidth(v.minColWidth, v.maxColWidth));
     let width = widths.reduce((sum, current) => sum + current, 0);
-    const available = (v.containerEl.parentElement?.clientWidth ?? 1) - 1;
-    if (widths.length && !v.columnInfo[properties[properties.length - 1]].customWidth && width < available) {widths[widths.length - 1] += available - width; width = available;}
+    // Column geometry belongs to the data/user, not the visible pane. Filling
+    // the last column makes it shrink and rewrap whenever a sidebar is dragged.
+    if (win.document.body.classList.contains('is-mobile')) {
+      const available = (v.containerEl.parentElement?.clientWidth ?? 1) - 1;
+      if (widths.length && !v.columnInfo[properties[properties.length - 1]].customWidth && width < available) {
+        widths[widths.length - 1] += available - width; width = available;
+      }
+    }
     state.widths = widths; state.width = width;
     v.containerEl.classList.add('mod-multiline');
     const focused = v.containerEl.contains(state.host.ownerDocument.activeElement) ? state.host.ownerDocument.activeElement as HTMLElement : null;

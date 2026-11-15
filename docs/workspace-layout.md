@@ -21,6 +21,8 @@ This guide describes the current source behavior, including the single main-page
 
 「设置 → Nebula Focus → 更多设置 → 左侧工具按钮」可逐项选择显示的工具，支持全部显示与恢复精简。默认精简已知核心按钮，未知第三方按钮保留。桌面帮助、设置按钮移动到最左侧窄竖条底部；仍使用原生按钮及其功能。设置只影响增强模式中的显示，不更改核心插件的启用状态，也不改写其他插件设置。
 
+桌面主区不再额外显示一行重复标题与导航。原生前进／后退按钮移到 Mac 窗口控制按钮右侧，替换原来的侧栏标签图标；编辑及更多操作移至当前标题右侧。移动的是原生按钮，历史、菜单和快捷键继续沿用 Obsidian；关闭侧栏时导航移入主顶栏，切回原生外观时恢复原位置。左右分界线使用 1px 紫色高光与 12px 鼠标拖动范围，轻微横向溢出（不超过 24px）不再显示边缘渐隐。
+
 ### 阅读与颜色
 
 配色参考用户提供的 Codex 截图；手机借鉴 ChatGPT 的简洁文字和留白。它们是本插件的参考实现，不是读取或复制两款应用的内部主题参数。
@@ -68,6 +70,8 @@ Plugin settings initially show fonts, the Reminders name and its startup behavio
 The page tree shows Markdown pages and their folders by default, omitting standalone `.base` entries and folders containing only database configurations. Those files remain accessible through file lists, selectors and existing embeds. Pins, projects, pages, searching and hidden paths remain available. Desktop external archiving stays in page row menus, without a separate footer button. Browse or restore archives through **外部归档…** in the header/blank-space context menu or the **管理外部归档** (Manage external archives) command.
 
 Under Settings → Nebula Focus → 更多设置 (More settings) → 左侧工具按钮 (Left toolbar buttons), choose individual visible tools, show all, or restore the compact defaults. Known core tools are simplified by default; unknown third-party tools stay visible. Desktop Help and Settings move to the bottom of the narrow left rail, retaining their native controls and behavior. This changes presentation in enhanced mode only, not core-plugin enablement or other plugins' settings.
+
+Desktop removes the extra header row containing the repeated page title. Native Back/Forward controls sit to the right of the Mac window buttons, replacing the left dock tab icons; Edit and More remain next to the current title. The original controls retain native history, menus and shortcuts. Navigation moves into the main header when the sidebar collapses, and native appearance restores all original positions. Both dividers use a 1px accent line inside a 12px mouse target. Minor horizontal overflow of 24px or less does not trigger an edge fade.
 
 ### Reading and colors
 

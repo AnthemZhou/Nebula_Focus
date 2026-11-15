@@ -1224,3 +1224,20 @@ test('direct creation selects a visible native title on desktop and never focuse
     } finally {f.close();}
   }
 });
+
+test('search preserves page ancestry and nested bookmark groups without changing the result action', async()=>{
+  const f=fixture(undefined,true,{mobile:true});try{
+    await f.view.onOpen();f.click(f.doc.querySelector('.bui-pages-search-button'));
+    const modal=f.modals.at(-1),result=title=>[...modal.contentEl.querySelectorAll('.bui-sidebar-search-result')].find(b=>b.querySelector('.bui-sidebar-search-title')?.textContent===title);
+    assert.equal(result('Alpha').style.getPropertyValue('--bui-search-depth'),'0');
+    assert.equal(result('Child').style.getPropertyValue('--bui-search-depth'),'1');
+    assert.equal(result('Alpha').querySelector('.bui-sidebar-search-kind'),null);
+    assert.equal(result('Child').querySelector('.bui-sidebar-search-kind')?.dataset.icon,'corner-down-right');
+    f.disk.set('.obsidian/bookmarks.json',JSON.stringify({items:[{type:'group',title:'Parent',items:[{type:'group',title:'Child group',items:[{type:'file',path:'Home/Child.md',title:'Nested page'}]}]}]}));
+    f.click([...modal.contentEl.querySelectorAll('.bui-sidebar-search-modes button')].find(b=>b.textContent==='书签'));await f.settle();
+    const nested=result('Nested page');
+    assert.ok(nested.closest('.bui-sidebar-bookmark-group').parentElement.classList.contains('bui-sidebar-bookmark-group'));
+    assert.equal(nested.style.getPropertyValue('--bui-search-depth'),'0','bookmark hierarchy uses group indentation, not file ancestry twice');
+    f.click(nested);await f.settle();assert.deepEqual(f.opens,[{path:'Home/Child.md',mode:false}]);
+  }finally{f.close();}
+});

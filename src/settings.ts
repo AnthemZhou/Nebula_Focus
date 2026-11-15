@@ -77,7 +77,14 @@ export class NebulaFocusSettings extends PluginSettingTab {
       {name: '启动时打开页面侧栏', desc: '打开库或重新启用插件时，自动显示左侧页面树。',
         control: {type: 'toggle', key: 'openOnStartup'}},
     ];
-    return [...appearance, ...reminders, more, {type: 'group', heading: '页面侧栏', visible: () => this.showMore, items: [
+    const assistant: SettingDefinitionItem[] = this.sidebar.assistant ? [{type: 'group', heading: 'AI 记录', items: [
+      {name: '手机记录助手', desc: '文字或截图新建、更新数据库记录；电脑也可以通过外部 AI 与 CLI 使用同一套记录规则。',
+        render: setting => {
+          setting.addButton(button => button.setButtonText('配置 API').onClick(() => this.sidebar.assistant?.openSettings()));
+          setting.addButton(button => button.setButtonText('打开聊天').onClick(() => this.sidebar.assistant?.open()));
+        }},
+    ]}] : [];
+    return [...appearance, ...reminders, ...assistant, more, {type: 'group', heading: '页面侧栏', visible: () => this.showMore, items: [
       {name: '打开页面侧栏', desc: '将同名文件夹与笔记合为一个入口，支持搜索、收藏和同级排序。',
         render: setting => {setting.addButton(button => button.setButtonText('打开侧栏').setCta()
           .onClick(() => this.sidebar.open()));}},

@@ -2,11 +2,11 @@ import {supportsIdeaTagCell} from './idea-tag-support';
 import {tableProfile} from './table-profile';
 import {isRelationValue, isTableRelationProperty, isTableTagProperty, RELATION_LINK_SELECTOR} from './semantic-property';
 
-/** Minimum widths for configured and explicitly recognized tag columns in native Bases.
+/** Header minima for every property, plus complete tag/relation label minima.
  * Wrap the native column-width accessor, which is shared by rendering, hit testing
  * and selection. Never change customWidth, configuration, or persisted note data.
  */
-import {IdeaView, IdeaCell, isIdeaView, isIdeaCell, isHtmlElement, object} from './idea-native';
+import {IdeaView, IdeaCell, isNativeTableView, isIdeaCell, isHtmlElement, object} from './idea-native';
 type WidthInfo = {getWidth?: (...args: unknown[]) => number};
 type WidthEntry = {getValue(property: string): unknown};
 type WidthView = IdeaView & {
@@ -23,7 +23,7 @@ function widthInfo(value: unknown): value is WidthInfo & Required<WidthInfo> {
 function widthView(value: unknown): value is WidthView {
   if (!object(value)) return false;
   const raw = value;
-  if (!isIdeaView(value) || !isHtmlElement(value.containerEl)) return false;
+  if (!isNativeTableView(value) || !isHtmlElement(value.containerEl)) return false;
   const header = raw.header, data = value.data;
   return object(header) && Array.isArray(header.cells) && header.cells.every(isIdeaCell) &&
     !!data && Array.isArray(data.data) && data.data.every(widthEntry) &&
@@ -121,7 +121,7 @@ export class IdeaColumnWidths {
    * needs one updateVirtualDisplay() call; repeated unchanged scans return false.
    */
   refresh(view: unknown): boolean {
-    if (!isIdeaView(view)) return this.release(view);
+    if (!isNativeTableView(view)) return this.release(view);
     const host = view.queryController?.viewContainerEl;
     if (!isHtmlElement(host) || !isHtmlElement(view.containerEl)) return this.release(view);
     if (!('updateVirtualDisplay' in view) || typeof view.updateVirtualDisplay !== 'function') return this.release(view);
@@ -164,17 +164,17 @@ export class IdeaColumnWidths {
           } catch { /* Unsupported native values do not contribute to the column minimum. */ }
         }
         const relation = isTableRelationProperty(profile, property, cell, linkedValues);
-        if (!relation && !isTableTagProperty(profile, property)) continue;
+        const contentMinimum = relation || isTableTagProperty(profile, property);
         const header = view.header.cells.find((cell: IdeaCell) => cell.prop === property);
         const label = header?.el?.querySelector('.bases-table-header-name')?.textContent ?? '';
         const kind = cell?.querySelector('.bases-table-cell')?.getAttribute('data-property-type') ?? '';
         const picker = !!cell && supportsIdeaTagCell(view, sample, property.slice(5), cell);
-        const key = JSON.stringify([fontKey, label, kind, picker, relation,
+        const key = JSON.stringify([fontKey, label, kind, picker, relation, contentMinimum,
           host.classList.contains('bui-ideas-base'), [...labels].sort()]);
         let patch = state.patches.get(property);
         if (patch?.info === info && state.keys.get(property) === key) {present.add(property); continue;}
         if (!host.getBoundingClientRect().width) {if (patch) present.add(property); continue;}
-        const minimum = this.minimum(view, property, measure, [...labels], relation);
+        const minimum = this.minimum(view, property, measure, [...labels], relation, contentMinimum);
         if (!minimum) {if (patch) present.add(property); continue;}
         state.keys.set(property, key);
         present.add(property);
@@ -202,7 +202,7 @@ export class IdeaColumnWidths {
     return changed;
   }
 
-  private minimum(view: WidthView, property: string, measure: TextMeasure, labels: string[], relation: boolean): number {
+  private minimum(view: WidthView, property: string, measure: TextMeasure, labels: string[], relation: boolean, contentMinimum: boolean): number {
     const header = view.header.cells.find((cell: IdeaCell) => cell.prop === property);
     const headerName = header?.el?.querySelector<HTMLElement>('.bases-table-header-name');
     const label = header?.innerEl;
@@ -222,6 +222,7 @@ export class IdeaColumnWidths {
       Math.max(horizontal(style(headerName)), sortSpace) + horizontal(labelStyle) + iconWidth +
       (iconWidth ? pixels(labelStyle.columnGap) : 0) + 2;
 
+    if (!contentMinimum) return Math.ceil(headerWidth);
     const sample = nativeCell(view, property);
     const cell = sample?.el?.cloneNode(true) as HTMLElement | undefined;
     // A stable inert sample avoids minimum widths depending on whether the
