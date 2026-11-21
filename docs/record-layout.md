@@ -37,6 +37,22 @@ Place `nebula-record-layouts.json` alongside the record folder or in an ancestor
 
 ## Schema
 
+A single Markdown page can declare its own profile under `nf_record_layout` in its YAML frontmatter. Use the same `metrics` and `tabs` fields as a collection profile. This page-level profile takes precedence over the folder configuration and works for standalone notes. Open the record inspector to see the result.
+
+单页可把布局放在文件开头的 YAML 中，正文保留标准 Markdown。运行命令「查看记录属性与关联」即可查看这些指标。关联标签页沿用下方同一套字段规则。
+
+```yaml
+---
+预算: 100
+nf_record_layout:
+  metrics:
+    - property: 预算
+      format: number
+      currency: CNY
+  tabs: []
+---
+```
+
 | Field | Meaning |
 | --- | --- |
 | `version` | Must be `1`. |

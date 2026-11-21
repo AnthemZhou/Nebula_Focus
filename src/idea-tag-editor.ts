@@ -91,9 +91,24 @@ export class IdeaTagEditors {
     return {added: [...cached.added], hidden: [...cached.hidden], colors: {...cached.colors}};
   }
 
+  private declaredOptions(view: unknown, property: string) {
+    const config = object(view) && object(view.config) ? view.config : undefined;
+    const getter = config?.get;
+    const records: unknown = typeof getter === 'function'
+      ? (getter as (key: string) => unknown).call(config, 'nebulaRecords') : config?.nebulaRecords;
+    const fields = object(records) && object(records.fields) ? records.fields : undefined;
+    const field = fields && Object.hasOwn(fields, property) ? fields[property] : undefined;
+    return {values: cleanTagOrder(object(field) ? field.options : undefined),
+      colors: cleanTagColors(object(field) ? field.optionColors : undefined)};
+  }
+
+  private optionColors(view: unknown, property: string): Record<string, string> {
+    return {...this.declaredOptions(view, property).colors, ...this.readOptions(ideaTagOrderKey(view, property)).colors};
+  }
+
   colors(view: unknown): Record<string, Record<string, string>> {
     return Object.fromEntries(Object.keys(tableProfile(view)?.tags ?? {}).map(property =>
-      [property, this.readOptions(ideaTagOrderKey(view, property)).colors]));
+      [property, this.optionColors(view, property)]));
   }
 
   private async saveOptions(key: string, options: IdeaTagOptions) {
@@ -105,13 +120,14 @@ export class IdeaTagEditors {
 
   private catalog(view: IdeaView, property: Property, selected: string[] = []): TagCatalog {
     const key = ideaTagOrderKey(view, property), order = this.readOrder(key), options = this.readOptions(key);
-    const values = new Set<string>();
+    const declared = this.declaredOptions(view, property);
+    const values = new Set(declared.values);
     for (const entry of this.entries(view)) {
       if (typeof entry?.getRawProperty !== 'function') continue;
       try {for (const value of valuesOf(entry.getRawProperty(property), tableProfile(view)?.tags[property]) ?? []) values.add(value);} catch { /* Skip unsupported entries. */ }
     }
     for (const value of [...options.added, ...selected]) values.add(value);
-    return {...options, order, values: applyTagOrder([...values], order).filter(value => !options.hidden.includes(value))};
+    return {...options, colors: {...declared.colors, ...options.colors}, order, values: applyTagOrder([...values], order).filter(value => !options.hidden.includes(value))};
   }
 
   /** Called by the header adapter; returns false for non-classification columns. */
@@ -324,7 +340,7 @@ export class IdeaTagEditors {
   private chip(edit: Editor, value: string): HTMLElement {
     const chip = edit.popup.ownerDocument.createElement('span');
     chip.className = 'bui-tag-editor-chip bui-native-tag';
-    chip.dataset.buiTone = this.readOptions(edit.orderKey).colors[value] ?? ideaTone(value, edit.property); chip.textContent = value;
+    chip.dataset.buiTone = this.optionColors(edit.binding.view, edit.property)[value] ?? ideaTone(value, edit.property); chip.textContent = value;
     return chip;
   }
 
@@ -414,7 +430,6 @@ export class IdeaTagEditors {
     panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', `管理标签 ${value}`);
     const name = doc.createElement('input'); name.type = 'text'; name.value = value;
     name.setAttribute('aria-label', '标签名称');
-    const save = doc.createElement('button'); save.type = 'button'; save.textContent = '重命名';
     const remove = doc.createElement('button'); remove.type = 'button'; remove.textContent = '删除标签';
     remove.className = 'bui-tag-option-delete';
     const status = doc.createElement('div'); status.setAttribute('role', 'status'); status.hidden = true;
@@ -470,11 +485,10 @@ export class IdeaTagEditors {
         for (const control of panel.querySelectorAll('input, button')) (control as HTMLInputElement).disabled = false;
       }
     };
-    save.addEventListener('click', () => {void action('rename', name.value.trim());});
     remove.addEventListener('click', () => {void action('delete', '');});
-    panel.append(name, save, remove);
+    panel.append(name, remove);
     const heading = doc.createElement('div'); heading.className = 'bui-tag-option-heading'; heading.textContent = '颜色'; panel.append(heading);
-    const currentTone = this.readOptions(edit.orderKey).colors[value] ?? ideaTone(value, edit.property);
+    const currentTone = this.optionColors(edit.binding.view, edit.property)[value] ?? ideaTone(value, edit.property);
     for (const [tone, title] of TAG_COLORS) {
       const button = doc.createElement('button'); button.type = 'button'; button.className = 'bui-tag-option-color';
       button.setAttribute('aria-label', title); button.setAttribute('aria-pressed', String(currentTone === tone));

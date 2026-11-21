@@ -9,9 +9,9 @@ function fixture(http, initial) {
   const mod = {exports: {}};
   class Component {}
   class Modal {open() {} close() {}}
-  new Function('require', 'module', 'exports', 'window', code)(() => ({Component, Modal, Notice: class {constructor(text) {notices.push(text);}}, requestUrl: async options => {requests.push(options); return http(options);}}), mod, mod.exports, {setTimeout, clearTimeout});
+  new Function('require', 'module', 'exports', 'window', code)(() => ({Component, Modal, setIcon: (el, icon) => el.dataset.icon = icon, Notice: class {constructor(text) {notices.push(text);}}, requestUrl: async options => {requests.push(options); return http(options);}}), mod, mod.exports, {setTimeout, clearTimeout});
   const controller = new mod.exports.RecordingAssistant({app}, {handle: async () => ({ok: true, result: {}})}, () => stored, async config => {stored = config;});
-  return {controller, secrets, notices, requests, config: () => stored};
+  return {controller, app, secrets, notices, requests, config: () => stored};
 }
 test('controller sends the configured model and authorization without persisting the secret in config', async () => {
   const f = fixture(async () => ({status: 200, json: {choices: [{message: {content: '请明确目标数据库。'}}]}}));
@@ -78,4 +78,43 @@ test('configuration cannot change credentials or model during an active request'
   await assert.rejects(() => f.controller.saveConfig({...f.controller.config, model: 'other'}, 'another-key'), /当前记录/);
   assert.equal(f.config().model, 'vision-tools'); assert.equal(f.secrets.get('test-key'), 'private-api-key');
   resolve({status: 200, json: {choices: [{message: {content: 'ok'}}]}}); await turn;
+});
+test('each user instruction carries the current page path without silently reading its body',async()=>{
+  const f=fixture(async()=>({status:200,json:{choices:[{message:{content:'请确认修改内容'}}]}}));
+  let path='Notes/当前页面.md';f.app.workspace={getActiveFile:()=>({path})};
+  f.controller.setDraft('补上说明');await f.controller.send();
+  const first=JSON.parse(f.requests[0].body).messages[1].content;
+  assert.ok(first.includes(path));assert.ok(first.includes('用户消息：补上说明'));assert.ok(first.includes('仅作上下文'));
+  assert.equal(f.controller.state.bubbles[0].text,'补上说明');
+  path='Notes/另一页.md';f.controller.setDraft('记录到这里');await f.controller.send();
+  const second=JSON.parse(f.requests[1].body).messages.at(-1).content;assert.ok(second.includes(path));
+});
+
+test('phone keyboard detaching the native navbar never removes the focused AI input or its IME draft', () => {
+  const {JSDOM} = require('jsdom');
+  const dom = new JSDOM('<body class="is-phone"><div class="app-container"><div class="mobile-navbar"><div class="mobile-navbar-actions"></div></div></div></body>');
+  const {document: doc} = dom.window, native = doc.querySelector('.mobile-navbar'), parent = native.parentElement;
+  const f = fixture(async () => {throw Error('typing must not send');});
+  try {
+    f.controller.refreshDock(doc, true);
+    const input = doc.querySelector('.bui-ai-dock textarea'); input.focus();
+    input.dispatchEvent(new dom.window.CompositionEvent('compositionstart'));
+    input.value = '报'; input.dispatchEvent(new dom.window.Event('input'));
+    // Obsidian's keyboardWillShow handler detaches its navbar; the next plugin
+    // scan runs before Chinese composition has committed the controller draft.
+    native.remove(); f.controller.refreshDock(doc, true);
+    assert.equal(input.isConnected, true);
+    assert.equal(doc.activeElement, input);
+    assert.equal(doc.querySelector('.bui-ai-dock textarea'), input);
+    input.value = '报销记录'; input.dispatchEvent(new dom.window.CompositionEvent('compositionend'));
+    assert.equal(f.controller.state.draft, '报销记录');
+    input.setSelectionRange(2, 2);
+    parent.append(native); f.controller.refreshDock(doc, true);
+    assert.equal(doc.activeElement, input); assert.equal(input.selectionStart, 2);
+    assert.equal(doc.querySelectorAll('.bui-ai-dock').length, 1);
+    input.value += ' 123'; input.dispatchEvent(new dom.window.Event('input'));
+    assert.equal(f.controller.state.draft, '报销记录 123'); assert.equal(f.requests.length, 0);
+    f.controller.refreshDock(doc, false);
+    assert.equal(doc.querySelector('.bui-ai-dock'), null); assert.equal(native.classList.contains('bui-ai-docked'), false);
+  } finally {f.controller.clearDocks(); dom.window.close();}
 });

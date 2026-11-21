@@ -1,4 +1,5 @@
-const SCROLLPORTS = '.markdown-preview-view, .cm-scroller, .bases-view, .nf-reminders, .nf-finance-scroll';
+// Only database grids may fade. Notes and database controls remain responsive.
+const SCROLLPORTS = '.bases-view, .nf-finance-scroll';
 type Binding = {resize: ResizeObserver; update: () => void; children: Set<Element>};
 
 /** Fade clipped content without changing its dimensions. Observing immediate
@@ -39,7 +40,7 @@ export class OverflowFades {
       }
       binding.update();
     }
-    for (const [el, binding] of this.bindings) if (!el.isConnected || !el.closest('.mod-root')) this.detach(el, binding);
+    for (const [el, binding] of this.bindings) if (!el.isConnected || !el.closest('.mod-root') || !el.matches(SCROLLPORTS)) this.detach(el, binding);
   }
 
   private detach(el: HTMLElement, binding: Binding) {

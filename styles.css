@@ -1828,7 +1828,7 @@ body.bui-enabled :is(button, a).bui-sidebar-search-result:focus-visible {
 body.bui-enabled .bui-sidebar-search-title {flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font: inherit;}
 body.bui-enabled .bui-sidebar-search-path {
   flex: 0 1 auto; max-width: 45%; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-  color: var(--text-muted); font: inherit; text-align: end;
+  color: var(--text-faint); font: inherit; font-size: .9em; text-align: end;
 }
 body.bui-enabled .bui-sidebar-search-result.is-body-match {flex-direction: column; align-items: stretch; gap: 3px;}
 body.bui-enabled .bui-sidebar-search-result.is-body-match .bui-sidebar-search-path {
@@ -2808,25 +2808,32 @@ body.bui-enabled:is(.is-mobile, .bui-touch) .bases-embed:has(> .embed-actions) >
   padding-inline-end: 44px;
 }
 
-/* Desktop content is a stable canvas. Narrow panes scroll over it rather than
-   reflowing tables/cards as a dock is dragged. Phones retain their touch layout. */
+/* Prose and database tools reflow with their pane; only the grid keeps its
+   column/card widths and scrolls independently. Phones retain their layout. */
 body.bui-enabled:not(.is-mobile) .workspace-leaf-content[data-type="markdown"] .markdown-preview-sizer {
-  width: var(--file-line-width); min-width: var(--file-line-width); max-width: var(--file-line-width);
+  width: 100%; min-width: 0; max-width: var(--file-line-width);
 }
-body.bui-enabled:not(.is-mobile) .workspace-leaf-content[data-type="markdown"] .cm-sizer {
-  min-width: var(--file-line-width);
-}
-body.bui-enabled:not(.is-mobile) .workspace-leaf-content[data-type="markdown"] .cm-contentContainer {
-  min-width: var(--file-line-width);
+body.bui-enabled:not(.is-mobile) .workspace-leaf-content[data-type="markdown"] :is(.cm-sizer, .cm-contentContainer) {
+  min-width: 0;
 }
 body.bui-enabled:not(.is-mobile) .view-content.nf-reminders {
-  overflow-x: auto; padding-inline: 48px;
+  overflow-x: hidden; padding-inline: clamp(16px, 4vw, 48px);
 }
 body.bui-enabled:not(.is-mobile) .view-content.nf-reminders > * {
-  width: 1064px; min-width: 1064px; max-width: 1064px;
+  width: 100%; min-width: 0; max-width: 1064px;
 }
-body.bui-enabled:not(.is-mobile) .workspace-leaf-content[data-type="bases"] > .view-content > .bases-header {
-  min-width: 1160px;
+body.bui-enabled:not(.is-mobile) :is(.bases-header, .bases-toolbar) {
+  width: 100%; min-width: 0; max-width: 100%; height: auto;
+}
+body.bui-enabled:not(.is-mobile) .bases-toolbar {flex-wrap: wrap; row-gap: 4px;}
+body.bui-enabled:not(.is-mobile) .bases-toolbar-item {flex-shrink: 0; max-width: 100%;}
+body.bui-enabled:not(.is-mobile) .bases-toolbar .bases-toolbar-item .text-button-label {display: inline;}
+body.bui-enabled:not(.is-mobile) .bases-toolbar-views-menu {flex-shrink: 1; min-width: 0;}
+body.bui-enabled:not(.is-mobile) :is(.bases-embed, .block-language-base, .nf-reminder-base, .nf-home-data-view) {
+  min-width: 0; max-width: 100%;
+}
+body.bui-enabled:not(.is-mobile) :is(.bases-view, .nf-finance-scroll) {
+  min-width: 0; max-width: 100%; overflow-x: auto;
 }
 body.bui-enabled:not(.is-mobile) :is(.nf-finance-table, .bases-cards-container) {width: 1160px; min-width: 1160px;}
 body.bui-enabled:not(.is-mobile) .workspace-leaf-content[data-type="bases"] .bui-gallery {width: 1160px; min-width: 1160px;}
@@ -2859,8 +2866,23 @@ body.bui-enabled:not(.is-mobile) .bui-desktop-header-top > .view-actions {
 }
 body.bui-enabled:not(.is-mobile) .bui-desktop-header-top > .view-actions > button {height: 28px;}
 body.bui-enabled :is(button, a).bui-sidebar-search-result {
-  padding-inline-start: calc(12px + var(--bui-search-depth, 0) * 18px);
+  position: relative; --bui-search-indent: 24px;
+  padding-inline-start: calc(12px + var(--bui-search-depth, 0) * var(--bui-search-indent));
 }
+body.bui-enabled .bui-sidebar-search-result:not(.is-child-page) .bui-sidebar-search-title {font-weight: 500;}
+body.bui-enabled .bui-search-branches {
+  position: absolute; inset-inline-start: 12px; inset-block: 0; display: flex; pointer-events: none;
+}
+body.bui-enabled .bui-search-branch {position: relative; width: var(--bui-search-indent); height: 100%;}
+body.bui-enabled .bui-search-branch::before {
+  content: ''; position: absolute; inset-inline-start: 5px; inset-block: 0;
+  border-inline-start: 1px solid color-mix(in srgb, var(--text-faint) 45%, transparent);
+}
+body.bui-enabled .bui-search-branch:last-child::after {
+  content: ''; position: absolute; inset-inline-start: 5px; top: 0; width: 11px; height: 50%;
+  border-inline-start: 1px solid var(--text-faint); border-bottom: 1px solid var(--text-faint); border-end-start-radius: 5px;
+}
+body.bui-enabled.is-phone :is(button, a).bui-sidebar-search-result {--bui-search-indent: 18px;}
 body.bui-enabled .bui-sidebar-search-section.bui-sidebar-bookmark-group {margin-inline-start: 18px;}
 
 /* AI recording is available independently of the appearance toggle. */
@@ -2900,3 +2922,60 @@ body.is-phone .modal.bui-ai-modal {width: 100%; max-width: 100%; height: 100%; m
 body.is-phone .bui-ai-modal > .modal-header {height: 56px; min-height: 56px; flex: none; padding: 12px 40px 8px; align-items: center;}
 body.is-phone .bui-ai-modal > .modal-close-button {top: 0;}
 body.is-phone .bui-ai-modal .modal-content {flex: 1; min-height: 0; margin: 4px 0 0; padding: 0;}
+
+/* The composer survives the native navbar being detached for the keyboard. */
+body.bui-enabled.is-phone .mobile-navbar.bui-ai-docked {visibility: hidden; pointer-events: none;}
+body.bui-enabled.is-phone .bui-ai-dock-host {
+  position: fixed; display: flex; left: 0; right: 0; width: calc(100% - 28px); max-width: 640px; height: auto; min-height: 56px;
+  bottom: max(12px, var(--safe-area-inset-bottom, 0px), var(--keyboard-height, 0px));
+  margin: 0 auto; padding: 4px; border: 1px solid var(--background-modifier-border); border-radius: 32px;
+  background: var(--background-secondary); box-shadow: 0 3px 18px rgba(0, 0, 0, .12);
+  opacity: 1; transition: transform .3s ease-out;
+}
+body.bui-enabled.is-phone:has(.workspace:is(.is-left-sidedock-open, .is-right-sidedock-open)) .bui-ai-dock-host {pointer-events: none;}
+.bui-ai-dock {position: relative; display: flex; width: 100%; min-width: 0; align-items: center; gap: 2px;}
+.bui-ai-dock > button {
+  display: flex; align-items: center; justify-content: center; flex: 0 0 44px;
+  width: 44px; height: 44px; min-height: 44px; padding: 10px; margin: 0;
+  border: 0; border-radius: 50%; box-shadow: none; background: transparent; color: var(--text-normal);
+}
+.bui-ai-dock > button svg {width: 24px; height: 24px;}
+.bui-ai-dock > textarea {
+  flex: 1 1 auto; width: 0; min-width: 0; height: 44px; min-height: 44px; max-height: 44px;
+  padding: 10px 4px; margin: 0; border: 0; outline: none; box-shadow: none; resize: none;
+  font: max(16px, var(--font-text-size)) / 24px var(--font-text); background: transparent; color: var(--text-normal);
+  user-select: text; -webkit-user-select: text;
+}
+.bui-ai-dock > textarea:focus {outline: none; box-shadow: none;}
+.bui-ai-dock > textarea::placeholder {color: var(--text-muted);}
+.bui-ai-dock > button.bui-ai-dock-send {background: var(--interactive-accent); color: var(--text-on-accent);}
+.bui-ai-dock > button:disabled {opacity: .4;}
+
+.bui-ai-dock-menu {
+  position: fixed; bottom: var(--bui-ai-menu-bottom); inset-inline: 14px; z-index: calc(var(--layer-modal) + 1);
+  display: flex; flex-direction: column; padding: 8px; max-height: 45vh; overflow-y: auto;
+  border: 1px solid var(--background-modifier-border); border-radius: 20px;
+  background: var(--background-secondary); box-shadow: 0 6px 24px rgba(0, 0, 0, .2);
+}
+.bui-ai-dock-menu > button {
+  display: flex; justify-content: flex-start; flex: none; min-height: 44px; padding: 10px 14px; text-align: start;
+  border: 0; border-radius: 12px; background: transparent; box-shadow: none;
+  font-size: var(--font-text-size); color: var(--text-normal);
+}
+.bui-ai-dock-menu > button:disabled {opacity: .4;}
+.bui-ai-dock-menu > button:focus-visible, .bui-ai-dock-menu > button:hover {background: var(--background-modifier-hover);}
+.bui-ai-dock-menu > hr {margin: 4px 8px; border: 0; border-top: 1px solid var(--background-modifier-border);}
+
+body.bui-enabled .bui-notion-frozen .bui-notion-frozen-cell {
+  z-index: 1;
+  background-color: var(--background-primary);
+}
+body.bui-enabled .bui-notion-frozen .bases-thead .bui-notion-frozen-cell {
+  background: linear-gradient(var(--bases-table-header-background), var(--bases-table-header-background)), var(--background-primary);
+}
+body.bui-enabled .bui-notion-frozen :is(.bases-table-footer, .bases-table-group-summary-row) .bui-notion-frozen-cell {
+  background-color: var(--bases-table-summary-background, var(--background-primary));
+}
+body.bui-enabled .bui-notion-frozen :is(.bases-table-selection, .bases-table-active-cell) {
+  z-index: 2;
+}

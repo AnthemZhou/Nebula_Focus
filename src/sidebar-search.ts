@@ -215,11 +215,16 @@ export class SidebarSearchModal extends Modal {
     // Direct/tag search is a flattened page tree; preserve its ancestry.
     // File browsing already shows one folder, and bookmarks have their own groups.
     const depth = this.mode === '直接搜索' || this.mode === '标签' ? node.parent.split('/').filter(Boolean).length : 0;
-    return this.choice(host, node.title, detail ?? '', () => {void this.openPage(node, subpath);}, depth ? 'corner-down-right' : undefined, depth);
+    return this.choice(host, node.title, detail ?? '', () => {void this.openPage(node, subpath);}, undefined, depth);
   }
   private choice(host: HTMLElement, title: string, detail: string, choose: () => void, icon?: string, depth = 0) {
     const button = host.createEl('button', {cls: 'bui-sidebar-search-result'});
     button.style.setProperty('--bui-search-depth', String(Math.min(8, depth)));
+    if (depth) {
+      button.classList.add('is-child-page');
+      const guides = button.createSpan({cls: 'bui-search-branches', attr: {'aria-hidden': 'true'}});
+      for (let level = 0; level < Math.min(8, depth); level++) guides.createSpan({cls: 'bui-search-branch'});
+    }
     const label = button.createSpan({cls: 'bui-sidebar-search-title'});
     if (icon) setIcon(label.createSpan({cls: 'bui-sidebar-search-kind'}), icon);
     label.append(title);

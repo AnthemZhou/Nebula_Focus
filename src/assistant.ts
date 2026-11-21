@@ -1,6 +1,7 @@
 import {Component, Modal, Notice, Plugin, Setting, requestUrl, setIcon, type TextComponent, type ToggleComponent} from 'obsidian';
 import {AssistantEngine, assistantConfig, assistantPreset, chatEndpoint, type AssistantConfig, type ChatEvent, type ChatImage, type Transport} from './assistant-engine';
 import {RecordService} from './record-api';
+import {MobileAssistantDock} from './assistant-dock';
 
 type Attachment = {file: File; preview: string; image?: ChatImage};
 type Bubble = {kind: 'user' | 'assistant' | 'error' | 'record'; text: string; path?: string};
@@ -15,6 +16,7 @@ export class RecordingAssistant extends Component {
   private status = '';
   private stopped = false;
   private busy = false;
+  private dock?: MobileAssistantDock;
   constructor(readonly plugin: Plugin, readonly records: RecordService, private readConfig: () => unknown,
     private writeConfig: (config: AssistantConfig) => Promise<void>) {
     super(); this.engine = new AssistantEngine(input => records.handle(input), plugin.app.vault.getName());
@@ -24,7 +26,16 @@ export class RecordingAssistant extends Component {
   onload() {
     this.plugin.addCommand({id: 'open-recording-assistant', name: '打开 AI 记录', callback: () => this.open()});
   }
-  onunload() {this.stopped = true; this.cancel(); this.modal?.close(); this.settingsModal?.close(); this.releaseAttachments();}
+  onunload() {this.stopped = true; this.cancel(); this.modal?.close(); this.settingsModal?.close(); this.releaseAttachments(); this.clearDocks();}
+  refreshDock(doc: Document, enabled: boolean) {
+    const active = enabled && !this.stopped && doc.body.classList.contains('is-phone');
+    // The native navbar is temporarily detached while the soft keyboard is up.
+    // Retain both our independent surface and the native control references.
+    const host = active ? doc.querySelector<HTMLElement>('.mobile-navbar') ??
+      (this.dock?.isConnected && this.dock.host.ownerDocument === doc ? this.dock.host : null) : null;
+    if (this.dock?.host !== host) {this.clearDocks(); if (host) this.dock = new MobileAssistantDock(host, this);}
+  }
+  clearDocks() {this.dock?.destroy(); this.dock = undefined;}
   open() {
     if (this.stopped) return;
     if (this.modal) {this.modal.input?.focus(); return;}
@@ -34,10 +45,10 @@ export class RecordingAssistant extends Component {
     if (this.settingsModal) return;
     this.settingsModal = new AssistantSettings(this); this.settingsModal.open();
   }
-  settingsClosed() {this.settingsModal = undefined; this.modal?.render();}
+  settingsClosed() {this.settingsModal = undefined; this.modal?.render(); this.dock?.render();}
   closed() {this.cancel(); this.modal = undefined;}
   get state() {return {bubbles: this.bubbles, attachments: this.attachments, draft: this.draft, status: this.status, busy: this.busy};}
-  setDraft(value: string) {this.draft = value;}
+  setDraft(value: string) {this.draft = value; this.dock?.render();}
   async saveConfig(config: AssistantConfig, key?: string) {
     if (this.busy) throw Error('请等待当前记录完成，或先停止，再更改 AI 配置');
     chatEndpoint(config.endpoint);
@@ -50,11 +61,12 @@ export class RecordingAssistant extends Component {
       this.engine.clear();
       if (this.bubbles.length) this.bubbles.push({kind: 'assistant', text: 'AI 服务或模型已更换，后续对话从新上下文开始；已保存的页面保留。'});
     }
+    this.dock?.render();
   }
   private releaseAttachments() {for (const item of this.attachments) URL.revokeObjectURL(item.preview); this.attachments = [];}
   removeAttachment(item: Attachment) {
     if (this.busy) return;
-    this.attachments = this.attachments.filter(value => value !== item); URL.revokeObjectURL(item.preview); this.modal?.renderAttachments();
+    this.attachments = this.attachments.filter(value => value !== item); URL.revokeObjectURL(item.preview); this.modal?.renderAttachments(); this.dock?.render();
   }
   addFiles(files: File[]) {
     if (this.busy) return;
@@ -64,11 +76,11 @@ export class RecordingAssistant extends Component {
       if (!/\.(png|jpe?g|webp|gif|heic|heif)$/i.test(file.name) || file.size > 20 * 1024 * 1024 || !file.size) {new Notice('请选择 20 MB 以内的图片'); continue;}
       this.attachments.push({file, preview: URL.createObjectURL(file)});
     }
-    this.modal?.renderAttachments();
+    this.modal?.renderAttachments(); this.dock?.render();
   }
   clear() {
     if (this.busy) return;
-    this.engine.clear(); this.bubbles = []; this.releaseAttachments(); this.draft = ''; this.status = ''; this.modal?.render();
+    this.engine.clear(); this.bubbles = []; this.releaseAttachments(); this.draft = ''; this.status = ''; this.modal?.render(); this.dock?.render();
   }
   cancel() {if (this.abort) {this.abort.abort(); this.status = '正在停止…'; this.modal?.renderStatus();}}
   private transport(config: AssistantConfig): Transport {
@@ -126,7 +138,8 @@ export class RecordingAssistant extends Component {
     catch (error) {new Notice(error instanceof Error ? error.message : '请先配置 AI'); this.openSettings(); return;}
     this.busy = true; this.abort = new AbortController(); this.status = '正在准备…';
     const text = this.draft.trim(), attachments = [...this.attachments];
-    this.modal?.renderStatus();
+    const page = this.app.workspace?.getActiveFile()?.path;
+    this.modal?.renderStatus(); this.dock?.render();
     let accepted = false;
     try {
       const images: ChatImage[] = [];
@@ -134,14 +147,14 @@ export class RecordingAssistant extends Component {
       if (this.abort.signal.aborted || this.stopped) throw Error('已停止');
       this.bubbles.push({kind: 'user', text: text + (images.length ? '\n' + images.map(image => `📎 ${image.name}`).join('\n') : '')});
       this.draft = ''; accepted = true; this.modal?.render();
-      await this.engine.send(text, images, config.model.trim(), transport, this.abort.signal, event => this.event(event));
+      await this.engine.send(text, images, config.model.trim(), transport, this.abort.signal, event => this.event(event), page);
       this.releaseAttachments();
     } catch (error) {
       this.bubbles.push({kind: 'error', text: error instanceof Error ? error.message : '处理失败'});
       // Attachments retain their saved paths on retry, so no duplicate copies.
       if (!accepted) this.draft = text;
     } finally {
-      this.busy = false; this.abort = undefined; this.status = ''; this.modal?.render();
+      this.busy = false; this.abort = undefined; this.status = ''; this.modal?.render(); this.dock?.render();
     }
   }
   private event(event: ChatEvent) {

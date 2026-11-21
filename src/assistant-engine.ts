@@ -47,12 +47,13 @@ export class AssistantEngine {
   private busy = false;
   constructor(private request: (input: unknown) => Promise<RecordResponse>, private vault: string) {}
   clear() {if (this.busy) throw Error('请先停止当前请求'); this.history = [];}
-  async send(text: string, images: ChatImage[], model: string, transport: Transport, signal: AbortSignal, emit: (event: ChatEvent) => void) {
+  async send(text: string, images: ChatImage[], model: string, transport: Transport, signal: AbortSignal, emit: (event: ChatEvent) => void, page?: string) {
     if (this.busy) throw Error('上一条消息仍在处理');
     if (!text.trim() && !images.length) return;
     if (text.length > 20_000) throw Error('单条消息请控制在 20000 字以内');
     this.busy = true;
     const check = () => {if (signal.aborted) throw Error('已停止；已保存的记录会保留');};
+    if (page) text = `当前打开的页面路径（仅作上下文，修改仍须用户指令）：${JSON.stringify(page)}\n用户消息：${text}`;
     const content = images.length ? [{type: 'text', text: text + '\n附件已保存到当前仓库：\n' + images.map(image => `${image.name}: ${image.wikiLink}（路径 ${image.path}）`).join('\n')},
       ...images.map(image => ({type: 'image_url', image_url: {url: image.dataUrl}}))] : text;
     this.history.push({role: 'user', content});

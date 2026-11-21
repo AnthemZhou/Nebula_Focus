@@ -139,6 +139,8 @@ test('real plugin startup registers external archives only for desktop filesyste
         require(name){
           if(name==='obsidian')return f.api;
           if(name==='./archive-controller')return f.mod.exports;
+          if(name==='./notion-export')return {registerNotionExport(){}};
+          if(name==='./notion-rule-view')return {registerNotionRules(){}};
           if(name==='./page-sidebar')return {PageSidebar:class {
             onload(){this.indexedSettings={ribbon:!!this.ribbon,archives:!!this.archives,rightWorkspace:!!this.rightWorkspace};}
           }};

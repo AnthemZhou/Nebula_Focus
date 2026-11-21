@@ -1,6 +1,5 @@
 # Third-party notices
 
-Nebula Focus does not bundle a UI framework or third-party runtime library.
 The host supplies the Obsidian API and its native icons through the external
 `obsidian` module. Obsidian itself is not distributed with this plugin.
 
@@ -11,6 +10,24 @@ license. These development dependencies are not included in the plugin bundle.
 Notion is a visual interaction reference only. No Notion source code, assets,
 service, or account connection is included. Nebula Focus is not affiliated with
 Notion or Obsidian.
+
+## yaml
+
+The source-preserving YAML parser is distributed under the ISC license.
+
+Copyright Eemeli Aro <eemeli@gmail.com>
+
+Permission to use, copy, modify, and/or distribute this software for any purpose
+with or without fee is hereby granted, provided that the above copyright notice
+and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+THIS SOFTWARE.
 
 ## LXGW WenKai Regular
 

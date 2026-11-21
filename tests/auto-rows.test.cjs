@@ -796,3 +796,45 @@ test('phone tables retain the existing last-column fill behavior',()=>{
     assert.equal(f.container.style.width,'399px');
   }finally{f.close();}
 });
+
+test('Notion frozen columns stay mounted with their native header and editor when scrolled beyond the prefix', () => {
+  const props = Array.from({length: 10}, (_, i) => `note.Field${i}`);
+  for (const wrap of [true, false]) {
+    const profile = {titleColumn: props[0], titleProperty: 'Field0', tags: {}, attachments: [], wrap};
+    const f = fixture({name: 'Imported view', profile, properties: props});
+    try {
+      const {view, host, container, box, doc} = f;
+      view.config = {...view.config, nebulaNotionFrozenColumnIndex: 1};
+      const makeStrip = () => {
+        const row = new view.rows[0].constructor(view);
+        row.render(f.entries[0], props);
+        for (const cell of row.cells) cell.innerEl = cell.inner;
+        return row;
+      };
+      view.header = makeStrip(); view.theadEl.append(view.header.el);
+      view.footerSummary = makeStrip(); view.footerSummary.shouldDisplay = () => true;
+      for (const column of Object.values(view.columnInfo)) column.customWidth = 100;
+      host.style.overflowX = 'auto'; box(host, 380, 300);
+      host.scrollLeft = 480; box(container, 1000, 300, 0, -480);
+      assert.equal(f.adapter.refresh(view), true);
+      view.updateVirtualDisplay();
+      assert(host.classList.contains('bui-notion-frozen'));
+      for (const strip of [view.header, view.rows[0], view.footerSummary]) {
+        assert.equal(strip.cells[0].el.style.insetInlineStart, '480px');
+        assert.equal(strip.cells[1].el.style.insetInlineStart, '580px');
+        assert.equal(strip.cells[2].el.isConnected, false, 'an offscreen nonfrozen cell remains virtualized');
+      }
+      const editor = view.rows[0].cells[0].inner;
+      editor.focus();
+      view.activeCell = {groupIdx:0,row:0,column:1};
+      view.updateVirtualDisplay();
+      assert.equal(doc.activeElement, editor);
+      assert.equal(view.activeCellEl.style.insetInlineStart, '580px');
+      assert.equal(view.getClosestCellIndexWithinGroup({clientX:120,clientY:20},0).column,1);
+      assert.equal(view.getClosestCellIndexWithinGroup({clientX:260,clientY:20},0).column,7);
+      assert.equal(view.getCellRect(view.activeCell).left,580);
+      f.adapter.clear(); assert(!host.classList.contains('bui-notion-frozen'));
+      assert.equal(host.querySelector('.bui-notion-frozen-cell'),null);
+    } finally { f.close(); }
+  }
+});

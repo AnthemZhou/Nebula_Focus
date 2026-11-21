@@ -1,5 +1,29 @@
 # Nebula Focus validation
 
+## Phone composer focus / 手机底栏输入焦点 — 2026-11-16 (unreleased)
+
+The user subsequently reported that the phone composer could not accept text, so the earlier picker/keyboard-position acceptance below does not establish reliable typing. Inspection of the installed Obsidian runtime shows that `keyboardWillShow` detaches the native navbar. A new regression reproduces the loss of the focused textarea and uncommitted Chinese composition when the plugin rescans that detached host; it fails before the fix and passes afterward.
+
+The composer now stays on its own mounted surface and only observes the native navbar's drawer transform/transition. Keyboard hide/show and plugin rescans preserve the same input node, focus, selection and composition. Disabling the feature restores the untouched native controls; destroying the dock disconnects its motion observer. All **39/39 recording checks across 5 files** pass; strict TypeScript/build and `git diff --check` pass. Scoped assistant lint reports **0 errors and 12 warnings**. The unchanged full suite was not repeated. Updated assets match both existing test vaults; settings and notes are not written by the deployment.
+
+The user clarified that tapping the field does not show the keyboard. An additional isolated WebKit layout check with native host CSS passes 8 light/dark, portrait/landscape and keyboard-inset combinations: three points across the field hit the actual enabled textarea, its height is 44px, and no keyboard-area overlap is detected. This verifies layout hit targets only, not iOS keyboard activation. Local evidence is in ignored `dist/mobile-composer-2026-11-16/input-hit-check/`.
+
+After restarting the synchronized build, the user directly confirmed **“重启后可以弹出”**: tapping the bottom AI input now opens the software keyboard. Mirroring had been interrupted before entering Obsidian, so this is user-confirmed direct-touch acceptance for keyboard activation. Continuous Chinese typing, real API calls and model writes are not newly verified by this confirmation.
+
+中文：已定位到软键盘弹出时原生底栏被移除，导致其中的 AI 输入框失焦及未提交的中文丢失。现将输入框独立保留，仅同步侧栏滑动位移；新回归先复现失败，再确认修复后焦点、光标及中文组合输入保留。39 项 AI 记录相关测试及严格构建通过，已同步两端。用户重启后直接确认点击底部输入框已能弹出软键盘；此确认仅覆盖键盘唤起，不扩大为连续中文输入、真实 API 调用或模型写入验收。
+
+## Mobile AI composer and responsive panes / 手机 AI 底栏与分栏布局 — 2026-11-16 (after 1.5.0, unreleased)
+
+Full suite: **845/845 passed across 63 test files** (10.32s; no failed, skipped or cancelled tests). Strict TypeScript/build passes; lint reports **0 errors and 57 warnings**, with no rule disabled. The new dock regressions cover shared drafts, send/stop and IME behavior, native-control restoration, screenshot attachments without automatic sending, and retaining the active picker anchor until selection or cancellation.
+
+Mac UI checks confirm that the tag menu has no duplicate Rename action, narrow-pane prose and database tools reflow with visible tool labels, only overflowing database grids receive edge fades, and search results show tree guides with fainter source paths. Physical iPhone Mirroring confirms the bottom composer, shared chat draft and attachment menu. After restarting the final runtime, the user directly confirmed **“＋ → 添加截图” opens image selection and the input bar stays above the software keyboard**. These are direct-touch acceptance results for those two scenarios only.
+
+Development runtime assets are synchronized to the two existing test vaults; this follow-up is **not included in the published 1.5.0 release**. All 269 existing Mac and 45 existing iPhone Markdown/Base files match the pre-test hashes. An accidental empty test record and its generated Base were moved to recoverable trash; its appended creation-time sort was removed only after verifying that doing so reproduces the exact pre-test Base hash. Existing settings and credentials were preserved. No model endpoint was called and no screenshot or note was sent externally; real model authentication, recognition quality and resulting writes remain unverified without a configured API. Voice input is not implemented.
+
+中文：1.5.0 发布后的开发版已同步，845 项全量回归与严格构建通过，Lint 0 错误、57 项警告。桌面已验证标签菜单、正文和工具栏随分栏换行、数据库网格渐隐及搜索树状层级。手机底栏共享草稿与聊天入口已通过镜像检查；用户重启后直接确认截图选择和软键盘避让均正常。临时空记录及自动生成的数据库已移入可恢复回收站，测试附加的排序已按测试前哈希精确还原；两端既有笔记及数据库文件均未改变。未使用真实 AI API，未声称完成实际截图识别或模型写入验收。
+
+Local evidence remains in ignored `dist/mobile-composer-2026-11-16/`.
+
 ## 1.5.0 release checkpoint / 发布检查 — 2026-11-16
 
 Full suite: **839/839 passed across 62 test files** (10.29s; no failed, skipped or cancelled tests). Strict TypeScript/build passes; lint reports **0 errors and 51 warnings**, with no rule disabled. Release packaging uses the reviewed Git index and explicit runtime assets. Real CLI, desktop settings and earlier phone checks retain the scopes described below; no actual model endpoint, receipt recognition or new phone keyboard acceptance is claimed.

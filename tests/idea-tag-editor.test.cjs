@@ -830,3 +830,15 @@ test('tag delete removes only matching values; duplicate names, IME and failed w
     assert.ok(store.saved.at(-1).hidden.includes('Blender'));
   }finally{f.close();}
 });
+
+test('imported choices retain source colors and unassigned options alongside local overrides', () => {
+  const f = fixture({orderStore:{readOptions:()=>({colors:{流程:'purple'}})}});
+  try {
+    f.view.config.nebulaRecords = {fields:{类型:{options:['流程','预备'],
+      optionColors:{流程:'yellow',预备:'green'}}}};
+    f.open();
+    assert.ok(f.options().includes('预备'));
+    assert.equal(f.option('预备').querySelector('.bui-tag-editor-chip').dataset.buiTone, 'green');
+    assert.equal(f.editor.colors(f.view)['类型']['流程'], 'purple');
+  } finally { f.close(); }
+});

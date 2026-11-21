@@ -146,7 +146,8 @@ export class RecordInspectorModal extends Modal {
     const parts = file.path.split('/'); parts.pop();
     const hasConfig = Array.from({length: parts.length + 1}, (_, i) => [...parts.slice(0, i), RECORD_LAYOUT_FILE].join('/'))
       .some(path => this.app.vault.getFileByPath(path));
-    if (!details.collection || !hasConfig) {this.renderDetails(this.contentEl, details); return;}
+    const inline = Object.hasOwn(this.app.metadataCache.getFileCache(file)?.frontmatter ?? {}, 'nf_record_layout');
+    if (!inline && (!details.collection || !hasConfig)) {this.renderDetails(this.contentEl, details); return;}
     const loading = this.contentEl.createEl('p', {text: '正在读取记录布局…', cls: 'bui-record-caption'});
     void loadRecordLayout(this.app, file, details.collection).then(result => {
       if (generation !== this.generation) return;

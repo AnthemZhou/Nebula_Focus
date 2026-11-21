@@ -59,6 +59,15 @@ export function parseRecordLayouts(raw: string): RecordLayoutConfig | null {
 
 /** Nearest matching ancestor wins. Malformed local configuration is never silently bypassed. */
 export async function loadRecordLayout(app: App, file: TFile, collection: string | null): Promise<{profile: RecordLayout | null; path?: string; error?: string}> {
+  const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter;
+  if (frontmatter && Object.hasOwn(frontmatter, 'nf_record_layout')) {
+    try {
+      const wrapped = {version: 1, profiles: {page: frontmatter.nf_record_layout as unknown}};
+      const profile = parseRecordLayouts(JSON.stringify(wrapped))?.profiles.page;
+      if (profile) return {profile, path: file.path};
+    } catch { /* YAML aliases can form a cycle. Report it as an invalid local layout. */ }
+    return {profile: null, path: file.path, error: '笔记属性 nf_record_layout 配置无效'};
+  }
   if (!collection) return {profile: null};
   const parts = file.path.split('/'); parts.pop();
   for (let depth = parts.length; depth >= 0; depth--) {

@@ -10,12 +10,13 @@ import {isTableRelationProperty, isTableTagProperty, RELATION_LINK_SELECTOR} fro
 import {IdeaFile, IdeaCell, IdeaView, isIdeaView, isIdeaFile, isIdeaCell, isHtmlElement, object} from './idea-native';
 type LayoutEntry = {file: IdeaFile; getValue(property: string): unknown; getRawProperty?: (property: string) => unknown};
 type LayoutCell = IdeaCell & {el: HTMLElement};
+type CellStrip = {el: HTMLElement; cells: LayoutCell[]; virtualize(widths: number[], start: number, end: number): unknown};
 type LayoutRow = {
   entry?: LayoutEntry | null; el: HTMLElement; cells: LayoutCell[];
   render(entry: LayoutEntry, properties: string[]): unknown;
   virtualize(widths: number[], start: number, end: number): unknown;
 };
-type LayoutGroup = {tableEl: HTMLElement; tbodyEl: HTMLElement; selfHeight?: number; childStart?: number;
+type LayoutGroup = {tableEl: HTMLElement; tbodyEl: HTMLElement; selfHeight?: number; childStart?: number; summaryRow?: unknown;
   virtualize(width: number, widths: number[], start: number, end: number): unknown};
 type GroupData = {entries: LayoutEntry[]};
 type ColumnInfo = {customWidth?: number | null; contentWidth?: number | null; headerWidth?: number | null; getWidth(min: number, max: number): number};
@@ -97,7 +98,7 @@ type State = {
   originalMultiline: boolean;
   originalUpdate: LayoutView['updateVirtualDisplay']; originalRect: LayoutView['getCellRect']; originalClosest: LayoutView['getClosestCellIndexWithinGroup'];
   heights: Map<IdeaFile, {key: string; height: number}>; groups: GroupLayout[];
-  widths: number[]; width: number; busy: boolean; frame: number; observer: MutationObserver;
+  widths: number[]; width: number; frozen: number; frozenWidth: number; busy: boolean; frame: number; observer: MutationObserver;
   resize: ResizeObserver; onInput: EventListener; onKey: EventListener; signature: string; autoWidthKey: string;
   resizing: boolean; resizeKind: 'pointer' | 'drag' | null; onResizeStart: EventListener; onResizeEnd: EventListener; epoch: number;
   perf: {resizeStarts: number; resizeEnds: number; dragStarts: number; ignoredPointerCancels: number; lastResizeEnd: string; layouts: number; previewLayouts: number; measurementBatches: number; measuredRows: number; lastLayoutMs: number; maxPreviewLayoutMs: number; lastMeasureMs: number};
@@ -181,6 +182,45 @@ function styles(el: HTMLElement, values: Record<string, string>) {
 function children(el: HTMLElement, values: HTMLElement[]) {
   el.setChildrenInPlace(values);
 }
+function frozenIndex(view: IdeaView) {
+  const config = view.config;
+  const value: unknown = config.get ? config.get('nebulaNotionFrozenColumnIndex') : Reflect.get(config, 'nebulaNotionFrozenColumnIndex');
+  return typeof value === 'number' && Number.isSafeInteger(value) ? value : -1;
+}
+function cellStrip(value: unknown): value is CellStrip {
+  return object(value) && isHtmlElement(value.el) && Array.isArray(value.cells) && typeof value.virtualize === 'function' &&
+    value.cells.every(cell => object(cell) && isHtmlElement(cell.el));
+}
+/** Native cells are absolutely positioned and unmounted outside the viewport.
+ * Include the fixed prefix in that same virtual row, preserving editor identity
+ * and leaving intermediate offscreen cells unmounted. */
+function virtualStrip(row: {virtualize(widths: number[], start: number, end: number): unknown},
+  widths: number[], start: number, end: number, frozen: number, scroll: number) {
+  if (!frozen || !cellStrip(row) || row.cells.length !== widths.length) {
+    row.virtualize(widths, start, end); return;
+  }
+  const visible: HTMLElement[] = [];
+  let x = 0;
+  for (let i = 0; i < widths.length; i++) {
+    const el = row.cells[i].el, width = widths[i], pinned = i < frozen;
+    el.classList.toggle('bui-notion-frozen-cell', pinned);
+    if (pinned || (x + width >= start && x <= end)) {
+      styles(el, {'inset-inline-start': `${x + (pinned ? scroll : 0)}px`, width: `${width}px`});
+      visible.push(el);
+    }
+    x += width;
+  }
+  children(row.el, visible);
+}
+function visibleSpan(state: State, first: number, last: number, scroll: number) {
+  const left = state.widths.slice(0, first).reduce((sum, w) => sum + w, 0);
+  const right = left + state.widths.slice(first, last + 1).reduce((sum, w) => sum + w, 0);
+  if (!state.frozen) return {left, width: right - left};
+  const pinnedEnd = scroll + state.frozenWidth;
+  const start = first < state.frozen ? left + scroll : Math.max(pinnedEnd, left);
+  const end = last < state.frozen ? right + scroll : Math.max(pinnedEnd, right);
+  return {left: start, width: Math.max(0, end - start)};
+}
 function viewport(el: HTMLElement): Rect {
   const win = el.ownerDocument.defaultView!;
   const rect = el.getBoundingClientRect();
@@ -218,7 +258,8 @@ export class IdeaRowHeights {
     if (!isIdeaView(view)) return this.release(view);
     const host = view.queryController?.viewContainerEl;
     if (!isHtmlElement(host)) return this.release(view);
-    if (view?.type !== 'table' || !tableProfile(view)?.wrap || !host?.isConnected || view._loaded === false) return this.release(view);
+    const profile = tableProfile(view);
+    if (!profile || (!profile.wrap && frozenIndex(view) < 0) || !host.isConnected || view._loaded === false) return this.release(view);
     if (this.failed.has(view)) return false;
     const current = this.states.get(view);
     if (current) {
@@ -239,7 +280,7 @@ export class IdeaRowHeights {
     const state: State = {view, host, patches: [], createRow, measureRow,
       originalMultiline: view.containerEl.classList.contains('mod-multiline'),
       originalUpdate: view.updateVirtualDisplay.bind(view), originalRect: view.getCellRect.bind(view), originalClosest: view.getClosestCellIndexWithinGroup.bind(view),
-      heights: new Map(), groups: [], widths: [], width: 0, busy: false, frame: 0,
+      heights: new Map(), groups: [], widths: [], width: 0, frozen: 0, frozenWidth: 0, busy: false, frame: 0,
       observer: new win.MutationObserver(records => {
         const transient = transientMutationNodes(view, records);
         if (records.some(record => affectsRowGeometry(view, record, transient))) this.schedule(state, true);
@@ -275,7 +316,7 @@ export class IdeaRowHeights {
     const {view, host} = state, win = host.ownerDocument.defaultView!;
     const target = view.rows?.[0]?.el?.querySelector('.bases-table-cell') ?? host;
     const css = win.getComputedStyle(target);
-    return [host.clientWidth, css.font, css.lineHeight, css.letterSpacing, host.ownerDocument.body.className, JSON.stringify(tableProfile(view))].join('|');
+    return [host.clientWidth, css.font, css.lineHeight, css.letterSpacing, host.ownerDocument.body.className, JSON.stringify(tableProfile(view)), frozenIndex(view)].join('|');
   }
   private observe(state: State) {
     state.observer.observe(state.view.containerEl, {subtree: true, childList: true, characterData: true,
@@ -511,9 +552,19 @@ export class IdeaRowHeights {
       }
     }
     state.widths = widths; state.width = width;
-    v.containerEl.classList.add('mod-multiline');
+    const wrap = tableProfile(v)?.wrap === true;
+    const rowHeight = v.getRowBaseHeight() * v.getRowHeightMult();
+    v.containerEl.classList.toggle('mod-multiline', wrap || v.getRowHeightMult() > 1);
     const focused = v.containerEl.contains(state.host.ownerDocument.activeElement) ? state.host.ownerDocument.activeElement as HTMLElement : null;
     const viewRect = viewport(v.containerEl), direction = css.direction !== 'rtl';
+    const lastFrozen = frozenIndex(v), scroll = Math.max(0, v.scrollEl.scrollLeft * (direction ? 1 : -1));
+    state.frozen = 0; state.frozenWidth = 0;
+    // A phone or a very narrow split still needs room to reach the other columns.
+    const available = Math.max(0, v.scrollEl.clientWidth - v.minColWidth);
+    while (state.frozen <= lastFrozen && state.frozen < widths.length && state.frozenWidth + widths[state.frozen] <= available) {
+      state.frozenWidth += widths[state.frozen++];
+    }
+    v.scrollEl.classList.toggle('bui-notion-frozen', state.frozen > 0);
     // Native editors must stay mounted during horizontal and vertical scroll.
     // Extend overscan around the actual focused control, as the native table does.
     if (focused && focused !== v.containerEl) {
@@ -541,7 +592,7 @@ export class IdeaRowHeights {
     state.groups = [];
     const widthKey = `${widths.join(',')}|${state.signature}|${state.epoch}`;
     const preview = state.resizing && state.heights.size > 0;
-    if (!preview) this.measureEntries(state, data.groupedData.flatMap((group: GroupData) => group.entries), widths, widthKey);
+    if (wrap && !preview) this.measureEntries(state, data.groupedData.flatMap((group: GroupData) => group.entries), widths, widthKey);
     for (let groupIndex = 0; groupIndex < v.groups.length; groupIndex++) {
       const group = v.groups[groupIndex], groupData = data.groupedData[groupIndex];
       const collapsed = !!v.isGroupCollapsed(groupData);
@@ -556,7 +607,7 @@ export class IdeaRowHeights {
       group.selfHeight = selfHeight; group.childStart = childStart;
       const heights = groupData.entries.map((entry: LayoutEntry) => {
         currentFiles.add(entry.file);
-        return this.measure(state, entry, widths, widthKey);
+        return wrap ? this.measure(state, entry, widths, widthKey) : rowHeight;
       });
       const offsets = heightOffsets(heights), bodyHeight = collapsed ? 0 : offsets[offsets.length - 1];
       const layout = {offsets, top: height, bodyTop: height + childStart, collapsed};
@@ -574,39 +625,43 @@ export class IdeaRowHeights {
           const oldIndex = previous.findIndex(row => row.entry?.file === entry.file);
           const row = oldIndex >= 0 ? previous.splice(oldIndex, 1)[0] : pool.pop() ?? state.createRow(v);
           if (!preview || row.entry !== entry || row.cells.length !== properties.length) row.render(entry, properties);
-          row.virtualize(widths, horizontalStart, horizontalEnd);
+          virtualStrip(row, widths, horizontalStart, horizontalEnd, state.frozen, scroll);
           styles(row.el, {top: `${offsets[index]}px`, width: `${width}px`, '--bases-table-row-height': `${heights[index]}px`});
           nodes.push(row.el); nextRows.push(row);
         }
         if (v.activeCell?.groupIdx === groupIndex) {
-          const a = v.activeCell, left = widths.slice(0, a.column).reduce((sum: number, x: number) => sum + x, 0);
+          const a = v.activeCell, span = visibleSpan(state, a.column, a.column, scroll);
           const leftBorder = a.column === 0 ? 1 : 0, topBorder = a.row === 0 ? 1 : 0;
           v.activeCellEl.classList.toggle('mod-selection', !!v.selection);
-          styles(v.activeCellEl, {'inset-block-start': `${offsets[a.row] + topBorder}px`, 'inset-inline-start': `${left + leftBorder}px`,
-            width: `${widths[a.column] - 1 - leftBorder}px`, height: `${heights[a.row] - 1 - topBorder}px`});
+          styles(v.activeCellEl, {'inset-block-start': `${offsets[a.row] + topBorder}px`, 'inset-inline-start': `${span.left + leftBorder}px`,
+            width: `${Math.max(0, span.width - 1 - leftBorder)}px`, height: `${heights[a.row] - 1 - topBorder}px`});
           nodes.push(v.activeCellEl);
         }
         if (v.selection?.groupIdx === groupIndex) {
-          const s = v.selection;
+          const s = v.selection, span = visibleSpan(state, s.start, s.end, scroll);
           styles(v.selectionEl, {'inset-block-start': `${offsets[s.top]}px`,
-            'inset-inline-start': `${widths.slice(0, s.start).reduce((sum: number, x: number) => sum + x, 0)}px`,
-            width: `${widths.slice(s.start, s.end + 1).reduce((sum: number, x: number) => sum + x, 0)}px`,
+            'inset-inline-start': `${span.left}px`, width: `${span.width}px`,
             height: `${offsets[s.bottom + 1] - offsets[s.top]}px`});
           nodes.push(v.selectionEl);
         }
       }
-      children(group.tbodyEl, nodes); group.virtualize(width, widths, horizontalStart, horizontalEnd);
+      children(group.tbodyEl, nodes);
+      const summary = group.summaryRow;
+      if (state.frozen && cellStrip(summary) && summary.el.parentElement) {
+        styles(summary.el, {width: `${width}px`});
+        virtualStrip(summary, widths, horizontalStart, horizontalEnd, state.frozen, scroll);
+      } else group.virtualize(width, widths, horizontalStart, horizontalEnd);
       height += selfHeight + bodyHeight + (groupIndex < v.groups.length - 1 ? gap : 0);
     }
     for (const row of previous) row.el.remove();
     v.rows = nextRows; v.unusedRows = previous.concat(pool).slice(0, 10);
     for (const file of state.heights.keys()) if (!currentFiles.has(file)) state.heights.delete(file);
-    v.header.virtualize(widths, horizontalStart, horizontalEnd);
+    virtualStrip(v.header, widths, horizontalStart, horizontalEnd, state.frozen, scroll);
     styles(v.theadEl, {width: `${width}px`});
     const rootChildren = [v.theadEl, v.containerEl];
     if (v.footerSummary.shouldDisplay() && v.footerSummary.el) {
       rootChildren.push(v.footerSummary.el); styles(v.footerSummary.el, {width: `${width}px`});
-      v.footerSummary.virtualize(widths, horizontalStart, horizontalEnd);
+      virtualStrip(v.footerSummary, widths, horizontalStart, horizontalEnd, state.frozen, scroll);
     }
     // Keep the action row mounted through virtual updates. Removing it until
     // afterRender briefly shortens an embedded table; at the document's end,
@@ -628,9 +683,11 @@ export class IdeaRowHeights {
     const scroll = v.scrollEl.getBoundingClientRect();
     const y = body.top - scroll.top + v.scrollEl.scrollTop;
     const left = state.widths.slice(0, index.column).reduce((sum, width) => sum + width, 0);
+    const scrollLeft = Math.abs(v.scrollEl.scrollLeft);
     return {top: y + group.offsets[index.row] - base,
       bottom: y + group.offsets[index.row + 1] + (v.footerSummary.shouldDisplay() ? base : 0),
-      left, right: left + state.widths[index.column]};
+      left: index.column < state.frozen ? left + scrollLeft : Math.max(0, left - state.frozenWidth),
+      right: left + state.widths[index.column] + (index.column < state.frozen ? scrollLeft : 0)};
   }
   private closest(state: State, event: MouseEvent, groupIndex: number): Index {
     const v = state.view, group = state.groups[groupIndex];
@@ -638,7 +695,9 @@ export class IdeaRowHeights {
     const bounds = v.containerEl.getBoundingClientRect(), scale = bounds.width / v.containerEl.offsetWidth || 1;
     const top = v.groups[groupIndex].tbodyEl.getBoundingClientRect().top;
     const rtl = state.host.ownerDocument.defaultView!.getComputedStyle(v.containerEl).direction === 'rtl';
-    const x = Math.abs((event.clientX - (rtl ? bounds.right : bounds.left)) / scale);
+    let x = Math.abs((event.clientX - (rtl ? bounds.right : bounds.left)) / scale);
+    const scroll = Math.abs(v.scrollEl.scrollLeft);
+    if (x >= scroll && x < scroll + state.frozenWidth) x -= scroll;
     let column = 0, edge = state.widths[0];
     while (column < state.widths.length - 1 && edge <= x) edge += state.widths[++column];
     return {groupIdx: groupIndex, row: rowIndexAt(group.offsets, (event.clientY - top) / scale), column};
@@ -692,7 +751,10 @@ export class IdeaRowHeights {
     nativeView.containerEl.removeEventListener('keydown', state.onKey, true);
     for (const type of ['pointerdown', 'dragstart']) nativeView.theadEl.removeEventListener(type, state.onResizeStart, true);
     for (const type of ['pointerup', 'pointercancel', 'drop', 'dragend', 'blur']) state.host.ownerDocument.defaultView!.removeEventListener(type, state.onResizeEnd, true);
-    state.host.classList.remove('bui-ideas-auto', 'bui-ideas-resizing'); this.restore(state);
+    state.host.classList.remove('bui-ideas-auto', 'bui-ideas-resizing');
+    nativeView.scrollEl.classList.remove('bui-notion-frozen');
+    for (const cell of nativeView.scrollEl.querySelectorAll('.bui-notion-frozen-cell')) cell.classList.remove('bui-notion-frozen-cell');
+    this.restore(state);
     // Native single-line tables must not inherit our multiline layout after
     // disabling presentation, even when a hidden/unloaded view cannot redraw.
     nativeView.containerEl.classList.toggle('mod-multiline', state.originalMultiline);

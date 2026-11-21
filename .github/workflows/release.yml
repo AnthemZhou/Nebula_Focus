@@ -52,6 +52,7 @@ jobs:
           fi
           FLAGS=()
           if [[ "$VERSION" == 0.* ]]; then FLAGS+=(--prerelease); fi
-          gh release create "$VERSION" main.js manifest.json styles.css "dist/nebula-focus-$VERSION.zip" "dist/nebula-focus-$VERSION-source.zip" "dist/nebula-focus-$VERSION-examples.zip" dist/SHA256SUMS.txt \
+          sha256sum main.js manifest.json styles.css "dist/nebula-focus-$VERSION.zip" | sed 's|  dist/|  |' > dist/SHA256SUMS.txt
+          gh release create "$VERSION" main.js manifest.json styles.css "dist/nebula-focus-$VERSION.zip" dist/SHA256SUMS.txt \
             --target "$GITHUB_SHA" --title "Nebula Focus $VERSION" \
             --notes-file docs/RELEASE_NOTES.md "${FLAGS[@]}"

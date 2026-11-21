@@ -1,4 +1,6 @@
 import {RecordService} from './record-api';
+import {registerNotionRules} from './notion-rule-view';
+import {registerNotionExport} from './notion-export';
 import {RecordingAssistant} from './assistant';
 import type {AssistantConfig} from './assistant-engine';
 import {HoverHints} from './hover-hints';
@@ -127,6 +129,8 @@ export default class NebulaFocus extends Plugin {
     if (migration.failed.length) new Notice('部分财务视图未转换，相关文件未被覆盖；请稍后重新载入插件重试。');
     if (this.disposed) return;
     this.installShortcutGuides();
+    registerNotionExport(this);
+    registerNotionRules(this);
     this.addCommand({id: 'open-note-database', name: '打开当前笔记的数据视图',
       checkCallback: checking => {
         const file = this.app.workspace.getActiveFile();
@@ -571,7 +575,7 @@ export default class NebulaFocus extends Plugin {
     this.syncAppearanceDocuments();
     if (!this.active) return;
     for (const doc of this.appearanceDocuments()) {
-      this.propertySuggestions?.refresh(doc); this.desktopHeader.refresh(doc);
+      this.propertySuggestions?.refresh(doc); this.desktopHeader.refresh(doc); this.recordingAssistant?.refreshDock(doc, this.active);
     }
     // Native drag frames only need column positions; defer decoration and
     // content measurements until the resize adapter finishes the gesture.
@@ -889,6 +893,7 @@ export default class NebulaFocus extends Plugin {
   }
 
   private clearPresentation() {
+    this.recordingAssistant?.clearDocks();
     this.desktopHeader.clear();
     this.overflowFades.clear();
     this.mobileActions?.clear();

@@ -253,3 +253,47 @@ test('output symlinks and active import locks are rejected', t => {
   writeFileSync(path.join(f.output, '.nebula-import.lock'), '');
   const locked = f.run(); assert.equal(locked.status, 1); assert.match(locked.stderr, /Another import/);
 });
+
+test('workspace view bundles preserve grouping, summaries, frozen index and typed AI write rules', t => {
+  const f = fixture(t);
+  Object.assign(f.bundle.sources[0].schema, {
+    '状态': {type: 'status', status: {options: [{name: '进行中', color: 'green'}]}},
+    '主题': {type: 'multi_select', options: [{name: '设计'}, {name: '开发', color: 'blue'}]},
+    '合计': {type: 'rollup'},
+  });
+  const views = ['按类别', '所有样例'].map((name, i) => ({
+    id: [pageId, projectId][i], name, type: 'table', dataSourceUrl: `{collection://${sourceId}}`,
+    displayProperties: ['摘要', '类别', '金额'], columnWidths: {'摘要': 220},
+  }));
+  views[0].summaries = {'金额': 'Sum'};
+  views[0].sorts = [{property: '金额', direction: 'descending'}];
+  views[0].advancedFilter = {type: 'group', operator: 'and', filters: [
+    {property: '项目', operator: 'relation_contains', value: {value: url(projectId)}},
+    {property: '类别', operator: 'enum_is', value: {value: '服务'}},
+  ]};
+  const nativeViews = {
+    [pageId]: {configuration: {wrap_cells: true, frozen_column_index: 0,
+      group_by: {property_name: '类别', group_by: {group_by: 'exact', sort: {type: 'ascending'}}}}},
+    [projectId]: {configuration: {frozen_column_index: -1}},
+  };
+  f.bundle.workspaceViews = {databases: [{id: missingId, name: '样例视图', views}], nativeViews};
+  const run = f.run(); assert.equal(run.status, 0, run.stderr);
+  const location = `Views/${missingId}.base`;
+  const [grouped, all] = JSON.parse(f.read(location)).views;
+  assert.deepEqual(grouped.groupBy, {property: 'note.类别', direction: 'ASC'});
+  assert.deepEqual(grouped.sort, [{property: 'note.金额', direction: 'DESC'}]);
+  assert.deepEqual(grouped.summaries, {'note.金额': 'Sum'}); assert(!all.summaries);
+  assert.equal(grouped.nebulaNotionFrozenColumnIndex, 0); assert.equal(all.nebulaNotionFrozenColumnIndex, -1);
+  assert.match(grouped.filters.and[1].and[0], /contains\(link\("Backup\/Records\//);
+  assert.deepEqual(grouped.nebulaTable.attachments, ['附件']);
+  const rules = grouped.nebulaRecords;
+  assert.deepEqual(JSON.parse(f.read(`Bases/${sourceId}.base`)).views[0].nebulaRecords, rules);
+  assert.deepEqual(rules.defaults, {nf_source_collection: sourceId});
+  assert.equal(rules.folder, `Backup/Records/${sourceId}`);
+  assert.equal(rules.fields['计算结果'].readOnly, true); assert.equal(rules.fields['合计'].readOnly, true);
+  assert.equal(rules.fields['项目'].type, 'relation'); assert.equal(rules.fields['附件'].type, 'attachment');
+  assert.deepEqual(rules.fields['状态'], {type: 'select', options: ['进行中'], optionColors: {'进行中': 'green'}});
+  assert.deepEqual(rules.fields['主题'], {type: 'multi-select', options: ['设计','开发'], optionColors: {'开发':'blue'}});
+  assert(f.read('Notion 关联数据备份.md').includes(`[[Backup/${location}|样例视图]]`));
+  assert.equal(f.run().status, 0); assert.equal(JSON.parse(f.read('import-report.json')).written, 0);
+});

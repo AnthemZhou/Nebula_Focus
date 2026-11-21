@@ -1232,7 +1232,8 @@ test('search preserves page ancestry and nested bookmark groups without changing
     assert.equal(result('Alpha').style.getPropertyValue('--bui-search-depth'),'0');
     assert.equal(result('Child').style.getPropertyValue('--bui-search-depth'),'1');
     assert.equal(result('Alpha').querySelector('.bui-sidebar-search-kind'),null);
-    assert.equal(result('Child').querySelector('.bui-sidebar-search-kind')?.dataset.icon,'corner-down-right');
+    assert.equal(result('Child').querySelectorAll('.bui-search-branch').length,1);
+    assert.equal(result('Child').querySelector('.bui-search-branches').getAttribute('aria-hidden'),'true');
     f.disk.set('.obsidian/bookmarks.json',JSON.stringify({items:[{type:'group',title:'Parent',items:[{type:'group',title:'Child group',items:[{type:'file',path:'Home/Child.md',title:'Nested page'}]}]}]}));
     f.click([...modal.contentEl.querySelectorAll('.bui-sidebar-search-modes button')].find(b=>b.textContent==='书签'));await f.settle();
     const nested=result('Nested page');

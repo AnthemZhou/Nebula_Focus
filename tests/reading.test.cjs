@@ -78,7 +78,7 @@ function fixture() {
     showAtPosition(position){this.position=position;}
     showAtMouseEvent(){}
   }
-  const api = {Plugin, PluginSettingTab: class {}, TFile, TFolder: class {}, ItemView: class extends Component {}, BasesView: class extends Component {}, MarkdownView, Component, Modal, FuzzySuggestModal, Notice:class{constructor(message){notices.push(message);}}, Menu, setIcon(){}};
+  const api = {MarkdownRenderChild:Component, Plugin, PluginSettingTab: class {}, TFile, TFolder: class {}, ItemView: class extends Component {}, BasesView: class extends Component {}, MarkdownView, Component, Modal, FuzzySuggestModal, Notice:class{constructor(message){notices.push(message);}}, Menu, setIcon(){}};
   const mod = {exports:{}};
   pluginScript.runInContext(vm.createContext({
     module:mod,exports:mod.exports,require:name => {assert.equal(name,'obsidian'); return api;},

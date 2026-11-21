@@ -127,3 +127,14 @@ test('filters fail closed for unavailable calculations, including unmarked opaqu
   assert.deepEqual(relatedRecordRows(f.app, project, configured).rows.map(row => row.file.path), ['confirmed.md']);
   assert.equal(recordLayoutValue({Status: 'rollupResult://unavailable'}, 'Status').unavailable, true);
 });
+
+test('a Markdown frontmatter layout works without a collection and locally overrides its folder profile', async () => {
+  const f = fixture(); const local = {metrics: [{property: 'Amount'}], tabs: []};
+  const record = f.file('Sheets/record.md', {nf_record_layout: local});
+  f.sidecar('Sheets/nebula-record-layouts.json', config('projects'));
+  assert.deepEqual((await loadRecordLayout(f.app, record, null)).profile, local);
+  assert.equal((await loadRecordLayout(f.app, record, 'projects')).path, record.path);
+  assert.deepEqual(f.reads, []);
+  f.caches.get(record.path).frontmatter.nf_record_layout = {metrics: [], tabs: [], execute: 'code'};
+  assert.match((await loadRecordLayout(f.app, record, 'projects')).error, /nf_record_layout/);
+});

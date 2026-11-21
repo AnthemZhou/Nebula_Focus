@@ -99,6 +99,26 @@ Place `nebula-record-layouts.json` beside the records or in an ancestor folder t
 
 Each record remains Markdown. An AI can read YAML amounts, dates and wiki links without running the plugin. The optional importer creates an `index.json` mapping Notion IDs to paths and relationships. Viewing or changing presentation does not write note bodies; an explicit property edit updates that YAML value. See the [import contract](notion-backup.md).
 
-导入的 Notion 公式结果是历史快照，不是本地实时公式。未取得的计算结果保持缺失，不能视作零。少量样例不代表银行余额、项目利润或最终可分配金额；本插件不猜测税费、资金分配、结算和换汇规则。1.2.0 的财务表格改动尚需单独进行 iPhone 真机验证。
+导入时，Notion 公式结果以历史快照保存。带规则文件的目录支持下述本地核算。未取得的计算结果保持缺失，不能视作零。少量样例不代表银行余额、项目利润或最终可分配金额；本插件不猜测税费、资金分配、结算和换汇规则。1.2.0 的财务表格改动尚需单独进行 iPhone 真机验证。
 
-Imported Notion formula results are historical snapshots, not live local formulas. Missing results remain unavailable rather than zero. A bounded sample does not establish bank balances, project profit or final distributions. Tax, allocation, settlement and currency-conversion rules are never inferred. The finance-table changes in 1.2.0 still require separate physical-iPhone validation.
+Imported Notion formula results start as source snapshots. A rules file enables the local calculations described below. Missing results remain unavailable rather than zero. A bounded sample does not establish bank balances, project profit or final distributions. Tax, allocation, settlement and currency-conversion rules are never inferred. The finance-table changes in 1.2.0 still require separate physical-iPhone validation.
+
+## 本地核算 / Local calculations
+
+在迁移目录放置 `nebula-notion-rules.json`，其中的 `version` 为 `1`，`sources` 按数据源 ID 保存 Notion 的 `properties` 定义，包括公式表达式、关联和汇总目标。把字段与原文保存在 Markdown，规则集在上级目录共享。
+
+打开记录后运行「查看当前记录的本地核算」，可以根据当前库内数据重算该记录的公式及汇总。页面也可用以下代码块显示指定记录的实时结果，将示例 ID 替换为目标记录的 `nf_source_id`；代码块留空表示当前记录。首行 ID 后可逐行写入想要显示的公式或汇总字段，顺序与页面显示顺序一致。首行使用句点（.）可选择当前记录的指定字段。
+
+````markdown
+```nebula-notion-rules
+11111111-1111-4111-8111-111111111111
+```
+````
+
+修改库内字段或关联后，打开的核算表会刷新。核算范围是规则文件所在目录及其子目录，成员关系依据数据源和本地链接识别。未导入的汇总目标、冲突的双向关联、循环依赖或不支持的表达式会在对应字段显示原因。Markdown 属性初始保存导入时的来源值。
+
+A record’s **查看当前记录的本地核算** command and the `nebula-notion-rules` Markdown block evaluate imported formulas against current local records. An empty block selects its own note. Enter a source page ID to display another record within the same migration. List one exact formula or rollup field name per line after the ID to select fields and their order. A period on the first line targets the current note. Each source in the version 1 rules file retains its official Notion property definitions. Sums and original-value rollups follow linked records. The display updates on local metadata changes and reports unavailable results per field.
+
+在该目录打开总览或任一记录，运行「更新本地表格核算值」，即可把当前公式与汇总结果写入记录的 YAML 工作字段。普通 Bases 表格、CLI 和 AI 下次读取 Markdown 即可取得新值。规则按最近的一份 `nebula-notion-rules.json` 确定范围。命令先索引并核算全部记录，再逐文件更新有差异的计算字段，空结果清除旧值。用户输入、正文和 `_source/original-properties.json` 的原始导入快照保持可供核对。记录的 `nf_snapshot_fields` 与 `nf_unavailable_fields` 标记采集时的来源状态。运行中遇到笔记变动会停止，提示已完成的条数；待同步完成后可重新运行。
+
+Run **更新本地表格核算值** from the dashboard or a record to materialize calculated fields in Markdown for native Bases and external readers. The command validates the entire local scope before writing, uses per-file conflict checks, and can be rerun after an interrupted update. Missing formula results clear old working values. The imported property snapshot remains in `_source/original-properties.json`.

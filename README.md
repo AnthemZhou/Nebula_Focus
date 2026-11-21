@@ -1,12 +1,16 @@
 # Nebula Focus
 
+![Obsidian 1.14.5+](https://img.shields.io/badge/Obsidian-1.14.5%2B-7956ba?logo=obsidian&logoColor=white)
+[![Version 1.6.0](https://img.shields.io/badge/version-1.6.0-1676a9)](https://github.com/AnthemZhou/Nebula_Focus/releases/tag/1.6.0)
+![Category Workspace](https://img.shields.io/badge/category-Workspace-555555)
+![Platform macOS and iPhone](https://img.shields.io/badge/platform-macOS%20%7C%20iPhone-555555)
+[![License GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-699622)](LICENSE)
+
 为 Markdown 与 Bases 提供 Codex-like 工作区：清晰的页面侧栏、提醒事项、紧凑表格与原位编辑。
 
 A Codex-like workspace for Markdown and Bases, with focused navigation, reminders, compact tables and inline editing.
 
 [中文](#中文) · [English](#english) · [下载 / Downloads](https://github.com/AnthemZhou/Nebula_Focus/releases) · [反馈 / Issues](https://github.com/AnthemZhou/Nebula_Focus/issues)
-
-**1.5.0** · Obsidian **1.14.5+** · Desktop + iPhone · GPL-3.0-only
 
 ## 中文
 
@@ -14,7 +18,7 @@ Nebula Focus 让本地 Markdown 成为更容易浏览和编辑的工作区。界
 
 手机「AI 记录」聊天与电脑外部 AI/CLI 接口共用字段校验、新建、更新及页面链接；支持 OpenAI、DeepSeek 和自定义兼容接口。配置与用法见 [AI 记录](docs/ai-recording.md)。
 
-1.5.0 增加 AI 记录与 CLI、标签颜色和候选管理，并完善桌面导航、分栏及搜索层级。项目早期借鉴 Notion 数据库的展示，但不会把任意 Markdown 自动还原成完整的 Notion 数据库。
+1.6.0 支持识别 Notion 导出的 Markdown 与 CSV，按本地规则核算公式和汇总，并在手机底部直接输入 AI 记录。项目早期借鉴 Notion 数据库的展示，但不会把任意 Markdown 自动还原成完整的 Notion 数据库。
 
 **目录：** [功能](#功能) · [安装](#安装) · [使用](#使用) · [数据保存](#数据保存) · [兼容范围](#兼容范围) · [开发与反馈](#开发与反馈)
 
@@ -26,17 +30,17 @@ Nebula Focus 让本地 Markdown 成为更容易浏览和编辑的工作区。界
 - **提醒事项首页。** 自动读取 Markdown 未完成任务与支持的截止日期，按逾期、今天、明天、后续日期和未设日期排列。可改页面名称、手动引用已有 `.base` 数据库；关闭启动选项后恢复上次工作页面。
 - **直接新建页面。** 点击「新建页面」即创建唯一命名的空白 Markdown，在主区打开；无需命名弹窗，名称通过页面顶部的原生标题修改。子页面采用相同流程，正文不写入重复标题或 UI 标记。
 - **紧凑的原生数据库。** 配置后的表格支持点击标题打开记录、彩色标签、内容行高、紧凑缩略图和关联记录。看板自动使用笔记第一张有效图片作为封面，过期日期保留颜色提示；新建、属性编辑与数据库撤销沿用源 Markdown 数据。
-- **稳定的桌面内容宽度。** 拖动侧栏时保留正文、表格与卡片的排版宽度，超出可见区域的内容在边缘渐隐，可横向滚动查看；滚到边缘后恢复完整边框。表格末列不再随分栏宽度拉伸，手机保留原有触摸布局。
+- **分栏中的自适应阅读。** 正文和数据库工具随分栏宽度换行，仅数据库网格保留列宽、横向滚动与边缘渐隐；滚到边缘后恢复完整边框。表格末列不再随分栏宽度拉伸。
 - **一致的阅读外观。** 正文、表格和侧栏采用协调的字号与颜色，阅读和编辑模式统一文字行距基线。可选 **Codex 系统字体**或内置 **霞鹜文楷 / LXGW WenKai**，无需联网或安装系统字体；代码仍使用等宽字体。随时切回 Obsidian 原生外观。
 - **桌面外部归档。** 从页面右键菜单将暂时不用的页面或项目归档到库外：先复制并校验，再将源文件移入库内回收站。管理器可以浏览与恢复；手机不显示归档入口。
 
-自动 Base、财务汇总与记录详情继续支持已有配置。打开 Markdown 时复用已有视图，或生成只查询当前笔记／同名目录直接子页的外部 Base。收支按币种分别汇总，关联通过 Markdown 链接访问；导入的公式和汇总快照不会自动变成本地实时公式，未取得的值不会补成零。详见[自动数据视图](docs/automatic-bases.md)、[财务表格](docs/finance-view.md)与[记录详情](docs/record-layout.md)。
+自动 Base、财务汇总与记录详情继续支持已有配置。打开 Markdown 时复用已有视图，或生成只查询当前笔记／同名目录直接子页的外部 Base。收支按币种分别汇总，关联通过 Markdown 链接访问；导入时保存公式和汇总快照。有本地规则文件时，可显示实时核算，或按需更新 Markdown 中的计算字段。详见[自动数据视图](docs/automatic-bases.md)、[财务表格](docs/finance-view.md)与[记录详情](docs/record-layout.md)。
 
 ### 安装
 
 需要 Obsidian 1.14.5 或更新版本；使用数据库视图时启用 **Bases / 数据库** 核心插件。
 
-1. 从 [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases) 下载 `nebula-focus-1.5.0.zip`。
+1. 从 [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases) 下载 `nebula-focus-1.6.0.zip`。
 2. 解压到库的 `.obsidian/plugins/nebula-focus/`，确认有 `main.js`、`manifest.json`、`styles.css`。
 3. 在 Obsidian 第三方插件设置中启用 **Nebula Focus**。
 4. 打开现有笔记或 Base，也可在独立测试库中体验[虚构示例](examples/vault)。
@@ -130,7 +134,7 @@ npm test
 
 Nebula Focus makes local Markdown easier to browse and edit. Its navigation and typography take cues from Codex, while the mobile sidebar follows ChatGPT's restrained layout. Notes remain ordinary Markdown, properties and links that AI tools can read and edit directly.
 
-Version 1.5.0 adds mobile AI recording and a desktop CLI, configurable OpenAI/DeepSeek-compatible providers, tag colors and option management, plus desktop navigation, divider and search hierarchy refinements. See [AI recording and CLI](docs/ai-recording.md). The project initially borrowed from Notion's database presentation; it does not automatically turn arbitrary Markdown into a complete Notion database.
+Version 1.6.0 adds Notion Markdown and CSV recognition, local formula and rollup calculations, and a mobile AI composer. See [AI recording and CLI](docs/ai-recording.md). The project initially borrowed from Notion's database presentation; it does not automatically turn arbitrary Markdown into a complete Notion database.
 
 **Contents:** [Features](#features) · [Installation](#installation) · [Usage](#usage) · [Data storage](#data-storage) · [Compatibility](#compatibility) · [Development and feedback](#development-and-feedback)
 
@@ -142,17 +146,17 @@ Version 1.5.0 adds mobile AI recording and a desktop CLI, configurable OpenAI/De
 - **Reminders.** Read unfinished Markdown tasks and supported page deadlines, grouped into overdue, today, tomorrow, later dates and undated items. Rename the page or reference existing `.base` databases; disable startup opening to resume the previous page.
 - **Direct page creation.** New page creates a uniquely named, empty Markdown file and opens it in the main region. Rename through the native page title, without a naming dialog. Child pages follow the same flow; no duplicate heading or UI markup is inserted into the body.
 - **Compact native databases.** Configured tables support linked record titles, colored tags, content-driven row heights, compact thumbnails and linked records. Boards use the first valid image in a note as a cover, with overdue-date color cues. Creation, property edits and database undo use the source Markdown data.
-- **Stable desktop content width.** Dragging a sidebar preserves the layout width of text, tables and cards. Clipped content fades at the edge and remains accessible by horizontal scrolling; the full border reappears at the end. The final table column no longer stretches with the pane, while mobile keeps its existing touch layout.
+- **Responsive split panes.** Prose and database tools reflow as panes resize. Only database grids preserve column widths, horizontal scrolling and edge fades; their full border reappears at the end. The final table column no longer stretches with the pane.
 - **Consistent reading.** Notes, tables and the sidebar share coordinated typography and colors, with a common text-leading baseline across reading and editing. Choose the **Codex system font** or bundled **LXGW WenKai**, both available offline without installing fonts; code stays monospace. Native Obsidian appearance remains one shortcut away.
 - **Desktop external archives.** Archive unused pages or projects outside the vault through their context menu. Files are copied and verified before sources move to the vault trash. The manager can browse and restore them; mobile has no archive controls.
 
-Automatic Bases, finance summaries and record layouts retain existing configurations. Opening Markdown reuses a Base or creates an external view scoped to the note or its same-stem folder's direct children. Cash-flow summaries separate currencies and related records use Markdown links. Imported formulas and rollups remain snapshots rather than executable local formulas; unavailable values are never replaced with zero. See [automatic data views](docs/automatic-bases.md), [finance tables](docs/finance-view.md) and [record layouts](docs/record-layout.md).
+Automatic Bases, finance summaries and record layouts retain existing configurations. Opening Markdown reuses a Base or creates an external view scoped to the note or its same-stem folder's direct children. Cash-flow summaries separate currencies and related records use Markdown links. Imported formula and rollup values are saved as snapshots. With a local rules file, records can display live calculations or update their Markdown working fields on demand. See [automatic data views](docs/automatic-bases.md), [finance tables](docs/finance-view.md) and [record layouts](docs/record-layout.md).
 
 ### Installation
 
 Requires Obsidian 1.14.5 or later. Enable the **Bases** core plugin for database views.
 
-1. Download `nebula-focus-1.5.0.zip` from [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases).
+1. Download `nebula-focus-1.6.0.zip` from [GitHub Releases](https://github.com/AnthemZhou/Nebula_Focus/releases).
 2. Extract into `.obsidian/plugins/nebula-focus/` in your vault, containing `main.js`, `manifest.json` and `styles.css`.
 3. Enable **Nebula Focus** in Obsidian's Community plugins settings.
 4. Open an existing note or Base, or try the [fictional examples](examples/vault) in a separate test vault.

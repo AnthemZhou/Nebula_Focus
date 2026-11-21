@@ -23,6 +23,8 @@ This guide describes the current source behavior, including the single main-page
 
 桌面主区不再额外显示一行重复标题与导航。原生前进／后退按钮移到 Mac 窗口控制按钮右侧，替换原来的侧栏标签图标；编辑及更多操作移至当前标题右侧。移动的是原生按钮，历史、菜单和快捷键继续沿用 Obsidian；关闭侧栏时导航移入主顶栏，切回原生外观时恢复原位置。左右分界线使用 1px 紫色高光与 12px 鼠标拖动范围，轻微横向溢出（不超过 24px）不再显示边缘渐隐。
 
+正文、提醒内容与数据库工具栏随可用分栏宽度重新排布，不使用边缘遮罩。仅数据库网格保持原有列宽并横向滚动；只有超过 24px 的实际溢出才显示边缘渐隐。搜索来源路径使用较淡的小字，子页面通过逐层缩进和树枝线表示父子关系。
+
 ### 阅读与颜色
 
 配色参考用户提供的 Codex 截图；手机借鉴 ChatGPT 的简洁文字和留白。它们是本插件的参考实现，不是读取或复制两款应用的内部主题参数。
@@ -72,6 +74,8 @@ The page tree shows Markdown pages and their folders by default, omitting standa
 Under Settings → Nebula Focus → 更多设置 (More settings) → 左侧工具按钮 (Left toolbar buttons), choose individual visible tools, show all, or restore the compact defaults. Known core tools are simplified by default; unknown third-party tools stay visible. Desktop Help and Settings move to the bottom of the narrow left rail, retaining their native controls and behavior. This changes presentation in enhanced mode only, not core-plugin enablement or other plugins' settings.
 
 Desktop removes the extra header row containing the repeated page title. Native Back/Forward controls sit to the right of the Mac window buttons, replacing the left dock tab icons; Edit and More remain next to the current title. The original controls retain native history, menus and shortcuts. Navigation moves into the main header when the sidebar collapses, and native appearance restores all original positions. Both dividers use a 1px accent line inside a 12px mouse target. Minor horizontal overflow of 24px or less does not trigger an edge fade.
+
+Prose, reminders and database tools reflow to the available pane width without a fade mask. Only database grids preserve their column widths and scroll horizontally, with an edge fade when actual overflow exceeds 24px. Search source paths use smaller, fainter text; nested pages use increasing indentation and tree guides.
 
 ### Reading and colors
 

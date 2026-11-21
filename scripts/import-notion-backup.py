@@ -17,6 +17,7 @@ import sys
 import tempfile
 from urllib.parse import parse_qsl, unquote, urlparse
 from uuid import UUID
+from notion_workspace_views import make_base, record_metadata
 
 
 FORMAT_VERSION = 1
@@ -352,7 +353,9 @@ class Importer:
         unresolved_assets = set(re.findall(r"notion-file-block://[^\s\"<>\)]+", body))
         for reference in sorted(unresolved_assets):
             self.issue("missing-body-attachment", page_id, detail=reference)
-        tags = sorted(set(re.findall(r"</?([a-z][\w-]*)\b", body)))
+        # A Markdown table uses inline HTML for line breaks within a cell.
+        # These breaks render natively and require no import follow-up.
+        tags = sorted(set(re.findall(r"</?([a-z][\w-]*)\b", body)) - {"br"})
         if tags:
             self.issue("source-markup-preserved", page_id, detail=tags)
         return body
@@ -371,6 +374,7 @@ class Importer:
                 "formulas": {"记录": formula},
                 "properties": {"formula.记录": {"displayName": key or "记录"}},
                 "views": [{"type": "table", "name": source["name"], "order": fields,
+                           "nebulaRecords": record_metadata(source["schema"], self.folder, source["id"]),
                            "columnSize": {"formula.记录": 340}}]}
 
     def prepare(self):
@@ -413,6 +417,18 @@ class Importer:
         for source in self.sources.values():
             # JSON is YAML 1.2, supported by native Bases without extra packages.
             self.add(f"Bases/{source['id']}.base", canonical(self.base(source)))
+        workspace_links = []
+        if "workspaceViews" in self.bundle:
+            workspace = self.bundle["workspaceViews"]
+            schemas = {sid: {"properties": source["schema"]} for sid, source in self.sources.items()}
+            paths = {uid: record["path"] for uid, record in self.records.items()}
+            for database in workspace["databases"]:
+                name = f"Views/{identifier(database['id'])}.base"
+                if name in self.files:
+                    raise ValueError("Duplicate workspace view database: " + database["id"])
+                views = make_base(database["views"], schemas, self.folder, identifier, paths, workspace["nativeViews"])
+                self.add(name, canonical(views))
+                workspace_links.append(f"- [[{self.folder}/{name}|{database['name']}]]")
         self.add("schema.json", canonical({"formatVersion": FORMAT_VERSION, "sources": {
             key: {"name": source["name"], "schema": source["schema"]} for key, source in self.sources.items()}}))
         raw = canonical(self.bundle)
@@ -430,6 +446,8 @@ class Importer:
                  "", "## 数据表", ""]
         for source in self.sources.values():
             lines.append(f"- [[{self.folder}/Bases/{source['id']}.base|{source['name']}]]（{len(source['rows'])} 条）")
+        if workspace_links:
+            lines += ["", "## 原始数据库视图", "", *workspace_links]
         root_id = self.bundle.get("rootPageId")
         if root_id and identifier(root_id) in self.records:
             lines += ["", "原始入口：" + self.link(self.records[identifier(root_id)]["url"])]
